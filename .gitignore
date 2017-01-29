@@ -27,3 +27,8 @@
 *.exe
 *.out
 *.app
+/Debug/
+/Relase/
+/.project
+/.cproject
+/.settings
