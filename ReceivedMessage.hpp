@@ -153,7 +153,7 @@ public:
     char dt[20]; // space enough for YYYY-MM-DD HH:MM:SS and terminator
     struct tm tm;
     tm = *localtime(&data_time); // convert time_t to struct tm
-    strftime(dt, sizeof dt, "%Y-%m-%d %H:%M:%S", &tm); // format
+    strftime(dt, sizeof dt, "%Y-%m-%d %H:%M:%S%z", &tm); // format
 
     if (print_details) {
       fprintf(file, "%s ", dt);
@@ -232,10 +232,10 @@ public:
       struct tm tm;
       if (utc) {
         tm = *gmtime(&data_time); // convert time_t to struct tm
-        strftime(dt, sizeof dt, "%Y-%m-%dT%H:%M:%S", &tm); // ISO format
+        strftime(dt, sizeof dt, "%FT%TZ", &tm); // ISO format
       } else {
         tm = *localtime(&data_time); // convert time_t to struct tm
-        strftime(dt, sizeof dt, "%Y-%m-%d %H:%M:%S", &tm); // ISO format
+        strftime(dt, sizeof dt, "%Y-%m-%d %H:%M:%S%z", &tm);
       }
       fprintf( file, "{\"time\":\"%s\",", dt );
 
@@ -286,10 +286,10 @@ public:
     struct tm tm;
     if (utc) { // UTC time zone
       tm = *gmtime(&data_time); // convert time_t to struct tm
-      strftime(dt, sizeof dt, "%Y-%m-%dT%H:%M:%S", &tm); // ISO format
+      strftime(dt, sizeof dt, "%FT%TZ", &tm); // ISO format
     } else { // local time zone
       tm = *localtime(&data_time); // convert time_t to struct tm
-      strftime(dt, sizeof dt, "%Y-%m-%d %H:%M:%S", &tm); // ISO format
+      strftime(dt, sizeof dt, "%Y-%m-%d %H:%M:%S%z", &tm);
     }
 
     uint32_t nF007TH = data->nF007TH;
