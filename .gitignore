@@ -23,6 +23,9 @@
 *.a
 *.lib
 
+#Generated files
+*.d
+
 # Executables
 *.exe
 *.out
