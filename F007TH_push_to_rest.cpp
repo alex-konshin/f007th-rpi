@@ -148,7 +148,8 @@ int main(int argc, char *argv[]) {
       if (message.isEmpty()) {
         fputs("ERROR: Missing data.\n", stderr);
       } else if (message.isUndecoded()) {
-        fprintf(stderr, "Could not decode the received data (error %04x).\n", message.getDecodingStatus());
+        if ((verbosity&VERBOSITY_INFO) != 0)
+          fprintf(stderr, "Could not decode the received data (error %04x).\n", message.getDecodingStatus());
       } else {
         bool updated = message.isValid() && sensorsData.update(message.getData());
         if (!changes_only || updated ) {
