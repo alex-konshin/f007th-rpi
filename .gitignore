@@ -27,8 +27,8 @@
 *.exe
 *.out
 *.app
-/Debug/
-/Relase/
 /.project
 /.cproject
 /.settings
+/f007th-rpi/f007th-rpi
+/f007th-rpi_push_to_rest/f007th-rpi_push_to_rest

@@ -15,6 +15,7 @@ RFReceiver::RFReceiver(int gpio) {
   isEnabled = false;
   stopDecoder = false;
   stopMessageReader = false;
+  stopped = false;
 
   timerEvent = 0;
   interrupted = 0;
@@ -31,13 +32,32 @@ RFReceiver::RFReceiver(int gpio) {
 
   resetReceiverBuffer();
 }
+RFReceiver::~RFReceiver() {
+  stop();
+  pthread_mutex_destroy(&messageQueueLock);
+}
 
 void RFReceiver::initLib() {
   if (!isLibInitialized && gpioInitialise() < 0) {
     printf("ERROR: Failed to initialize library pigpio.\n");
     exit(1);
   }
+  gpioSetSignalFuncEx(SIGINT, processCtrlBreak, (void*)this);
+  isLibInitialized = true;
 }
+void RFReceiver::closeLib() {
+  if (isLibInitialized) {
+    gpioTerminate();
+    isLibInitialized = false;
+    isEnabled = false;
+  }
+}
+// Handle Ctrl-C
+void RFReceiver::processCtrlBreak(int signum, void *userdata) {
+  RFReceiver* receiver = (RFReceiver*)userdata;
+  receiver->stop();
+}
+
 
 void RFReceiver::interruptCallback(int gpio, int level, uint32_t tick, void* userdata) {
   RFReceiver* receiver = (RFReceiver*)userdata;
@@ -63,16 +83,35 @@ bool RFReceiver::enableReceive() {
 }
 
 void RFReceiver::disableReceive() {
-  if (!isEnabled) {
+  if (isEnabled) {
     //gpioSetAlertFuncEx(gpio, NULL, (void *)this);
     gpioSetISRFuncEx(gpio, EITHER_EDGE, 0, NULL, NULL);
+    isEnabled = false;
   }
 }
 
 void RFReceiver::stop() {
-  disableReceive();
+  stopped = true;
+  if (isLibInitialized && isEnabled) {
+    pause();
+    stopTimer();
+    stopMessageReader = true;
+    if (isDecoderStarted) {
+      pthread_mutex_lock(&messageQueueLock);
+      pthread_cond_broadcast(&messageReady);
+      pthread_mutex_unlock(&messageQueueLock);
+    }
+    closeLib();
+  }
+}
+
+bool RFReceiver::isStopped() {
+  return stopped;
+}
+
+void RFReceiver::pause() {
+  if (isEnabled) disableReceive();
   stopDecoder = true;
-  //sequenceIsReady(iSequenceReady);
 }
 
 void RFReceiver::resetReceiverBuffer() {
@@ -484,7 +523,7 @@ bool RFReceiver::waitForMessage(ReceivedMessage& message) {
   ReceivedData* data = NULL;
 
   pthread_mutex_lock(&messageQueueLock);
-  while (!stopMessageReader && timerEvent==0 && (data = firstMessage) == NULL) {
+  while (!stopped && !stopMessageReader && timerEvent==0 && (data = firstMessage) == NULL) {
     pthread_cond_wait(&messageReady, &messageQueueLock);
   }
   if (data != NULL) {
@@ -492,7 +531,7 @@ bool RFReceiver::waitForMessage(ReceivedMessage& message) {
     if (firstMessage == NULL) lastMessagePtr = &firstMessage;
   }
   pthread_mutex_unlock(&messageQueueLock);
-  data->next = NULL;
+  if (data != NULL) data->next = NULL;
   message.setData(data);
   return data != NULL;
 }
@@ -523,7 +562,7 @@ void RFReceiver::setTimer(uint32_t millis) {
   }
   uCurrentStatisticsTimer = millis;
 
-  int rc = gpioSetTimerFuncEx(1, millis, millis == 0 ? NULL : timerHandler, (void*)this);
+  int rc = gpioSetTimerFuncEx(1, millis==0 ? 1 : millis, millis == 0 ? NULL : timerHandler, (void*)this);
   if (rc != 0) {
     printf("ERROR: Error code %d from gpioSetTimerFuncEx().\n", rc);
     exit(4);
@@ -533,6 +572,10 @@ void RFReceiver::setTimer(uint32_t millis) {
     printf("timer off\n");
   else
     printf("timer on %dms\n", millis);
+}
+
+void RFReceiver::stopTimer() {
+  setTimer(0);
 }
 
 void RFReceiver::printStatisticsPeriodically(uint32_t millis) {

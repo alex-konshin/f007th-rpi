@@ -11,6 +11,16 @@
 #include <stdio.h>
 #include <time.h>
 
+#define JSON_BUFFER_SIZE 200
+#define REST_RESPONSE_BUFFER_SIZE 8192
+
+#define VERBOSITY_INFO             1
+#define VERBOSITY_PRINT_DETAILS    2
+#define VERBOSITY_PRINT_STATISTICS 4
+#define VERBOSITY_PRINT_UNDECODED  8
+#define VERBOSITY_PRINT_JSON      16
+#define VERBOSITY_PRINT_CURL      32
+
 typedef struct ReceivedData {
   struct ReceivedData *next;
   int16_t* pSequence;
@@ -58,13 +68,20 @@ public:
     data_time = time(NULL);
   }
 
-  inline bool isEmpty() { return data != __null; }
+  uint32_t getData() {
+    return data->nF007TH;
+  }
+
+  inline bool isEmpty() { return data == __null; }
 
   inline bool isValid() {
     return data != __null && data->decodingStatus == 0;
   }
   inline bool isUndecoded() {
     return data != __null && (data->decodingStatus & 0x3f) != 0;
+  }
+  inline uint16_t getDecodingStatus() {
+    return data == __null ? -1 : data->decodingStatus;
   }
 
   // random number that is changed when battery is changed
@@ -123,7 +140,10 @@ public:
     return true;
   }
 
-  bool print(FILE* file, bool print_details, bool print_undecoded) {
+  bool print(FILE* file, int verbosity) {
+    bool print_details = (verbosity&VERBOSITY_PRINT_DETAILS) != 0;
+    bool print_undecoded = (verbosity&VERBOSITY_PRINT_UNDECODED) != 0;
+
     if (data == __null) return false;
 
     if (file == __null) file = stdout;
@@ -162,7 +182,7 @@ public:
         "  channel           = %d\n"\
         "  rolling code      = %02x\n"\
         "  temperature*10 F  = %d\n"\
-        "  humitidy          = %d%%\n"\
+        "  humidity          = %d%%\n"\
         "  battery           = %s\n",
         getChannelF007TH(nF007TH),
         getRollingCodeF007TH(nF007TH),
@@ -227,10 +247,10 @@ public:
 
       fprintf( file,
         "\"channel\":%d,"\
-        "\"rolling_code\":%3d,"\
-        "\"temperature_dF\":%4d,"\
-        "\"humitidy\":%3d,"\
-        "\"battery_OK\":%s}\n",
+        "\"rolling_code\":%d,"\
+        "\"temperature\":%d,"\
+        "\"humidity\":%d,"\
+        "\"battery_ok\":%s}\n",
         getChannelF007TH(nF007TH),
         getRollingCodeF007TH(nF007TH),
         getTemperatureF007TH(nF007TH),
@@ -241,6 +261,63 @@ public:
     }
 
     return true;
+  }
+
+  int json(char* buffer, size_t buflen, bool utc, bool verbose) {
+    if (data == __null || buffer == __null || buflen < JSON_BUFFER_SIZE) {
+      if (verbose) {
+        if (data == __null)
+          fputs("JSON data was not generated because no data was decoded.\n", stderr);
+        else if (buffer == __null)
+          fputs("ERROR: Invalid call json(char*,size_t,bool,bool): buffer is not specified.\n", stderr);
+        else
+          fprintf(stderr, "ERROR: Invalid call json(char*,size_t,bool,bool): invalid size (%d) of the buffer.\n", buflen);
+      }
+      return -1;
+    }
+
+    uint16_t decodingStatus = data->decodingStatus;
+    if ((decodingStatus & 0x3f) != 0 ) {
+      if (verbose) fprintf(stderr, "JSON data was not generated because decodingStatus = %04x.\n", decodingStatus);
+      return -2;
+    }
+
+    char dt[20]; // space enough for YYYY-MM-DD HH:MM:SS and terminator
+    struct tm tm;
+    if (utc) { // UTC time zone
+      tm = *gmtime(&data_time); // convert time_t to struct tm
+      strftime(dt, sizeof dt, "%Y-%m-%dT%H:%M:%S", &tm); // ISO format
+    } else { // local time zone
+      tm = *localtime(&data_time); // convert time_t to struct tm
+      strftime(dt, sizeof dt, "%Y-%m-%d %H:%M:%S", &tm); // ISO format
+    }
+
+    uint32_t nF007TH = data->nF007TH;
+
+    int len = snprintf( buffer, buflen,
+      "{\"time\":\"%s\","\
+      "\"valid\":%s,"\
+      "\"channel\":%d,"\
+      "\"rolling_code\":%d,"\
+      "\"temperature\":%d,"\
+      "\"humidity\":%d,"\
+      "\"battery_ok\":%s}\n",
+      dt,
+      decodingStatus == 0 ? "true" : "false",
+      getChannelF007TH(nF007TH),
+      getRollingCodeF007TH(nF007TH),
+      getTemperatureF007TH(nF007TH),
+      getHumidityF007TH(nF007TH),
+      getBatteryStatusF007TH(nF007TH) ? "true" :"false"
+    );
+
+    if (verbose) {
+      //fprintf(stderr, "JSON data size is %d bytes.\n", len*sizeof(unsigned char));
+      fputs(buffer, stderr);
+      fputc('\n', stderr);
+    }
+
+    return len*sizeof(unsigned char);
   }
 
 };

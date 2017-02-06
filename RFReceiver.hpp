@@ -8,11 +8,13 @@
 
 #define RaspberryPi
 
-#include <string.h> /* memcpy */
-#include <stdlib.h> /* abs, malloc */
+#include <string.h>
+#include <stdlib.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <signal.h>
+#include <getopt.h>
 
 //#include <wiringPi.h>
 #include <pigpio.h>
@@ -39,10 +41,13 @@ class RFReceiver {
 
 public:
   RFReceiver(int gpio);
+  ~RFReceiver();
 
   bool enableReceive();
   void disableReceive();
   void stop();
+  void pause();
+  bool isStopped();
 
   bool available();
   bool waitForMessage(ReceivedMessage& message);
@@ -60,12 +65,15 @@ private:
 
   static bool isLibInitialized;
 
-  static void initLib();
+  void initLib();
+  void closeLib();
+  static void processCtrlBreak(int signum, void *userdata);
   static void interruptCallback(int gpio, int level, uint32_t tick, void *userdata);
   static void* decoderThreadFunction(void *context);
   static void timerHandler(void *context);
 
   void setTimer(uint32_t millis);
+  void stopTimer();
 
   static void destroyMessage(ReceivedData* message);
   ReceivedData* createNewMessage();
@@ -140,6 +148,7 @@ private:
   bool isDecoderStarted;
   bool stopDecoder;
   bool stopMessageReader;
+  bool stopped;
   int timerEvent;
 };
 
