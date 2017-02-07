@@ -59,7 +59,7 @@ public:
     uint32_t result = 0;
     for (int index = from; index<from+size; index++) {
       result <<= 1;
-      if (getBit(index)) result |= 1;
+      if (getBit(index)) result |= 1L;
     }
     return result;
   }
@@ -75,8 +75,8 @@ public:
       bits >>= 1;
       b >>= 1;
     }
-    uint64_t bb = inv;// & 0xffffffffL;
-    uint64_t mask = (1L << bitsLength) - 1;
+    uint64_t bb = inv & 0xffffffffLL;
+    uint64_t mask = (1LL << bitsLength) - 1;
     bb &= mask;
 
     int endIndex = size - bitsLength;

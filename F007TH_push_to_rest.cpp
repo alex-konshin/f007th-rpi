@@ -218,7 +218,7 @@ bool send(ReceivedMessage& message, const char* url, char* json_buffer, char* re
   if (verbose) fputs("===> called send()\n", stderr);
 
   json_buffer[0] = '\0';
-  int json_size = message.json(json_buffer, JSON_BUFFER_SIZE, false, (verbosity&VERBOSITY_PRINT_JSON) != 0);
+  int json_size = message.json(json_buffer, JSON_BUFFER_SIZE, true, (verbosity&VERBOSITY_PRINT_JSON) != 0);
   if (json_size <= 0) {
     if (verbose) fputs("===> return from send() without sending because JSON was not generated\n", stderr);
     return false;
