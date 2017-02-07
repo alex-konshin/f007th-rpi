@@ -41,18 +41,21 @@ git clone https://github.com/alex-konshin/f007th-rpi.git
 ```
 - Build f007th-rpi
 ```
-cd f007th-rpi
+mkdir bin
+cd f007th-rpi/f007th-rpi
 make all
-cp f007th-rpi ..
-cd ..
+cp f007th-rpi ../../bin/ 
+cd ../..
 ```
 - Build f007th-rpi_push_to_rest
 ```
-cd f007th-rpi_push_to_rest
+cd f007th-rpi/f007th-rpi_push_to_rest
 make all
-cp f007th-rpi_push_to_rest ..
-cd ..
+cp f007th-rpi_push_to_rest ../../bin/ 
+cd ../..
 ```
+- Executables are in directory `bin`. Note that you must run them with root privileges (for example with `sudo`). Use Ctrl-C to terminate the program.
+ 
 ### Running f007th-rpi_push_to_rest
 First of all, you need a server that accepts REST PUT requests. That server can store this data in a database. How to setup this server? 
 It is out of the scope of this instruction because there are many possible solutions. I personally use [LoopBack](https://loopback.io/) with [PostgreSQL](https://www.postgresql.org/) that are run on QNAP NAS server.  
