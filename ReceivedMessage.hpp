@@ -11,8 +11,10 @@
 #include <stdio.h>
 #include <time.h>
 
-#define JSON_BUFFER_SIZE 200
-#define REST_RESPONSE_BUFFER_SIZE 8192
+#include "SensorsData.hpp"
+
+#define SEND_DATA_BUFFER_SIZE 1024
+#define SERVER_RESPONSE_BUFFER_SIZE 8192
 
 #define VERBOSITY_INFO             1
 #define VERBOSITY_PRINT_DETAILS    2
@@ -264,7 +266,7 @@ public:
   }
 
   int json(char* buffer, size_t buflen, bool utc, bool verbose) {
-    if (data == __null || buffer == __null || buflen < JSON_BUFFER_SIZE) {
+    if (data == __null || buffer == __null || buflen < SEND_DATA_BUFFER_SIZE) {
       if (verbose) {
         if (data == __null)
           fputs("JSON data was not generated because no data was decoded.\n", stderr);
@@ -310,6 +312,74 @@ public:
       getHumidityF007TH(nF007TH),
       getBatteryStatusF007TH(nF007TH) ? "true" :"false"
     );
+
+    if (verbose) {
+      //fprintf(stderr, "JSON data size is %d bytes.\n", len*sizeof(unsigned char));
+      fputs(buffer, stderr);
+      fputc('\n', stderr);
+    }
+
+    return len*sizeof(unsigned char);
+  }
+
+  int influxDB(char* buffer, size_t buflen, int changed, bool verbose) {
+    if (data == __null || buffer == __null || buflen < SEND_DATA_BUFFER_SIZE) {
+      if (verbose) {
+        if (data == __null)
+          fputs("Output data was not generated because no data was decoded.\n", stderr);
+        else if (buffer == __null)
+          fputs("ERROR: Invalid call influxDB(char*,size_t,bool): buffer is not specified.\n", stderr);
+        else
+          fprintf(stderr, "ERROR: Invalid call influxDB(char*,size_t,bool): invalid size (%d) of the buffer.\n", buflen);
+      }
+      return -1;
+    }
+
+    uint16_t decodingStatus = data->decodingStatus;
+    if (decodingStatus != 0 ) {
+      if (verbose) fprintf(stderr, "Output data was not generated because decodingStatus = %04x.\n", decodingStatus);
+      return -2;
+    }
+
+    uint32_t nF007TH = data->nF007TH;
+
+    char id[60];
+    int len = snprintf( id, sizeof(id),
+      "type=F007TH,channel=%d,rolling_code=%d",
+      getChannelF007TH(nF007TH),
+      getRollingCodeF007TH(nF007TH)
+    );
+
+    char* output = buffer;
+    int remain = buflen;
+    if ((changed&TEMPERATURE_IS_CHANGED) != 0) {
+      int t = getTemperatureF007TH(nF007TH);
+      int tF = t/10;
+      char dF = '0'+(t%10);
+      int len = snprintf( output, remain,
+        "temperature,%s value=%d.%c\n",
+        id, tF, dF
+      );
+      remain -= len;
+      output += len;
+    }
+    if ((changed&HUMIDITY_IS_CHANGED) != 0) {
+      int len = snprintf( output, remain,
+        "humidity,%s value=%d\n",
+        id, getHumidityF007TH(nF007TH)
+      );
+      remain -= len;
+      output += len;
+    }
+    if ((changed&BATTERY_STATUS_IS_CHANGED) != 0) {
+      int len = snprintf( output, remain,
+        "sensor_battery_status,%s value=%s\n",
+        id, getBatteryStatusF007TH(nF007TH) ? "true" :"false"
+      );
+      remain -= len;
+      output += len;
+    }
+    len = buflen - remain;
 
     if (verbose) {
       //fprintf(stderr, "JSON data size is %d bytes.\n", len*sizeof(unsigned char));

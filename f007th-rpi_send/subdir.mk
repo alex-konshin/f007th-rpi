@@ -4,16 +4,16 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 CPP_SRCS += \
-../F007TH_push_to_rest.cpp \
-../RFReceiver.cpp 
+../RFReceiver.cpp \
+../f007th_send.cpp 
 
 OBJS += \
-./F007TH_push_to_rest.o \
-./RFReceiver.o 
+./RFReceiver.o \
+./f007th_send.o 
 
 CPP_DEPS += \
-./F007TH_push_to_rest.d \
-./RFReceiver.d 
+./RFReceiver.d \
+./f007th_send.d 
 
 
 # Each subdirectory must supply rules for building sources it contributes

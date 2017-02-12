@@ -9,7 +9,15 @@
 #define SENSORSDATA_HPP_
 
 #define SENSOR_UID_MASK  0xff700000L
-#define SENSOR_DATA_MASK 0x008fffffL
+#define SENSOR_TEMPERATURE_MASK 0x000fff00L
+#define SENSOR_HUMIDITY_MASK    0x000000ffL
+#define SENSOR_BATTERY_MASK     0x00800000L
+#define SENSOR_DATA_MASK        (SENSOR_TEMPERATURE_MASK|SENSOR_HUMIDITY_MASK|SENSOR_BATTERY_MASK)
+
+#define TEMPERATURE_IS_CHANGED       1
+#define HUMIDITY_IS_CHANGED          2
+#define BATTERY_STATUS_IS_CHANGED    4
+#define NEW_UID                      8
 
 class SensorsData {
 private:
@@ -62,18 +70,23 @@ public:
     return 0;
   }
 
-  bool update(uint32_t nF007TH) {
+  int update(uint32_t nF007TH) {
     uint32_t uid = nF007TH & SENSOR_UID_MASK;
     for (int index = 0; index<size; index++) {
       uint32_t item = items[index];
       if ((item & SENSOR_UID_MASK) == uid) {
-        if (((item ^ nF007TH)& SENSOR_DATA_MASK) == 0) return false;
+        uint32_t changed = (item ^ nF007TH)& SENSOR_DATA_MASK;
+        if (changed == 0) return false;
         items[index] = nF007TH;
+        int result = 0;
+        if ((changed&SENSOR_TEMPERATURE_MASK) != 0) result |= TEMPERATURE_IS_CHANGED;
+        if ((changed&SENSOR_HUMIDITY_MASK) != 0) result |= HUMIDITY_IS_CHANGED;
+        if ((changed&BATTERY_STATUS_IS_CHANGED) != 0) result |= BATTERY_STATUS_IS_CHANGED;
         return true;
       }
     }
     add(nF007TH);
-    return true;
+    return TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED | NEW_UID;
   }
 
 private:

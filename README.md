@@ -1,6 +1,6 @@
 # f007th-rpi
 ## Raspberry Pi: Receiving data from temperature/humidity sensors Ambient Weather F007TH with cheap RF 433MHz receiver
-###### Project source can be downloaded from https://github.com/alex-konshin/f007th-rpi.git
+###### Project source can be downloaded from [https://github.com/alex-konshin/f007th-rpi.git](https://github.com/alex-konshin/f007th-rpi.git)
 
 ### Author and Contributors
 Alex Konshin <akonshin@gmail.com>
@@ -9,15 +9,14 @@ Alex Konshin <akonshin@gmail.com>
 This project currently contains source code of 2 executables for Raspberry Pi to receive data from temperature/humidity sensors "Ambient Weather F007TH" 
 with cheap RF 433MHz receivers like [RXB6](http://www.jmrth.com/en/images/proimages/RXB6_en_v3.pdf), RX-RM-5V, etc.
 - **f007th-rpi** is a demo/test program that receive data from sensors and prints it in plain text or JSON format.
-- **f007th-rpi_push_to_rest** is more advanced program that sends received and decoded data to a remote server via REST API. 
-When it is started with optional argument `--changes-only, -c` it sends data only when the data is actually changed.
+- **f007th-rpi_send** is more advanced program that sends received and decoded data to a remote InfluxDB or REST server. 
 
 ### Files
 | File | Description |
 | :--- | :--- |
 | `Bits.hpp` | Operations with long set of bits. It is used for storing decoded bits in Manchester decoder.|
 | `F007TH.cpp` | Source code of **f007th-rpi** executable.|
-| `F007TH_push_to_rest.cpp` | Source code of **f007th-rpi\_push\_to\_rest** executable. |
+| `f007th_send.cpp` | Source code of **f007th-rpi_send** executable. |
 | `ReceivedMessage.hpp` | Container for received and decoded data. |
 | `RFReceiver.cpp` | Implementation part of main class `RFReceiver` that actually receives and decodes data. |
 | `RFReceiver.hpp` | Declaration part of class `RFReceiver`. |
@@ -47,27 +46,34 @@ make all
 cp f007th-rpi ../../bin/ 
 cd ../..
 ```
-- Build f007th-rpi_push_to_rest
+- Build f007th-rpi_send
 ```
-cd f007th-rpi/f007th-rpi_push_to_rest
+cd f007th-rpi/f007th-rpi_send
 make all
-cp f007th-rpi_push_to_rest ../../bin/ 
+cp f007th-rpi_send ../../bin/ 
 cd ../..
 ```
 - Executables are in directory `bin`. Note that you must run them with root privileges (for example with `sudo`). Use Ctrl-C to terminate the program.
  
-### Running f007th-rpi_push_to_rest
-First of all, you need a server that accepts REST PUT requests. That server can store this data in a database. How to setup this server? 
-It is out of the scope of this instruction because there are many possible solutions. I personally use [LoopBack](https://loopback.io/) with [PostgreSQL](https://www.postgresql.org/) that are run on QNAP NAS server.  
-The utility sends JSON with following fileds:  
+### Running f007th-rpi_send
+The command can send data to InfluxDB server or virtually any REST server that supports PUT requests.
+How to setup these servers? It is out of the scope of this instruction because there are many possible solutions. For REST server I personally use [LoopBack](https://loopback.io/) with [PostgreSQL](https://www.postgresql.org/) that are run on QNAP NAS server.
+ 
+The command sends JSON to REST server with following fields:  
 `"time", "valid", "channel", "rolling_code", "temperature", "humidity","battery_ok"`.  
-The value of field `temperature` is integer number of dF ("deciFahrenheit" = 1/10 of Fahrenheit). For example, if the value is 724 then the temperature is 72.4&deg;F.   
+The value of field `temperature` is integer number of dF ("deciFahrenheit" = 1/10 of Fahrenheit). For example, if the value is 724 then the temperature is 72.4&deg;F.
+   
+Instructions for InfluxDB can be found on site [https://docs.influxdata.com/influxdb/v1.2/introduction/installation/](https://docs.influxdata.com/influxdb/v1.2/introduction/installation/). The command sends 3 types of metrics: "temperature", "humidity" and "sensor_battery_status" with tags "type" (always "F007TH"), "channel" and "rolling_code". The value of "temperature" is in Fahrenheit.    
 
-#### Command line arguments of utility f007th-rpi_push_to_rest:
+#### Command line arguments of utility f007th-rpi_send:
+##### --gpio, -g
+Value is GPIO pin number (default is 27) as defined on page [http://abyz.co.uk/rpi/pigpio/index.html](http://abyz.co.uk/rpi/pigpio/index.html)
 ##### --send-to, -s
-Parameter is REST server URL. The server should accept PUT requests.  
-##### --changes-only, -c
-Send only valid and changed data.
+Parameter value is server URL.
+##### --server-type, -t
+Parameter value is server type. Possible values are REST (default) or InfluxDB.
+##### --all, -A
+Send all data. Only changed and valid data is sent by default.
 ##### --log-file, -l
 Parameter is a path to log file.
 ##### --verbose, -v
