@@ -38,22 +38,11 @@ sudo apt-get install pigpio
 ```
 git clone https://github.com/alex-konshin/f007th-rpi.git
 ```
-- Build f007th-rpi
+- Build
 ```
-mkdir bin
-cd f007th-rpi/f007th-rpi
-make all
-cp f007th-rpi ../../bin/ 
-cd ../..
+/bin/sh f007th-rpi/build.sh
 ```
-- Build f007th-rpi_send
-```
-cd f007th-rpi/f007th-rpi_send
-make all
-cp f007th-rpi_send ../../bin/ 
-cd ../..
-```
-- Executables are in directory `bin`. Note that you must run them with root privileges (for example with `sudo`). Use Ctrl-C to terminate the program.
+- Executables are created in directory `f007th-rpi/bin`. Note that you must run them with root privileges (for example with `sudo`). Use Ctrl-C to terminate the program.
  
 ### Running f007th-rpi_send
 The command can send data to InfluxDB server or virtually any REST server that supports PUT requests.
