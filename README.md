@@ -50,8 +50,8 @@ How to setup these servers? It is out of the scope of this instruction because t
  
 The command sends JSON to REST server with following fields:  
 `"time", "valid", "channel", "rolling_code", "temperature", "humidity","battery_ok"`.  
-The value of field `temperature` is integer number of dF ("deciFahrenheit" = 1/10 of Fahrenheit). For example, if the value is 724 then the temperature is 72.4&deg;F. 
- 
+The value of field `temperature` is integer number of dF ("deciFahrenheit" = 1/10 of Fahrenheit). For example, if the value is 724 then the temperature is 72.4&deg;F.  
+
 Instructions for InfluxDB can be found on site [https://docs.influxdata.com/influxdb/v1.2/introduction/installation/](https://docs.influxdata.com/influxdb/v1.2/introduction/installation/). The command sends 3 types of metrics: "temperature", "humidity" and "sensor_battery_status" with tags "type" (always "F007TH"), "channel" and "rolling_code". The value of "temperature" is in Fahrenheit.
 
 #### Command line arguments of utility f007th-rpi_send:
@@ -77,20 +77,20 @@ Verbose output.
 More verbose output.
 
 #### Examples:
-Print received data on console: 
-`sudo f007th-rpi_send -A` 
+Print received data on console:  
+`sudo f007th-rpi_send -A`  
  
-Print received data on console with temperature in degrees Celsius: 
-`sudo f007th-rpi_send -C -A` 
+Print received data on console with temperature in degrees Celsius:  
+`sudo f007th-rpi_send -C -A`  
  
-Run the command in background and send data to InfluxDB database `smarthome` on server `server.dom`: 
-`sudo f007th-rpi_send -t InfluxDB http://server.dom:8086/write?db=smarthome &` 
-or 
-`sudo f007th-rpi_send --type=InfluxDB -s http://server.dom:8086/write?db=smarthome &` 
-or 
-`sudo f007th-rpi_send --type=InfluxDB --send-to http://server.dom:8086/write?db=smarthome &` 
+Run the command in background and send data to InfluxDB database `smarthome` on server `server.dom`:  
+`sudo f007th-rpi_send -t InfluxDB http://server.dom:8086/write?db=smarthome &`  
+or  
+`sudo f007th-rpi_send --type=InfluxDB -s http://server.dom:8086/write?db=smarthome &`  
+or  
+`sudo f007th-rpi_send --type=InfluxDB --send-to http://server.dom:8086/write?db=smarthome &`  
  
-Send data to Loopback (REST server) on server `qnap.dom`: 
-`sudo f007th-rpi_send http://qnap.dom:3000/api/roomtemps` 
-or 
-`sudo f007th-rpi_send -t REST -s http://qnap.dom:3000/api/roomtemps` 
+Send data to Loopback (REST server) on server `qnap.dom`:  
+`sudo f007th-rpi_send http://qnap.dom:3000/api/roomtemps`  
+or  
+`sudo f007th-rpi_send -t REST -s http://qnap.dom:3000/api/roomtemps`  
