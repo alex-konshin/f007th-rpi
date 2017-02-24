@@ -38,9 +38,14 @@ RFReceiver::~RFReceiver() {
 }
 
 void RFReceiver::initLib() {
-  if (!isLibInitialized && gpioInitialise() < 0) {
-    printf("ERROR: Failed to initialize library pigpio.\n");
-    exit(1);
+  if (!isLibInitialized) {
+    //unsigned version = gpioVersion();
+    //printf("pigpio version is %d.\n", version);
+    //gpioCfgMemAlloc(PI_MEM_ALLOC_PAGEMAP);
+    if (gpioInitialise() < 0) {
+      puts("ERROR: Failed to initialize library pigpio.\n");
+      exit(1);
+    }
   }
   gpioSetSignalFuncEx(SIGINT, processCtrlBreak, (void*)this);
   isLibInitialized = true;

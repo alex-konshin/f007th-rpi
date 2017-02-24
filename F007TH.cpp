@@ -16,7 +16,7 @@ int main(int argc, char *argv[]) {
   const bool format_json = false;
   const bool write_undecoded_to_file = false;
 
-  int verbosity = VERBOSITY_INFO | VERBOSITY_PRINT_UNDECODED;
+  int options = VERBOSITY_INFO | VERBOSITY_PRINT_UNDECODED;
 
   FILE* fp = NULL;
 
@@ -27,19 +27,19 @@ int main(int argc, char *argv[]) {
 
   receiver.enableReceive();
 
-  if ((verbosity&VERBOSITY_PRINT_STATISTICS) != 0)
+  if ((options&VERBOSITY_PRINT_STATISTICS) != 0)
     receiver.printStatisticsPeriodically(1000); // print statistics every second
 
-  if ((verbosity&VERBOSITY_INFO) != 0) fputs("Receiving data...\n", stderr);
+  if ((options&VERBOSITY_INFO) != 0) fputs("Receiving data...\n", stderr);
   while(!receiver.isStopped()) {
 
     if (receiver.waitForMessage(message)) {
       if (receiver.isStopped()) break;
 
       if (format_json) {
-        message.json(stdout, true);
+        message.json(stdout, options);
       } else {
-        message.print(stdout, verbosity);
+        message.print(stdout, options);
       }
 
       if (write_undecoded_to_file && !message.isEmpty() && message.isUndecoded()) {
@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
       receiver.printStatistics();
     }
   }
-  if ((verbosity&VERBOSITY_INFO) != 0) fputs("\nExiting...\n", stderr);
+  if ((options&VERBOSITY_INFO) != 0) fputs("\nExiting...\n", stderr);
 
   if (write_undecoded_to_file) fclose(fp);
 

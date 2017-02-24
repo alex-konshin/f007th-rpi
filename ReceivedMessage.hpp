@@ -22,6 +22,8 @@
 #define VERBOSITY_PRINT_UNDECODED  8
 #define VERBOSITY_PRINT_JSON      16
 #define VERBOSITY_PRINT_CURL      32
+#define OPTION_CELSIUS            64
+#define OPTION_UTC               128
 
 typedef struct ReceivedData {
   struct ReceivedData *next;
@@ -142,20 +144,24 @@ public:
     return true;
   }
 
-  bool print(FILE* file, int verbosity) {
-    bool print_details = (verbosity&VERBOSITY_PRINT_DETAILS) != 0;
-    bool print_undecoded = (verbosity&VERBOSITY_PRINT_UNDECODED) != 0;
+  bool print(FILE* file, int options) {
+    bool print_details = (options&VERBOSITY_PRINT_DETAILS) != 0;
+    bool print_undecoded = (options&VERBOSITY_PRINT_UNDECODED) != 0;
 
     if (data == __null) return false;
 
     if (file == __null) file = stdout;
 
     // print timestamp
-
     char dt[32];
     struct tm tm;
-    tm = *localtime(&data_time); // convert time_t to struct tm
-    strftime(dt, sizeof dt, "%Y-%m-%d %H:%M:%S %Z", &tm); // format
+    if ((options&OPTION_UTC) != 0) {
+      tm = *gmtime(&data_time); // convert time_t to struct tm
+      strftime(dt, sizeof dt, "%FT%TZ", &tm); // ISO 8601 format
+    } else {
+      tm = *localtime(&data_time); // convert time_t to struct tm
+      strftime(dt, sizeof dt, "%Y-%m-%d %H:%M:%S %Z", &tm);
+    }
 
     if (print_details) {
       fprintf(file, "%s ", dt);
@@ -180,15 +186,18 @@ public:
           fprintf(file, "  *** no checksum (error %04x) ***\n", decodingStatus);
       }
 
+      int temperature = getTemperatureF007TH(nF007TH);
+      if ((options&OPTION_CELSIUS) != 0) temperature = (temperature - 320) * 5 / 9;
+
       fprintf( file,
         "  channel           = %d\n"\
         "  rolling code      = %02x\n"\
-        "  temperature*10 F  = %d\n"\
+        "  temperature       = %d.%c%c\n"\
         "  humidity          = %d%%\n"\
         "  battery           = %s\n",
         getChannelF007TH(nF007TH),
         getRollingCodeF007TH(nF007TH),
-        getTemperatureF007TH(nF007TH),
+        temperature/10, '0'+(temperature%10), (options&OPTION_CELSIUS) != 0 ? 'C' : 'F',
         getHumidityF007TH(nF007TH),
         getBatteryStatusF007TH(nF007TH) ? "OK" :"Bad"
       );
@@ -222,7 +231,7 @@ public:
   }
 
 
-  bool json(FILE* file, bool utc) {
+  bool json(FILE* file, int options) {
     if (data == __null) return false;
 
     if (file == __null) file = stdout;
@@ -232,9 +241,9 @@ public:
 
       char dt[32];
       struct tm tm;
-      if (utc) {
+      if ((options&OPTION_UTC) != 0) {
         tm = *gmtime(&data_time); // convert time_t to struct tm
-        strftime(dt, sizeof dt, "%FT%TZ", &tm); // ISO format
+        strftime(dt, sizeof dt, "%FT%TZ", &tm); // ISO 8601 format
       } else {
         tm = *localtime(&data_time); // convert time_t to struct tm
         strftime(dt, sizeof dt, "%Y-%m-%d %H:%M:%S %Z", &tm);
@@ -247,6 +256,9 @@ public:
         fputs("\"valid\":false,", file);
       }
 
+      int temperature = getTemperatureF007TH(nF007TH);
+      if ((options&OPTION_CELSIUS) != 0) temperature = (temperature - 320) * 5 / 9;
+
       fprintf( file,
         "\"channel\":%d,"\
         "\"rolling_code\":%d,"\
@@ -255,7 +267,7 @@ public:
         "\"battery_ok\":%s}\n",
         getChannelF007TH(nF007TH),
         getRollingCodeF007TH(nF007TH),
-        getTemperatureF007TH(nF007TH),
+        temperature,
         getHumidityF007TH(nF007TH),
         getBatteryStatusF007TH(nF007TH) ? "true" :"false"
       );
@@ -265,7 +277,8 @@ public:
     return true;
   }
 
-  int json(char* buffer, size_t buflen, bool utc, bool verbose) {
+  int json(char* buffer, size_t buflen, int options) {
+    bool verbose = (options&VERBOSITY_PRINT_JSON) != 0;
     if (data == __null || buffer == __null || buflen < SEND_DATA_BUFFER_SIZE) {
       if (verbose) {
         if (data == __null)
@@ -286,7 +299,7 @@ public:
 
     char dt[32];
     struct tm tm;
-    if (utc) { // UTC time zone
+    if ((options&OPTION_UTC) != 0) { // UTC time zone
       tm = *gmtime(&data_time); // convert time_t to struct tm
       strftime(dt, sizeof dt, "%FT%TZ", &tm); // ISO format
     } else { // local time zone
@@ -295,6 +308,8 @@ public:
     }
 
     uint32_t nF007TH = data->nF007TH;
+    int temperature = getTemperatureF007TH(nF007TH);
+    if ((options&OPTION_CELSIUS) != 0) temperature = (temperature - 320) * 5 / 9;
 
     int len = snprintf( buffer, buflen,
       "{\"time\":\"%s\","\
@@ -308,7 +323,7 @@ public:
       decodingStatus == 0 ? "true" : "false",
       getChannelF007TH(nF007TH),
       getRollingCodeF007TH(nF007TH),
-      getTemperatureF007TH(nF007TH),
+      temperature,
       getHumidityF007TH(nF007TH),
       getBatteryStatusF007TH(nF007TH) ? "true" :"false"
     );
@@ -322,7 +337,8 @@ public:
     return len*sizeof(unsigned char);
   }
 
-  int influxDB(char* buffer, size_t buflen, int changed, bool verbose) {
+  int influxDB(char* buffer, size_t buflen, int changed, int options) {
+    bool verbose = (options&VERBOSITY_PRINT_JSON) != 0;
     if (data == __null || buffer == __null || buflen < SEND_DATA_BUFFER_SIZE) {
       if (verbose) {
         if (data == __null)
@@ -354,6 +370,7 @@ public:
     int remain = buflen;
     if ((changed&TEMPERATURE_IS_CHANGED) != 0) {
       int t = getTemperatureF007TH(nF007TH);
+      if ((options&OPTION_CELSIUS) != 0) t = (t - 320) * 5 / 9;
       int tF = t/10;
       char dF = '0'+(t%10);
       int len = snprintf( output, remain,

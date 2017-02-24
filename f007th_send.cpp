@@ -14,16 +14,22 @@
 
 #define SERVER_TYPE_REST 0
 
-enum ServerType {REST, InfluxDB};
+enum ServerType {STDOUT, REST, InfluxDB};
 
-static bool send(ReceivedMessage& message, const char* url, ServerType server_type, int changed, char* data_buffer, char* response_buffer, int verbosity, FILE* log);
+static bool send(ReceivedMessage& message, const char* url, ServerType server_type, int changed, char* data_buffer, char* response_buffer, int options, FILE* log);
 
 static void help() {
   fputs(
     "(c) 2017 Alex Konshin\n"\
-    "Receive data from sensors Ambient Weather F007TH then send it to remote server via REST API.\n\n"\
+    "Receive data from sensors Ambient Weather F007TH then print it to stdout or send it to remote server via REST API.\n\n"\
     "--gpio, -g\n"\
     "    Value is GPIO pin number (default is 27) as defined on page http://abyz.co.uk/rpi/pigpio/index.html\n"\
+    "--celsius, -C\n"\
+    "    Output temperature in degrees Celsius.\n"\
+    "--utc, -U\n"\
+    "    Timestamps are printed/sent in ISO 8601 format.\n"\
+    "--local-time, -L\n"\
+    "    Timestamps are printed/sent in format \"YYYY-mm-dd HH:MM:SS TZ\".\n"\
     "--send-to, -s\n"\
     "    Parameter value is server URL.\n"\
     "--server-type, -t\n"\
@@ -51,15 +57,20 @@ int main(int argc, char *argv[]) {
   const char* server_url = NULL;
   int gpio = 27;
   ServerType server_type = REST;
-  int verbosity = 0;
+  int options = 0;
 
   bool changes_only = true;
+  bool tz_set = false;
+  bool type_is_set = false;
 
-  const char* short_options = "g:s:Al:vVt:T";
+  const char* short_options = "g:s:Al:vVt:TCUL";
   const struct option long_options[] = {
       { "gpio", required_argument, NULL, 'g' },
       { "send-to", required_argument, NULL, 's' },
       { "server-type", required_argument, NULL, 't' },
+      { "celsius", no_argument, NULL, 'C' },
+      { "utc", no_argument, NULL, 'U' },
+      { "local-time", no_argument, NULL, 'L' },
       { "all", no_argument, NULL, 'A' },
       { "log-file", required_argument, NULL, 'l' },
       { "verbose", no_argument, NULL, 'v' },
@@ -89,7 +100,7 @@ int main(int argc, char *argv[]) {
       break;
 
     case 'v':
-      verbosity |= VERBOSITY_INFO;
+      options |= VERBOSITY_INFO;
       break;
 
     case 'l':
@@ -102,21 +113,51 @@ int main(int argc, char *argv[]) {
 
     case 't':
       if (strcasecmp(optarg, "REST") == 0) {
+        if (type_is_set && server_type!=REST) {
+          fputs("ERROR: Server type is specified twice.\n", stderr);
+          help();
+        }
         server_type = REST;
       } else if (strcasecmp(optarg, "InfluxDB") == 0) {
+        if (type_is_set && server_type!=InfluxDB) {
+          fputs("ERROR: Server type is specified twice.\n", stderr);
+          help();
+        }
         server_type = InfluxDB;
       } else {
         fprintf(stderr, "ERROR: Unknown server type \"%s\".\n", optarg);
         help();
       }
+      type_is_set = true;
       break;
 
     case 'T':
-      verbosity |= VERBOSITY_PRINT_STATISTICS;
+      options |= VERBOSITY_PRINT_STATISTICS;
+      break;
+
+    case 'C':
+      options |= OPTION_CELSIUS;
+      break;
+
+    case 'U':
+      if (tz_set && (options&OPTION_UTC)==0) {
+        fputs("ERROR: Options -L/--local_time and -U/--utc are mutually exclusive\n", stderr);
+        help();
+      }
+      options |= OPTION_UTC;
+      tz_set = true;
+      break;
+
+    case 'L':
+      if (tz_set && (options&OPTION_UTC)!=0) {
+        fputs("ERROR: Options -L/--local_time and -U/--utc are mutually exclusive\n", stderr);
+        help();
+      }
+      tz_set = true;
       break;
 
     case 'V':
-      verbosity |= VERBOSITY_INFO | VERBOSITY_PRINT_JSON | VERBOSITY_PRINT_CURL | VERBOSITY_PRINT_UNDECODED | VERBOSITY_PRINT_DETAILS;
+      options |= VERBOSITY_INFO | VERBOSITY_PRINT_JSON | VERBOSITY_PRINT_CURL | VERBOSITY_PRINT_UNDECODED | VERBOSITY_PRINT_DETAILS;
       break;
 
     case '?':
@@ -134,14 +175,18 @@ int main(int argc, char *argv[]) {
     server_url = argv[optind];
   }
 
-  if (server_url == NULL || server_url[0]=='\0') {
-    fputs("ERROR: Server URL must be specified (options --send-to or -s).\n", stderr);
-    help();
-  }
-  //TODO support UNIX sockets for InfluxDB
-  if (strncmp(server_url, "http://", 7) != 0 && strncmp(server_url, "https://", 8)) {
-    fputs("ERROR: Server URL must be HTTP or HTTPS.\n", stderr);
-    help();
+  if (server_url == NULL || server_url[0] == '\0') {
+    if (type_is_set && server_type != STDOUT) {
+      fputs("ERROR: Server URL must be specified (options --send-to or -s).\n", stderr);
+      help();
+    }
+    server_type = STDOUT;
+  } else {
+    //TODO support UNIX sockets for InfluxDB
+    if (strncmp(server_url, "http://", 7) != 0 && strncmp(server_url, "https://", 8)) {
+      fputs("ERROR: Server URL must be HTTP or HTTPS.\n", stderr);
+      help();
+    }
   }
 
   if (log_file_path == NULL || log_file_path[0]=='\0') {
@@ -163,35 +208,39 @@ int main(int argc, char *argv[]) {
 
   receiver.enableReceive();
 
-  if ((verbosity&VERBOSITY_PRINT_STATISTICS) != 0)
+  if ((options&VERBOSITY_PRINT_STATISTICS) != 0)
     receiver.printStatisticsPeriodically(1000); // print statistics every second
 
-  if ((verbosity&VERBOSITY_INFO) != 0) fputs("Receiving data...\n", stderr);
+  if ((options&VERBOSITY_INFO) != 0) fputs("Receiving data...\n", stderr);
   while(!receiver.isStopped()) {
 
     if (receiver.waitForMessage(message)) {
       if (receiver.isStopped()) break;
 
-      if ((verbosity&VERBOSITY_INFO) != 0) {
-        message.print(stdout, verbosity);
-        if (message.print(log, verbosity)) fflush(log);
+      if ((options&VERBOSITY_INFO) != 0) {
+        message.print(stdout, options);
+        if (message.print(log, options)) fflush(log);
       }
 
       if (message.isEmpty()) {
         fputs("ERROR: Missing data.\n", stderr);
       } else if (message.isUndecoded()) {
-        if ((verbosity&VERBOSITY_INFO) != 0)
+        if ((options&VERBOSITY_INFO) != 0)
           fprintf(stderr, "Could not decode the received data (error %04x).\n", message.getDecodingStatus());
       } else {
         bool isValid = message.isValid();
         int changed = isValid ? sensorsData.update(message.getData()) : 0;
-        if (changed == 0 && !changes_only && (isValid || server_type==REST))
+        if (changed == 0 && !changes_only && (isValid || server_type!=InfluxDB))
           changed = TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED;
         if (changed != 0) {
-          if (!send(message, server_url, server_type, changed, data_buffer, response_buffer, verbosity, log) && (verbosity&VERBOSITY_INFO) != 0)
-            fputs("No data was sent to server.\n", stderr);
+          if (server_type==STDOUT) {
+            message.print(stdout, options);
+          } else {
+            if (!send(message, server_url, server_type, changed, data_buffer, response_buffer, options, log) && (options&VERBOSITY_INFO) != 0)
+              fputs("No data was sent to server.\n", stderr);
+          }
         } else {
-          if ((verbosity&VERBOSITY_INFO) != 0) {
+          if ((options&VERBOSITY_INFO) != 0) {
             if (!isValid)
               fputs("Data is not valid and is not sent to server.\n", stderr);
             else
@@ -206,7 +255,7 @@ int main(int argc, char *argv[]) {
       receiver.printStatistics();
     }
   }
-  if ((verbosity&VERBOSITY_INFO) != 0) fputs("\nExiting...\n", stderr);
+  if ((options&VERBOSITY_INFO) != 0) fputs("\nExiting...\n", stderr);
 
   // finally
   free(data_buffer);
@@ -248,16 +297,16 @@ static size_t write_callback(void *ptr, size_t size, size_t nmemb, struct PutDat
   return size;
 }
 
-bool send(ReceivedMessage& message, const char* url, ServerType server_type, int changed, char* data_buffer, char* response_buffer, int verbosity, FILE* log) {
-  bool verbose = (verbosity&VERBOSITY_PRINT_DETAILS) != 0;
+bool send(ReceivedMessage& message, const char* url, ServerType server_type, int changed, char* data_buffer, char* response_buffer, int options, FILE* log) {
+  bool verbose = (options&VERBOSITY_PRINT_DETAILS) != 0;
   if (verbose) fputs("===> called send()\n", stderr);
 
   data_buffer[0] = '\0';
   int data_size;
   if (server_type == InfluxDB) {
-    data_size = message.influxDB(data_buffer, SEND_DATA_BUFFER_SIZE, changed, (verbosity&VERBOSITY_PRINT_JSON) != 0);
+    data_size = message.influxDB(data_buffer, SEND_DATA_BUFFER_SIZE, changed, options);
   } else {
-    data_size = message.json(data_buffer, SEND_DATA_BUFFER_SIZE, true, (verbosity&VERBOSITY_PRINT_JSON) != 0);
+    data_size = message.json(data_buffer, SEND_DATA_BUFFER_SIZE, options);
   }
   if (data_size <= 0) {
     if (verbose) fputs("===> return from send() without sending because output data was not generated\n", stderr);
@@ -278,7 +327,7 @@ bool send(ReceivedMessage& message, const char* url, ServerType server_type, int
     if (verbose) fputs("===> return from send() without sending because failed to initialize curl\n", stderr);
     return false;
   }
-  if ((verbosity&VERBOSITY_PRINT_CURL) != 0) curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+  if ((options&VERBOSITY_PRINT_CURL) != 0) curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 
   struct curl_slist *headers = NULL;
   if (server_type == REST) {
