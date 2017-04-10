@@ -14,6 +14,17 @@
 
 #define SERVER_TYPE_REST 0
 
+#ifdef BPiM3
+// pin 12 on the connector
+#define DEFAULT_PIN 35
+#else
+// pin 13 on the connector
+#define DEFAULT_PIN 27
+#endif
+#define to_str(x) #x
+#define DEFAULT_PIN_STR to_str(DEFAULT_PIN)
+
+
 enum ServerType {STDOUT, REST, InfluxDB};
 
 static bool send(ReceivedMessage& message, const char* url, ServerType server_type, int changed, char* data_buffer, char* response_buffer, int options, FILE* log);
@@ -23,7 +34,7 @@ static void help() {
     "(c) 2017 Alex Konshin\n"\
     "Receive data from sensors Ambient Weather F007TH then print it to stdout or send it to remote server via REST API.\n\n"\
     "--gpio, -g\n"\
-    "    Value is GPIO pin number (default is 27) as defined on page http://abyz.co.uk/rpi/pigpio/index.html\n"\
+    "    Value is GPIO pin number (default is "DEFAULT_PIN_STR") as defined on page http://abyz.co.uk/rpi/pigpio/index.html\n"\
     "--celsius, -C\n"\
     "    Output temperature in degrees Celsius.\n"\
     "--utc, -U\n"\
@@ -55,7 +66,7 @@ int main(int argc, char *argv[]) {
 
   const char* log_file_path = NULL; // TODO real logging is not implemented yet
   const char* server_url = NULL;
-  int gpio = 27;
+  int gpio = DEFAULT_PIN;
   ServerType server_type = REST;
   int options = 0;
 
@@ -76,6 +87,7 @@ int main(int argc, char *argv[]) {
       { "verbose", no_argument, NULL, 'v' },
       { "more_verbose", no_argument, NULL, 'V' },
       { "statistics", no_argument, NULL, 'T' },
+      { "debug", no_argument, NULL, 'd' },
       { NULL, 0, NULL, 0 }
   };
 
@@ -88,7 +100,7 @@ int main(int argc, char *argv[]) {
 
     case 'g':
       long_value = strtol(optarg, NULL, 10);
-      if (long_value<=0 || long_value>53) {
+      if (long_value<=0 || long_value>MAX_GPIO) {
         fprintf(stderr, "ERROR: Invalid GPIO pin number \"%s\".\n", optarg);
         help();
       }
@@ -133,6 +145,10 @@ int main(int argc, char *argv[]) {
 
     case 'T':
       options |= VERBOSITY_PRINT_STATISTICS;
+      break;
+
+    case 'd':
+      options |= VERBOSITY_DEBUG;
       break;
 
     case 'C':
@@ -194,11 +210,13 @@ int main(int argc, char *argv[]) {
   }
 
   FILE* log = fopen(log_file_path, "w+");
-
-  curl_global_init(CURL_GLOBAL_ALL);
-
+  char* response_buffer = NULL;
   char* data_buffer = (char*)malloc(SEND_DATA_BUFFER_SIZE*sizeof(char));
-  char* response_buffer = (char*)malloc(SERVER_RESPONSE_BUFFER_SIZE*sizeof(char));
+
+  if (server_type!=STDOUT) {
+    curl_global_init(CURL_GLOBAL_ALL);
+    response_buffer = (char*)malloc(SERVER_RESPONSE_BUFFER_SIZE*sizeof(char));
+  }
 
   SensorsData sensorsData;
 
@@ -234,17 +252,25 @@ int main(int argc, char *argv[]) {
           changed = TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED;
         if (changed != 0) {
           if (server_type==STDOUT) {
-            message.print(stdout, options);
+            if ((options&VERBOSITY_INFO) == 0) // already printed
+              message.print(stdout, options);
           } else {
             if (!send(message, server_url, server_type, changed, data_buffer, response_buffer, options, log) && (options&VERBOSITY_INFO) != 0)
               fputs("No data was sent to server.\n", stderr);
           }
         } else {
           if ((options&VERBOSITY_INFO) != 0) {
-            if (!isValid)
-              fputs("Data is not valid and is not sent to server.\n", stderr);
-            else
-              fputs("Data is not changed and is not sent to server.\n", stderr);
+            if (server_type==STDOUT) {
+              if (!isValid)
+                fputs("Data is corrupted.\n", stderr);
+              else
+                fputs("Data is not changed.\n", stderr);
+            } else {
+              if (!isValid)
+                fputs("Data is corrupted and is not sent to server.\n", stderr);
+              else
+                fputs("Data is not changed and is not sent to server.\n", stderr);
+            }
           }
         }
       }
@@ -259,9 +285,9 @@ int main(int argc, char *argv[]) {
 
   // finally
   free(data_buffer);
-  free(response_buffer);
+  if (response_buffer != NULL) free(response_buffer);
   fclose(log);
-  curl_global_cleanup();
+  if (server_type!=STDOUT) curl_global_cleanup();
 
   exit(0);
 }

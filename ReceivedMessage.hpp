@@ -16,14 +16,16 @@
 #define SEND_DATA_BUFFER_SIZE 1024
 #define SERVER_RESPONSE_BUFFER_SIZE 8192
 
-#define VERBOSITY_INFO             1
-#define VERBOSITY_PRINT_DETAILS    2
-#define VERBOSITY_PRINT_STATISTICS 4
-#define VERBOSITY_PRINT_UNDECODED  8
-#define VERBOSITY_PRINT_JSON      16
-#define VERBOSITY_PRINT_CURL      32
-#define OPTION_CELSIUS            64
-#define OPTION_UTC               128
+#define VERBOSITY_DEBUG            1
+#define VERBOSITY_INFO             2
+#define VERBOSITY_PRINT_DETAILS    4
+#define VERBOSITY_PRINT_STATISTICS 8
+#define VERBOSITY_PRINT_UNDECODED 16
+#define VERBOSITY_PRINT_JSON      32
+#define VERBOSITY_PRINT_CURL      64
+
+#define OPTION_CELSIUS           256
+#define OPTION_UTC               512
 
 typedef struct ReceivedData {
   struct ReceivedData *next;
