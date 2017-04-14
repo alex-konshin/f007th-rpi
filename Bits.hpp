@@ -64,6 +64,33 @@ public:
     return result;
   }
 
+  uint32_t getReverse(int from, int size) {
+    uint32_t result = 0;
+    for (int index = from+size-1; index>=from; index--) {
+      result <<= 1;
+      if (getBit(index)) result |= 1L;
+    }
+    return result;
+  }
+
+  uint64_t getInt64(int from, int size) {
+    uint64_t result = 0;
+    for (int index = from; index<from+size; index++) {
+      result <<= 1;
+      if (getBit(index)) result |= 1LL;
+    }
+    return result;
+  }
+
+  uint64_t getReverse64(int from, int size) {
+    uint64_t result = 0;
+    for (int index = from+size-1; index>=from; index--) {
+      result <<= 1;
+      if (getBit(index)) result |= 1LL;
+    }
+    return result;
+  }
+
   int findBits(uint32_t bits, int bitsLength) {
     int shift = 64-bitsLength;
 

@@ -247,7 +247,7 @@ int main(int argc, char *argv[]) {
           fprintf(stderr, "Could not decode the received data (error %04x).\n", message.getDecodingStatus());
       } else {
         bool isValid = message.isValid();
-        int changed = isValid ? sensorsData.update(message.getData()) : 0;
+        int changed = isValid ? sensorsData.update(message.getSensorData()) : 0;
         if (changed == 0 && !changes_only && (isValid || server_type!=InfluxDB))
           changed = TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED;
         if (changed != 0) {

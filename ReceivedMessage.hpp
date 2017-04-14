@@ -11,6 +11,9 @@
 #include <stdio.h>
 #include <time.h>
 
+#define PROTOCOL_F007TH    1
+#define PROTOCOL_00592TXR  2
+
 #include "SensorsData.hpp"
 
 #define SEND_DATA_BUFFER_SIZE 1024
@@ -27,11 +30,12 @@
 #define OPTION_CELSIUS           256
 #define OPTION_UTC               512
 
+
 typedef struct ReceivedData {
   struct ReceivedData *next;
   int16_t* pSequence;
   uint32_t uSequenceStartTime;
-  uint32_t nF007TH;
+  SensorData sensorData;
 
   uint16_t decodingStatus;
   uint16_t decodedBits;
@@ -74,8 +78,8 @@ public:
     data_time = time(NULL);
   }
 
-  uint32_t getData() {
-    return data->nF007TH;
+  SensorData* getSensorData() {
+    return &data->sensorData;
   }
 
   inline bool isEmpty() { return data == __null; }
@@ -91,19 +95,21 @@ public:
   }
 
   // random number that is changed when battery is changed
-  static uint8_t getRollingCodeF007TH(uint32_t nF007TH) {
-    return (nF007TH >> 24) & 255;
-  }
-  uint8_t getRollingCodeF007TH() {
-    return data == __null ? 0 : (data->nF007TH >> 24) & 255;
+  uint8_t getRollingCode() {
+    if (data != __null) {
+      if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return (data->sensorData.nF007TH >> 24) & 255;
+      if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) return data->sensorData.fields.rolling_code;
+    }
+    return 0;
   }
 
   // true => OK
-  static bool getBatteryStatusF007TH(uint32_t nF007TH) {
-    return (nF007TH&0x00800000) == 0;
-  }
-  bool getBatteryStatusF007TH() {
-    return data != __null && (data->nF007TH&0x00800000) == 0;
+  bool getBatteryStatus() {
+    if (data != __null) {
+      if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return (data->sensorData.nF007TH&0x00800000) == 0;
+      if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) return data->sensorData.fields.status==0x44;
+    }
+    return false;
   }
 
   // Channel number 1..8
@@ -111,23 +117,71 @@ public:
     return ((nF007TH>>20)&7)+1;
   }
   int getChannelF007TH() {
-    return data == __null ? -1 : ((data->nF007TH>>20)&7)+1;
+    return data == __null ? -1 : ((data->sensorData.nF007TH>>20)&7)+1;
+  }
+  char getChannel00592TXR() {
+    if (data != __null && data->sensorData.fields.protocol == PROTOCOL_00592TXR) {
+      switch ((data->sensorData.fields.channel>>6)&3) {
+      case 3: return 'A';
+      case 2: return 'B';
+      case 0: return 'C';
+      }
+    }
+    return '?';
+  }
+  int getChannel() {
+    if (data != __null) {
+      if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return ((data->sensorData.nF007TH>>20)&7)+1;
+      if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) return ((data->sensorData.fields.channel>>6)&3)^3;
+    }
+    return -1;
+  }
+  int getChannelNumber() {
+    if (data != __null) {
+      if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return ((data->sensorData.nF007TH>>20)&7)+1;
+      if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) {
+        switch ((data->sensorData.fields.channel>>6)&3) {
+        case 3: return 1;
+        case 2: return 2;
+        case 0: return 3;
+        }
+      }
+    }
+    return -1;
+  }
+
+  int getTemperatureCx10() {
+    if (data != __null) {
+      if (data->sensorData.fields.protocol == PROTOCOL_F007TH)
+        return (((data->sensorData.nF007TH>>8)&4095)-720) * 5 / 9;
+
+      if (data->sensorData.fields.protocol == PROTOCOL_00592TXR)
+        return ((((data->sensorData.fields.t_hi)&127)<<7) | (data->sensorData.fields.t_low&127)) - 1000;
+    }
+    return -2732;
   }
 
   // Temperature, dF = t*10(F). Ex: 72.5F = 725 dF
-  static int getTemperatureF007TH(uint32_t nF007TH) {
-    return ((nF007TH>>8)&4095)-400;
-  }
-  int getTemperatureF007TH() {
-    return data == __null ? -4597 : ((data->nF007TH>>8)&4095)-400;
+  int getTemperatureFx10() {
+    if (data != __null) {
+      if (data->sensorData.fields.protocol == PROTOCOL_F007TH)
+        return ((data->sensorData.nF007TH>>8)&4095)-400;
+
+      if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) {
+        int c = ((((data->sensorData.fields.t_hi)&127)<<7) | (data->sensorData.fields.t_low&127)) - 1000;
+        return (c*9/5)+320;
+      }
+    }
+    return -4597;
   }
 
   // Relative Humidity, 0..100%
-  static int getHumidityF007TH(uint32_t nF007TH) {
-    return nF007TH&255;
-  }
-  int getHumidityF007TH() {
-    return data == __null ? 0 : data->nF007TH&255;
+  int getHumidity() {
+    if (data != __null) {
+      if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return data->sensorData.nF007TH&255;
+      if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) return data->sensorData.fields.rh & 127;
+    }
+    return 0;
   }
 
   bool printInputSequence(FILE* file) {
@@ -172,10 +226,14 @@ public:
 
     uint16_t decodingStatus = data->decodingStatus;
     if ((decodingStatus & 0x3f) == 0 ) {
-      uint32_t nF007TH = data->nF007TH;
 
       if (print_details) {
-        fprintf(file, "  F007TH data       = %08x\n", nF007TH);
+        if (data->sensorData.fields.protocol == PROTOCOL_F007TH)
+          fprintf(file, "  F007TH data       = %08x\n", data->sensorData.nF007TH);
+        else if (data->sensorData.fields.protocol == PROTOCOL_00592TXR)
+          fprintf(file, "  00592TXR data     = %02x %02x %02x %02x %02x %02x %02x\n",
+              data->sensorData.fields.channel, data->sensorData.fields.rolling_code, data->sensorData.fields.status, data->sensorData.fields.rh,
+              data->sensorData.fields.t_hi, data->sensorData.fields.t_low, data->sensorData.fields.checksum);
       } else {
         fputs(dt, file);
         fputc('\n', file);
@@ -188,20 +246,24 @@ public:
           fprintf(file, "  *** no checksum (error %04x) ***\n", decodingStatus);
       }
 
-      int temperature = getTemperatureF007TH(nF007TH);
-      if ((options&OPTION_CELSIUS) != 0) temperature = (temperature - 320) * 5 / 9;
+      int temperature = (options&OPTION_CELSIUS) != 0 ? getTemperatureCx10() : getTemperatureFx10();
+
+      if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) {
+        fprintf(file, "  type              = AcuRite 00592TXR\n  channel           = %c\n", getChannel00592TXR());
+
+      } else if (data->sensorData.fields.protocol == PROTOCOL_F007TH) {
+        fprintf(file, "  type              = Ambient Weather F007TH\n  channel           = %d\n", getChannelF007TH());
+      }
 
       fprintf( file,
-        "  channel           = %d\n"\
         "  rolling code      = %02x\n"\
         "  temperature       = %d.%c%c\n"\
         "  humidity          = %d%%\n"\
         "  battery           = %s\n",
-        getChannelF007TH(nF007TH),
-        getRollingCodeF007TH(nF007TH),
+        getRollingCode(),
         temperature/10, '0'+(temperature%10), (options&OPTION_CELSIUS) != 0 ? 'C' : 'F',
-        getHumidityF007TH(nF007TH),
-        getBatteryStatusF007TH(nF007TH) ? "OK" :"Bad"
+        getHumidity(),
+        getBatteryStatus() ? "OK" :"Bad"
       );
 
     } else if (print_undecoded) {
@@ -252,14 +314,9 @@ public:
       }
       fprintf( file, "{\"time\":\"%s\",", dt );
 
-      uint32_t nF007TH = data->nF007TH;
-
       if ((decodingStatus & 0xc0) != 0 ) {
         fputs("\"valid\":false,", file);
       }
-
-      int temperature = getTemperatureF007TH(nF007TH);
-      if ((options&OPTION_CELSIUS) != 0) temperature = (temperature - 320) * 5 / 9;
 
       fprintf( file,
         "\"channel\":%d,"\
@@ -267,11 +324,11 @@ public:
         "\"temperature\":%d,"\
         "\"humidity\":%d,"\
         "\"battery_ok\":%s}\n",
-        getChannelF007TH(nF007TH),
-        getRollingCodeF007TH(nF007TH),
-        temperature,
-        getHumidityF007TH(nF007TH),
-        getBatteryStatusF007TH(nF007TH) ? "true" :"false"
+        getChannel(),
+        getRollingCode(),
+        (options&OPTION_CELSIUS) != 0 ? getTemperatureCx10() : getTemperatureFx10(),
+        getHumidity(),
+        getBatteryStatus() ? "true" :"false"
       );
 
     }
@@ -309,10 +366,6 @@ public:
       strftime(dt, sizeof dt, "%Y-%m-%d %H:%M:%S %Z", &tm);
     }
 
-    uint32_t nF007TH = data->nF007TH;
-    int temperature = getTemperatureF007TH(nF007TH);
-    if ((options&OPTION_CELSIUS) != 0) temperature = (temperature - 320) * 5 / 9;
-
     int len = snprintf( buffer, buflen,
       "{\"time\":\"%s\","\
       "\"valid\":%s,"\
@@ -323,11 +376,11 @@ public:
       "\"battery_ok\":%s}\n",
       dt,
       decodingStatus == 0 ? "true" : "false",
-      getChannelF007TH(nF007TH),
-      getRollingCodeF007TH(nF007TH),
-      temperature,
-      getHumidityF007TH(nF007TH),
-      getBatteryStatusF007TH(nF007TH) ? "true" :"false"
+      getChannel(),
+      getRollingCode(),
+      (options&OPTION_CELSIUS) != 0 ? getTemperatureCx10() : getTemperatureFx10(),
+      getHumidity(),
+      getBatteryStatus() ? "true" :"false"
     );
 
     if (verbose) {
@@ -359,20 +412,17 @@ public:
       return -2;
     }
 
-    uint32_t nF007TH = data->nF007TH;
-
     char id[60];
     int len = snprintf( id, sizeof(id),
       "type=F007TH,channel=%d,rolling_code=%d",
-      getChannelF007TH(nF007TH),
-      getRollingCodeF007TH(nF007TH)
+      getChannelNumber(),
+      getRollingCode()
     );
 
     char* output = buffer;
     int remain = buflen;
     if ((changed&TEMPERATURE_IS_CHANGED) != 0) {
-      int t = getTemperatureF007TH(nF007TH);
-      if ((options&OPTION_CELSIUS) != 0) t = (t - 320) * 5 / 9;
+      int t = (options&OPTION_CELSIUS) != 0 ? getTemperatureCx10() : getTemperatureFx10();
       int tF = t/10;
       char dF = '0'+(t%10);
       int len = snprintf( output, remain,
@@ -385,7 +435,7 @@ public:
     if ((changed&HUMIDITY_IS_CHANGED) != 0) {
       int len = snprintf( output, remain,
         "humidity,%s value=%d\n",
-        id, getHumidityF007TH(nF007TH)
+        id, getHumidity()
       );
       remain -= len;
       output += len;
@@ -393,7 +443,7 @@ public:
     if ((changed&BATTERY_STATUS_IS_CHANGED) != 0) {
       int len = snprintf( output, remain,
         "sensor_battery_status,%s value=%s\n",
-        id, getBatteryStatusF007TH(nF007TH) ? "true" :"false"
+        id, getBatteryStatus() ? "true" :"false"
       );
       remain -= len;
       output += len;

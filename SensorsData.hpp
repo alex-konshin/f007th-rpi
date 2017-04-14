@@ -19,21 +19,45 @@
 #define BATTERY_STATUS_IS_CHANGED    4
 #define NEW_UID                      8
 
+typedef struct SensorData {
+  union {
+    uint64_t u64;
+    uint32_t nF007TH; // F007TH data - 4 bytes
+    struct {
+      uint32_t low, hi;
+    } u32;
+    struct {
+      // begin 00592TXR - 7 bytes
+      uint8_t checksum;
+      uint8_t t_low, t_hi;
+      uint8_t rh;
+      uint8_t status;
+      uint8_t rolling_code;
+      uint8_t channel;
+      // end 00592TXR
+
+      uint8_t protocol;
+    } fields;
+  };
+} SensorData;
+
+
+
 class SensorsData {
 private:
   int size;
   int capacity;
-  uint32_t* items;
+  struct SensorData *items;
 
 public:
   SensorsData() {
-    items = (uint32_t*)calloc(8, sizeof(uint32_t));
+    items = (SensorData*)calloc(8, sizeof(SensorData));
     capacity = 8;
     size = 0;
   }
   SensorsData(int capacity) {
     if (capacity <= 0) capacity = 8;
-    items = (uint32_t*)calloc(capacity, sizeof(uint32_t));
+    items = (SensorData*)calloc(capacity, sizeof(SensorData));
     this->capacity = capacity;
     size = 0;
   }
@@ -47,61 +71,101 @@ public:
 
   inline int getSize() { return size; }
 
-  uint32_t getItem(int index) {
-    return index<0 || index>=size ? 0 : items[index];
+  SensorData* getItem(int index) {
+    return index<0 || index>=size ? __null : &items[index];
   }
 
-  uint32_t getData(int channel, int rolling_code = -1) {
+  SensorData* getData(uint8_t protocol, int channel, int rolling_code = -1) {
+    if (protocol != PROTOCOL_F007TH && protocol != PROTOCOL_00592TXR) return __null;
     if (channel < 1 || channel > 8) return 0;
-    if (rolling_code > 255 || (rolling_code < 0 && rolling_code != -1)) return 0;
+    if (rolling_code > 255 || (rolling_code < 0 && rolling_code != -1)) return __null;
 
-    uint32_t mask;
-    uint32_t uid = ((uint32_t)channel-1L) << 20;
-    if (rolling_code == -1) {
-      mask = 0x00700000L;
-    } else {
-      uid |= (((uint32_t)rolling_code) << 24);
-      mask = SENSOR_UID_MASK;
+    if (protocol == PROTOCOL_F007TH) {
+      uint32_t mask;
+      uint32_t uid = ((uint32_t)channel-1L) << 20;
+      if (rolling_code == -1) {
+        mask = 0x00700000L;
+      } else {
+        uid |= (((uint32_t)rolling_code) << 24);
+        mask = SENSOR_UID_MASK;
+      }
+      for (int index = size-1; index>=0; index--) {
+        SensorData* p = &items[index];
+        if ((p->nF007TH & mask) == uid) return p;
+      }
+    } else if (protocol == PROTOCOL_00592TXR) {
+      for (int index = 0; index<size; index++) {
+        SensorData* p = &items[index];
+        if (p->fields.protocol != PROTOCOL_00592TXR) continue;
+        if (rolling_code != -1 && p->fields.rolling_code != rolling_code) continue;
+        if (p->fields.channel == channel) return p;
+      }
     }
-    for (int index = size-1; index>=0; index--) {
-      uint32_t item = items[index];
-      if ((item & mask) == uid) return item;
+    return __null;
+  }
+
+  int update(SensorData* sensorData) {
+    if (sensorData->fields.protocol == PROTOCOL_F007TH) {
+      uint32_t nF007TH = sensorData->nF007TH;
+      uint32_t uid = nF007TH & SENSOR_UID_MASK;
+      for (int index = 0; index<size; index++) {
+        SensorData* p = &items[index];
+        if (p->fields.protocol != PROTOCOL_F007TH) continue;
+        uint32_t item = p->nF007TH;
+        if ((item & SENSOR_UID_MASK) == uid) {
+          uint32_t changed = (item ^ nF007TH)& SENSOR_DATA_MASK;
+          if (changed == 0) return 0;
+          p->u64 = sensorData->u64;
+          int result = 0;
+          if ((changed&SENSOR_TEMPERATURE_MASK) != 0) result |= TEMPERATURE_IS_CHANGED;
+          if ((changed&SENSOR_HUMIDITY_MASK) != 0) result |= HUMIDITY_IS_CHANGED;
+          if ((changed&BATTERY_STATUS_IS_CHANGED) != 0) result |= BATTERY_STATUS_IS_CHANGED;
+          return result;
+        }
+      }
+      add(sensorData);
+      return TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED | NEW_UID;
     }
+
+    if (sensorData->fields.protocol == PROTOCOL_00592TXR) {
+      uint8_t channel = sensorData->fields.channel;
+      uint8_t rolling_code = sensorData->fields.rolling_code;
+
+      for (int index = 0; index<size; index++) {
+        SensorData* p = &items[index];
+        if (p->fields.protocol != PROTOCOL_00592TXR) continue;
+        if (p->fields.rolling_code != rolling_code) continue;
+        if (p->fields.channel == channel) {
+          int result = 0;
+          if (p->fields.t_low != sensorData->fields.t_low || p->fields.t_hi != sensorData->fields.t_hi)
+            result |= TEMPERATURE_IS_CHANGED;
+          if (p->fields.rh != sensorData->fields.rh) result |= HUMIDITY_IS_CHANGED;
+          if (p->fields.status != sensorData->fields.status) result |= BATTERY_STATUS_IS_CHANGED;
+
+          if (result != 0) p->u64 = sensorData->u64;
+          return result;
+        }
+      }
+      add(sensorData);
+      return TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED | NEW_UID;
+    }
+
     return 0;
   }
 
-  int update(uint32_t nF007TH) {
-    uint32_t uid = nF007TH & SENSOR_UID_MASK;
-    for (int index = 0; index<size; index++) {
-      uint32_t item = items[index];
-      if ((item & SENSOR_UID_MASK) == uid) {
-        uint32_t changed = (item ^ nF007TH)& SENSOR_DATA_MASK;
-        if (changed == 0) return false;
-        items[index] = nF007TH;
-        int result = 0;
-        if ((changed&SENSOR_TEMPERATURE_MASK) != 0) result |= TEMPERATURE_IS_CHANGED;
-        if ((changed&SENSOR_HUMIDITY_MASK) != 0) result |= HUMIDITY_IS_CHANGED;
-        if ((changed&BATTERY_STATUS_IS_CHANGED) != 0) result |= BATTERY_STATUS_IS_CHANGED;
-        return true;
-      }
-    }
-    add(nF007TH);
-    return TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED | NEW_UID;
-  }
-
 private:
-  void add(uint32_t item) {
+  void add(SensorData* item) {
     int index = size;
     int new_size = size+1;
     if (new_size > capacity) {
       int new_capacity = capacity + 8;
-      uint32_t* new_data = (uint32_t*)realloc(items, new_capacity*sizeof(uint32_t));
+      SensorData* new_data = (SensorData*)realloc(items, new_capacity*sizeof(SensorData));
       if (new_data ==__null) return; // FIXME throw exception?
       items = new_data;
       capacity = new_capacity;
     }
     size = new_size;
-    items[index] = item;
+    items[index].u64 = item->u64;
   }
 
 };

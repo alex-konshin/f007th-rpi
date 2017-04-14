@@ -11,6 +11,7 @@ RFReceiver* RFReceiver::first = NULL;
 
 RFReceiver::RFReceiver(int gpio) {
   this->gpio = gpio;
+  protocols = PROTOCOL_F007TH|PROTOCOL_00592TXR;
   isEnabled = false;
   isDecoderStarted = false;
   stopDecoder = false;
@@ -155,6 +156,17 @@ bool RFReceiver::enableReceive() {
     resetReceiverBuffer();
     initLib();
 
+    if ((protocols & PROTOCOL_00592TXR) != 0) {
+      min_duration = MIN_DURATION_00592TXR;
+    } else {
+      min_duration = MIN_DURATION_F007TH;
+    }
+    if ((protocols & PROTOCOL_F007TH) != 0) {
+      max_duration = MAX_DURATION_F007TH;
+    } else {
+      max_duration = MAX_DURATION_00592TXR;
+    }
+
 #ifdef USE_GPIO_TS
 
     char filepath[40];
@@ -165,15 +177,17 @@ bool RFReceiver::enableReceive() {
       printf("ERROR: Failed to open gpio-ts file \"%s\": %s.\n", filepath, strerror(errno));
       exit(2);
     }
+
     // setup noise filter
-    long rc = ioctl(fd, GPIOTS_IOCTL_SET_MAX_DURATION, MAX_PERIOD);
+
+    long rc = ioctl(fd, GPIOTS_IOCTL_SET_MAX_DURATION, max_duration);
     if (rc != 0) {
-      printf("ERROR: Failed to set maximum duration to %d.\n", MAX_PERIOD);
+      printf("ERROR: Failed to set maximum duration to %ld.\n", max_duration);
       exit(2);
     }
-    rc = ioctl(fd, GPIOTS_IOCTL_SET_MIN_DURATION, MIN_DURATION);
+    rc = ioctl(fd, GPIOTS_IOCTL_SET_MIN_DURATION, min_duration);
     if (rc != 0) {
-      printf("ERROR: Failed to set minimum duration to %d.\n", MIN_DURATION);
+      printf("ERROR: Failed to set minimum duration to %ld.\n", min_duration);
       exit(2);
     }
     rc = ioctl(fd, GPIOTS_IOCTL_SET_MIN_SEQ_LEN, MIN_SEQUENCE_LENGTH);
@@ -395,7 +409,7 @@ void RFReceiver::handleInterrupt(int level, uint32_t time) {
     }
     lastLevel = level;
     if (level == 1) return; // sequence must start with high level
-    if (duration <= MIN_DURATION) return; // interval is too short
+    if (duration <= min_duration) return; // interval is too short
 
     int nextIndex = (iPoolWrite+1)&(POOL_SIZE-1);
     if (iPoolRead == nextIndex) return;	// no free space in pool
@@ -439,7 +453,7 @@ void RFReceiver::handleInterrupt(int level, uint32_t time) {
 
     uint32_t corrected_duration = time - nLastGoodTime;
     if (corrected_duration > MAX_PERIOD) goto end_of_sequence; // corrected duration is too long
-    if (corrected_duration < MIN_DURATION) {
+    if (corrected_duration < min_duration) {
       if (++nNoiseFilterCounter > MAX_IGNORD_SKIPS*2 ) goto end_of_sequence;
       return; // continue filtering
     }
@@ -448,7 +462,7 @@ void RFReceiver::handleInterrupt(int level, uint32_t time) {
     duration = corrected_duration;
     corrected++;
 
-  } else if (duration < MIN_DURATION) {
+  } else if (duration < min_duration) {
 
     if (level == 0) {
       if (duration < IGNORABLE_SKIP) {
@@ -480,7 +494,7 @@ void RFReceiver::handleInterrupt(int level, uint32_t time) {
     if (level != oldLevel) {
       // skipped interruption
       skipped++;
-    } else if (duration <= MAX_PERIOD) {
+    } else if (duration <= max_duration) {
       // good interval
 
       pool[iPoolWrite] = (int16_t)duration;
@@ -580,8 +594,14 @@ void RFReceiver::decoder() {
 #endif
 
       ReceivedData* message = createNewMessage();
-      uint32_t nF007TH;
-      decodeF007TH(message, nF007TH);
+
+      bool decoded = (protocols&PROTOCOL_00592TXR) != 0 && decode00592TXR(message);
+      if (!decoded && (protocols&PROTOCOL_F007TH) != 0) {
+        uint32_t nF007TH;
+        decoded = decodeF007TH(message, nF007TH);
+      }
+
+      // TODO do not queue the message if it is not decoded and no need to print undecoded messages.
 
       // put new message into output queue
       pthread_mutex_lock(&messageQueueLock);
@@ -664,9 +684,12 @@ bool RFReceiver::decodeManchester(ReceivedData* message, Bits& bitSet) {
 }
 
 bool RFReceiver::decodeF007TH(ReceivedData* message, uint32_t& nF007TH) {
-  if (message->nF007TH != 0) {
-    nF007TH = message->nF007TH;
-    return true;
+  if (message->sensorData.fields.protocol != 0) {
+    if (message->sensorData.fields.protocol == PROTOCOL_F007TH) {
+      nF007TH = message->sensorData.nF007TH;
+      return true;
+    }
+    return false;
   }
   nF007TH = 0;
 
@@ -737,10 +760,113 @@ bool RFReceiver::decodeF007TH(ReceivedData* message, uint32_t& nF007TH) {
   }
 
   uint32_t data = bits.getInt(dataIndex, 32);
-  message->nF007TH = data;
+  message->sensorData.nF007TH = data;
+  message->sensorData.fields.protocol = PROTOCOL_F007TH;
   nF007TH = data;
   return true;
 }
+
+
+bool RFReceiver::decode00592TXR(ReceivedData* message) {
+  int iSequenceSize = message->iSequenceSize;
+  if (iSequenceSize < 121 || iSequenceSize > 130) return false;
+
+  int16_t* pSequence = message->pSequence;
+
+  // check sync sequence. Expecting 8 items with values around 600
+
+  int dataStartIndex = -1;
+
+  for ( int index = 0; index<=(iSequenceSize-121); index+=2 ) {
+    bool good = true;
+    for ( int i = 0; i<8; i++) {
+      int16_t item = pSequence[index+i];
+      if (item < 520 || item > 700) {
+        good = false;
+        break;
+      }
+    }
+    if (good) { // expected around 200 or 400
+      int16_t item = pSequence[index+8];
+      if (item > 460 || item < 140) {
+        good = false;
+        continue;
+      }
+      dataStartIndex = index+8;
+      break;
+    }
+  }
+  if (dataStartIndex < 0) {
+    //printf("decode00592TXR(): bad sync sequence\n");
+    return false;
+  }
+
+  //printf("decode00592TXR(): detected sync sequence\n");
+
+  Bits bits(56);
+
+  for ( int index = dataStartIndex; index<iSequenceSize-1; index+=2 ) {
+    int16_t item1 = pSequence[index];
+    if (item1 < 120 || item1 > 680) return false;
+    int16_t item2 = pSequence[index+1];
+    if (item2 < 120 || item2 > 680) return false;
+    if (item1 < 280 && item2>320) {
+      bits.addBit(0);
+    } else if (item2 < 280 && item1>320) {
+      bits.addBit(1);
+    } else {
+      //printf("decode00592TXR(): bad items %d: %d %d\n", index, item1, item2);
+      return false;
+    }
+  }
+  if (bits.getSize() != 56) {
+    //printf("decode00592TXR(): bits.getSize() != 56\n");
+    return false;
+  }
+/*
+  printf("decode00592TXR(): bits=");
+  for (int i=0; i<56; i++) {
+    putchar(bits.getBit(i)?'1':'0');
+  }
+  putchar('\n');
+*/
+  //unsigned id = bits.getInt(8,8);
+  //printf("decode00592TXR(): bits.getInt(8,8) = %02x\n", id);
+/*
+  if (id != 0x00a8u) {
+    printf("decode00592TXR(): bits.getInt(40,8) = %02x\n", bits.getReverse(40,8));
+    return false;
+  }
+*/
+  unsigned status = bits.getInt(16,8)&255;
+  if (status != 0x0044u && status != 0x0084) {
+    ///printf("decode00592TXR(): bad status byte 0x%02x\n",status);
+    return false;
+  }
+  //unsigned rh = bits.getInt(24,8)&127;
+  //printf("decode00592TXR(): rh = %d\n",rh);
+
+  //unsigned t = ((bits.getInt(33,7)<<7)|(bits.getInt(40,8)&127))-1000;
+  //printf("decode00592TXR(): t = %d\n",t);
+
+  unsigned checksum = 0;
+  for (int i = 0; i < 48; i+=8) {
+    checksum += bits.getInt(i, 8);
+  }
+
+  if (((bits.getInt(48,8)^checksum)&255) != 0) {
+    //printf("decode00592TXR(): bad checksum\n");
+    return false;
+  }
+
+  uint64_t n00592TXR = bits.getInt64(0, 56);
+
+  message->sensorData.u64 = n00592TXR;
+  message->sensorData.fields.protocol = PROTOCOL_00592TXR;
+
+  return true;
+}
+
 
 ReceivedData* RFReceiver::createNewMessage() {
   int index = iSequenceReady;
@@ -769,7 +895,7 @@ ReceivedData* RFReceiver::createNewMessage() {
 
   iPoolRead = (iCurrentSequenceStart+iCurrentSequenceSize)&(POOL_SIZE-1);
 
-  message->nF007TH = 0;
+  message->sensorData.u64 = 0LL;
   message->decodingStatus = 0;
   message->decodedBits = 0;
 

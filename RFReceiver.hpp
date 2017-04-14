@@ -36,7 +36,13 @@
 #define MAX_SEQUENCE_LENGTH 400
 #define MANCHESTER_BUFFER_SIZE 25
 
-#define MIN_DURATION 400
+// AcuRite 00592TXR - 200...600
+#define MIN_DURATION_00592TXR 140
+#define MAX_DURATION_00592TXR 660
+
+// Ambient Weather F007TH
+#define MIN_DURATION_F007TH 400
+#define MAX_DURATION_F007TH 1150
 #define MAX_HALF_DURATION 600
 #define MIN_PERIOD 900
 #define MAX_PERIOD 1150
@@ -64,7 +70,6 @@
 #endif // NDEBUG
 #endif //ASSERT
 
-
 class RFReceiver {
 
 public:
@@ -87,6 +92,7 @@ public:
 
   bool decodeManchester(ReceivedData* message, Bits& bitSet);
   bool decodeF007TH(ReceivedData* message, uint32_t& nF007TH);
+  bool decode00592TXR(ReceivedData* message);
 
 private:
   static void initLib();
@@ -129,6 +135,10 @@ private:
   uint32_t nLastTime;
   int gpio;
   int lastLevel;
+
+  uint32_t protocols;
+  unsigned long min_duration;
+  unsigned long max_duration;
 
 #ifdef USE_GPIO_TS
   int fd; // gpiots file
