@@ -34,6 +34,10 @@ public:
 
   inline int getSize() { return size; }
 
+  void clear() {
+    size = 0;
+  }
+
   void addBit(bool value) {
     int index = size++;
     int new_capacity = (size+63)>>6;

@@ -41,7 +41,7 @@
 #define MAX_DURATION_00592TXR 660
 
 // Ambient Weather F007TH
-#define MIN_DURATION_F007TH 400
+#define MIN_DURATION_F007TH 380
 #define MAX_DURATION_F007TH 1150
 #define MAX_HALF_DURATION 600
 #define MIN_PERIOD 900
@@ -90,9 +90,10 @@ public:
   void printStatisticsPeriodically(uint32_t millis);
   void printDebugStatistics();
 
-  bool decodeManchester(ReceivedData* message, Bits& bitSet);
   bool decodeF007TH(ReceivedData* message, uint32_t& nF007TH);
   bool decode00592TXR(ReceivedData* message);
+
+  void setProtocols(unsigned protocols);
 
 private:
   static void initLib();
@@ -124,7 +125,9 @@ private:
   void decoder();
   void startDecoder();
   void resetReceiverBuffer();
-  //void sequenceIsReady(int nextSequenceIndex);
+
+  bool decodeManchester(ReceivedData* message, Bits& bitSet);
+  bool decodeManchester(ReceivedData* message, int startIndex, int endIndex, Bits& bitSet);
 
   void addBit(bool bit);
 
@@ -136,7 +139,7 @@ private:
   int gpio;
   int lastLevel;
 
-  uint32_t protocols;
+  unsigned protocols;
   unsigned long min_duration;
   unsigned long max_duration;
 
@@ -184,11 +187,13 @@ private:
 
   // statistics
 
+#ifndef USE_GPIO_TS
   uint32_t interrupted;
-  uint32_t sequences;
   uint32_t skipped;
-  uint32_t dropped;
   uint32_t corrected;
+#endif
+  uint32_t sequences;
+  uint32_t dropped;
   uint32_t sequence_pool_overflow;
   uint32_t bad_manchester;
   uint32_t manchester_OOS;

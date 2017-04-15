@@ -69,12 +69,13 @@ int main(int argc, char *argv[]) {
   int gpio = DEFAULT_PIN;
   ServerType server_type = REST;
   int options = 0;
+  unsigned protocols = 0;
 
   bool changes_only = true;
   bool tz_set = false;
   bool type_is_set = false;
 
-  const char* short_options = "g:s:Al:vVt:TCUL";
+  const char* short_options = "g:s:Al:vVt:TCULd70";
   const struct option long_options[] = {
       { "gpio", required_argument, NULL, 'g' },
       { "send-to", required_argument, NULL, 's' },
@@ -88,6 +89,8 @@ int main(int argc, char *argv[]) {
       { "more_verbose", no_argument, NULL, 'V' },
       { "statistics", no_argument, NULL, 'T' },
       { "debug", no_argument, NULL, 'd' },
+      { "f007th", no_argument, NULL, '7' },
+      { "00592txr", no_argument, NULL, '0' },
       { NULL, 0, NULL, 0 }
   };
 
@@ -176,6 +179,13 @@ int main(int argc, char *argv[]) {
       options |= VERBOSITY_INFO | VERBOSITY_PRINT_JSON | VERBOSITY_PRINT_CURL | VERBOSITY_PRINT_UNDECODED | VERBOSITY_PRINT_DETAILS;
       break;
 
+    case '0':
+      protocols |= PROTOCOL_00592TXR;
+      break;
+    case '7':
+      protocols |= PROTOCOL_F007TH;
+      break;
+
     case '?':
       help();
       break;
@@ -221,6 +231,8 @@ int main(int argc, char *argv[]) {
   SensorsData sensorsData;
 
   RFReceiver receiver(gpio);
+
+  if (protocols != 0) receiver.setProtocols(protocols);
 
   ReceivedMessage message;
 

@@ -19,13 +19,14 @@ RFReceiver::RFReceiver(int gpio) {
   stopped = false;
 #ifdef USE_GPIO_TS
   fd = -1;
+#else
+  interrupted = 0;
+  skipped = 0;
+  corrected = 0;
 #endif
   timerEvent = 0;
-  interrupted = 0;
   sequences = 0;
-  skipped = 0;
   dropped = 0;
-  corrected = 0;
   sequence_pool_overflow = 0;
   bad_manchester = 0;
   manchester_OOS = 0;
@@ -46,6 +47,10 @@ RFReceiver::RFReceiver(int gpio) {
 RFReceiver::~RFReceiver() {
   stop();
   pthread_mutex_destroy(&messageQueueLock);
+}
+
+void RFReceiver::setProtocols(unsigned protocols) {
+  this->protocols = protocols;
 }
 
 void RFReceiver::initLib() {
@@ -99,8 +104,11 @@ void RFReceiver::signalHandler(int signum) {
 
   switch(signum) {
   case SIGUSR1:
-  case SIGUSR2:
      // TODO debug?
+    break;
+
+  case SIGUSR2:
+    //printDebugStatistics();
     break;
 
   case SIGPIPE:
@@ -619,10 +627,39 @@ bool RFReceiver::decodeManchester(ReceivedData* message, Bits& bitSet) {
   int iSequenceSize = message->iSequenceSize;
   int16_t* pSequence = message->pSequence;
 
+  int startIndex = 0;
+  int endIndex = 0;
+  for ( int index = 0; index<iSequenceSize-MIN_SEQUENCE_LENGTH; index++ ) {
+    if ( pSequence[index]<MIN_DURATION_F007TH ) {
+      if ((index-startIndex) >= MIN_SEQUENCE_LENGTH) {
+        endIndex = index;
+        if (decodeManchester(message, startIndex, endIndex, bitSet)) {
+          if (bitSet.getSize() >= 56) return true;
+        }
+      }
+      startIndex = (index+2) & ~1u;
+    }
+  }
+
+  if ((iSequenceSize-startIndex) >= MIN_SEQUENCE_LENGTH) {
+    endIndex = iSequenceSize;
+    if (decodeManchester(message, startIndex, endIndex, bitSet)) {
+      if (bitSet.getSize() >= 56) return true;
+    }
+  }
+
+  return false;
+}
+
+bool RFReceiver::decodeManchester(ReceivedData* message, int startIndex, int endIndex, Bits& bitSet) {
+  int16_t* pSequence = message->pSequence;
+
+  message->decodingStatus = 0;
+
   // find the start of Manchester frame
   int adjastment = -1;
   for ( int index = 0; index<32; index++ ) {
-    if ( pSequence[index]>MAX_HALF_DURATION ) {
+    if ( pSequence[index+startIndex]>MAX_HALF_DURATION ) {
       if ( index==0 ) {
         // first interval is long
         adjastment = 1;
@@ -642,8 +679,9 @@ bool RFReceiver::decodeManchester(ReceivedData* message, Bits& bitSet) {
     return false;
   }
 
-  // first bits
+  bitSet.clear();
 
+  // first bits
   int intervalIndex = -1;
   switch(adjastment) {
   case 0: // good
@@ -661,15 +699,16 @@ bool RFReceiver::decodeManchester(ReceivedData* message, Bits& bitSet) {
     break;
   }
 
+  int iSubSequenceSize = endIndex-startIndex;
   // decoding
   do {
-    int interval = pSequence[intervalIndex];
+    int interval = pSequence[startIndex+intervalIndex];
     bool half = interval<MAX_HALF_DURATION;
     bitSet.addBit( ((intervalIndex&1)==0) != half ); // level = (intervalIndex&1)==0
 
     if ( half ) {
-      if ( ++intervalIndex>=iSequenceSize ) return true;
-      interval = pSequence[intervalIndex];
+      if ( ++intervalIndex>=iSubSequenceSize ) return true;
+      interval = pSequence[startIndex+intervalIndex];
       if ( interval>=MAX_HALF_DURATION ) {
         manchester_OOS++;
         //Log.info( "    Bad sequence at index %d: %d.", intervalIndex, interval );
@@ -678,7 +717,7 @@ bool RFReceiver::decodeManchester(ReceivedData* message, Bits& bitSet) {
       }
     }
 
-  } while ( ++intervalIndex<(iSequenceSize-1) );
+  } while ( ++intervalIndex<(iSubSequenceSize-1) );
 
   return true;
 }
@@ -769,7 +808,10 @@ bool RFReceiver::decodeF007TH(ReceivedData* message, uint32_t& nF007TH) {
 
 bool RFReceiver::decode00592TXR(ReceivedData* message) {
   int iSequenceSize = message->iSequenceSize;
-  if (iSequenceSize < 121 || iSequenceSize > 130) return false;
+  if (iSequenceSize < 121 || iSequenceSize > 200) {
+    message->decodingStatus |= 8;
+    return false;
+  }
 
   int16_t* pSequence = message->pSequence;
 
@@ -798,6 +840,7 @@ bool RFReceiver::decode00592TXR(ReceivedData* message) {
   }
   if (dataStartIndex < 0) {
     //printf("decode00592TXR(): bad sync sequence\n");
+    message->decodingStatus |= 16;
     return false;
   }
 
@@ -807,20 +850,28 @@ bool RFReceiver::decode00592TXR(ReceivedData* message) {
 
   for ( int index = dataStartIndex; index<iSequenceSize-1; index+=2 ) {
     int16_t item1 = pSequence[index];
-    if (item1 < 120 || item1 > 680) return false;
+    if (item1 < 120 || item1 > 680) {
+      message->decodingStatus |= 4;
+      return false;
+    }
     int16_t item2 = pSequence[index+1];
-    if (item2 < 120 || item2 > 680) return false;
-    if (item1 < 280 && item2>320) {
+    if (item2 < 120 || item2 > 680) {
+      message->decodingStatus |= 4;
+      return false;
+    }
+    if (item1 < 280 && item2 > 320) {
       bits.addBit(0);
     } else if (item2 < 280 && item1>320) {
       bits.addBit(1);
     } else {
       //printf("decode00592TXR(): bad items %d: %d %d\n", index, item1, item2);
+      message->decodingStatus |= 4;
       return false;
     }
   }
   if (bits.getSize() != 56) {
     //printf("decode00592TXR(): bits.getSize() != 56\n");
+    message->decodingStatus |= 32;
     return false;
   }
 /*
@@ -841,6 +892,7 @@ bool RFReceiver::decode00592TXR(ReceivedData* message) {
   unsigned status = bits.getInt(16,8)&255;
   if (status != 0x0044u && status != 0x0084) {
     ///printf("decode00592TXR(): bad status byte 0x%02x\n",status);
+    message->decodingStatus |= 128;
     return false;
   }
   //unsigned rh = bits.getInt(24,8)&127;
@@ -856,6 +908,7 @@ bool RFReceiver::decode00592TXR(ReceivedData* message) {
 
   if (((bits.getInt(48,8)^checksum)&255) != 0) {
     //printf("decode00592TXR(): bad checksum\n");
+    message->decodingStatus |= 128;
     return false;
   }
 
@@ -940,7 +993,7 @@ void RFReceiver::raiseTimerEvent() {
   pthread_cond_broadcast(&messageReady);
   pthread_mutex_unlock(&messageQueueLock);
 
-  //receiver->printStatistics();
+  printStatistics();
 }
 
 bool RFReceiver::checkAndResetTimerEvent() {
@@ -981,11 +1034,19 @@ void RFReceiver::printStatisticsPeriodically(uint32_t millis) {
 }
 
 void RFReceiver::printStatistics() {
+#ifdef USE_GPIO_TS
+    printf("statistics: sequences=%d dropped=%d overflow=%d\n", sequences, dropped, sequence_pool_overflow);
+#else
     printf("statistics: sequences=%d skipped=%d dropped=%d corrected=%d overflow=%d\n",
         sequences, skipped, dropped, corrected, sequence_pool_overflow);
+#endif
 }
 void RFReceiver::printDebugStatistics() {
+#ifdef USE_GPIO_TS
+    printf("statistics: sequences=%d dropped=%d overflow=%d\n", sequences, dropped, sequence_pool_overflow);
+#else
     printf("statistics: interrupted=%d sequences=%d skipped=%d dropped=%d corrected=%d overflow=%d\n",
         interrupted, sequences, skipped, dropped, corrected, sequence_pool_overflow);
+#endif
 }
 
