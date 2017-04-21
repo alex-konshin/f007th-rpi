@@ -27,6 +27,9 @@
 #include <pigpio.h>
 #endif
 
+#define RF_RECEIVER_VERSION "2.0"
+
+#include "Logger.hpp"
 #include "Bits.hpp"
 #include "ReceivedMessage.hpp"
 
@@ -64,9 +67,9 @@
 #define ASSERT(expr)     ((void)0)
 #define DBG(format, arg...)     ((void)0)
 #else
-#define PRINT_ASSERT(expr,file,line)  fputs("ASSERTION: ("#expr") in "#file" : "#line"\n", stdout)
+#define PRINT_ASSERT(expr,file,line)  fputs("ASSERTION: ("#expr") in "#file" : "#line"\n", stderr)
 #define ASSERT(expr)  if(!(expr)) { PRINT_ASSERT(expr,__FILE__,__LINE__); /*assert(expr);*/ }
-#define DBG(format, arg...)  fprintf(stderr, format"\n", ## arg)
+#define DBG(format, arg...)  Log->info(format, ## arg)
 #endif // NDEBUG
 #endif //ASSERT
 
@@ -94,6 +97,8 @@ public:
   bool decode00592TXR(ReceivedData* message);
 
   void setProtocols(unsigned protocols);
+
+  void setLogger(Logger logger);
 
 private:
   static void initLib();

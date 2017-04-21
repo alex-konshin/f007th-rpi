@@ -18,7 +18,7 @@ extern int gpios[MAX_GPIO_ENTRIES];
 extern int n_of_gpios;
 #endif
 
-/* RPi 3
+/* RPi 3: See column BCM
 gpio readall
  +-----+-----+---------+------+---+---Pi 3---+---+------+---------+-----+-----+
  | BCM | wPi |   Name  | Mode | V | Physical | V | Mode | Name    | wPi | BCM |
@@ -48,7 +48,7 @@ gpio readall
  +-----+-----+---------+------+---+---Pi 3---+---+------+---------+-----+-----+
 */
 
-/* BPi M3
+/* BPi M3: See column CPU
 gpio readall
  +-----+-----+---------+------+---+---BPi ---+---+------+---------+-----+-----+
  | CPU | wPi |   Name  | Mode | V | Physical | V | Mode | Name    | wPi | CPU |
@@ -100,21 +100,17 @@ gpio readall
 #include <sys/ioctl.h>
 #endif
 
-typedef struct gpio_ts_statistics {
-  unsigned isr_counter;
-  unsigned irq_data_overflow_counter;
-  unsigned buffer_overflow_counter;
-} gpio_ts_statistics_t;
-
 
 #define GPIOTS_IOCTL_MAGIC_NUMBER 'G'
 
-#define GPIOTS_IOCTL_START            _IO(GPIOTS_IOCTL_MAGIC_NUMBER, 0x1)
-#define GPIOTS_IOCTL_SUSPEND          _IO(GPIOTS_IOCTL_MAGIC_NUMBER, 0x2)
-#define GPIOTS_IOCTL_SET_MIN_DURATION _IO(GPIOTS_IOCTL_MAGIC_NUMBER, 0x3)
-#define GPIOTS_IOCTL_SET_MAX_DURATION _IO(GPIOTS_IOCTL_MAGIC_NUMBER, 0x4)
-#define GPIOTS_IOCTL_SET_MIN_SEQ_LEN  _IO(GPIOTS_IOCTL_MAGIC_NUMBER, 0x5)
-//#define GPIOTS_IOCTL_GET_STAT         _IOR(GPIOTS_IOCTL_MAGIC_NUMBER, 0x6, gpio_ts_statistics_t) TODO How???
+#define GPIOTS_IOCTL_START                _IO(GPIOTS_IOCTL_MAGIC_NUMBER, 0x1)
+#define GPIOTS_IOCTL_SUSPEND              _IO(GPIOTS_IOCTL_MAGIC_NUMBER, 0x2)
+#define GPIOTS_IOCTL_SET_MIN_DURATION     _IO(GPIOTS_IOCTL_MAGIC_NUMBER, 0x3)
+#define GPIOTS_IOCTL_SET_MAX_DURATION     _IO(GPIOTS_IOCTL_MAGIC_NUMBER, 0x4)
+#define GPIOTS_IOCTL_SET_MIN_SEQ_LEN      _IO(GPIOTS_IOCTL_MAGIC_NUMBER, 0x5)
+#define GPIOTS_IOCTL_GET_IRQ_OVERFLOW_CNT _IO(GPIOTS_IOCTL_MAGIC_NUMBER, 0x6)
+#define GPIOTS_IOCTL_GET_BUF_OVERFLOW_CNT _IO(GPIOTS_IOCTL_MAGIC_NUMBER, 0x7)
+#define GPIOTS_IOCTL_GET_ISR_CNT          _IO(GPIOTS_IOCTL_MAGIC_NUMBER, 0x8)
 
 #ifdef __KERNEL__
 // ------------------ Driver private data ------------------------------

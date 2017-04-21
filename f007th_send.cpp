@@ -220,6 +220,8 @@ int main(int argc, char *argv[]) {
   }
 
   FILE* log = fopen(log_file_path, "w+");
+
+
   char* response_buffer = NULL;
   char* data_buffer = (char*)malloc(SEND_DATA_BUFFER_SIZE*sizeof(char));
 
@@ -231,6 +233,7 @@ int main(int argc, char *argv[]) {
   SensorsData sensorsData;
 
   RFReceiver receiver(gpio);
+  Log->setLogFile(log);
 
   if (protocols != 0) receiver.setProtocols(protocols);
 
@@ -268,7 +271,7 @@ int main(int argc, char *argv[]) {
               message.print(stdout, options);
           } else {
             if (!send(message, server_url, server_type, changed, data_buffer, response_buffer, options, log) && (options&VERBOSITY_INFO) != 0)
-              fputs("No data was sent to server.\n", stderr);
+              Log->info("No data was sent to server.");
           }
         } else {
           if ((options&VERBOSITY_INFO) != 0) {
@@ -361,7 +364,7 @@ bool send(ReceivedMessage& message, const char* url, ServerType server_type, int
 
   CURL* curl = curl_easy_init();  // get a curl handle
   if (!curl) {
-    fputs("ERROR: Failed to get curl handle.\n", stderr);
+    Log->error("Failed to get curl handle.", stderr);
     if (verbose) fputs("===> return from send() without sending because failed to initialize curl\n", stderr);
     return false;
   }
@@ -396,10 +399,9 @@ bool send(ReceivedMessage& message, const char* url, ServerType server_type, int
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &data);
 
   CURLcode rc = curl_easy_perform(curl);
-  if (rc != CURLE_OK) {
-    fprintf(stderr, "ERROR: Sending data to %s failed: %s\n", url, curl_easy_strerror(rc));
-    fprintf(log, "ERROR: Sending data to %s failed: %s\n", url, curl_easy_strerror(rc));
-  }
+  if (rc != CURLE_OK)
+    Log->error("Sending data to %s failed: %s", url, curl_easy_strerror(rc));
+
   if (verbose && response_buffer[0] != '\0') {
     if (data.response_len <= 0) data.response_len = data.response_len-1;
     response_buffer[SERVER_RESPONSE_BUFFER_SIZE-data.response_len] = '\0';
@@ -412,9 +414,9 @@ bool send(ReceivedMessage& message, const char* url, ServerType server_type, int
   if (http_code != (server_type == InfluxDB ? 204 : 200)) {
     success = false;
     if (http_code == 0)
-      fprintf(stderr, "ERROR: Failed to connect to server %s\n", url);
+      Log->error("Failed to connect to server %s", url);
     else
-      fprintf(stderr, "ERROR: Got HTTP status code %ld.\n", http_code);
+      Log->error("Got HTTP status code %ld.", http_code);
     if (verbose) {
       fputs(response_buffer, log);
       fputc('\n', log);
@@ -423,8 +425,7 @@ bool send(ReceivedMessage& message, const char* url, ServerType server_type, int
     fputs(response_buffer, log);
     fputc('\n', log);
   } else if (rc == CURLE_ABORTED_BY_CALLBACK) {
-    fputs("ERROR: HTTP request was aborted.\n", stderr);
-    fputs("ERROR: HTTP request was aborted.\n", log);
+    Log->error("HTTP request was aborted.");
   }
   curl_easy_cleanup(curl);
   if (headers != NULL) curl_slist_free_all(headers);

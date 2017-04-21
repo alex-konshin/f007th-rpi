@@ -56,21 +56,24 @@ void RFReceiver::setProtocols(unsigned protocols) {
 void RFReceiver::initLib() {
 #ifdef USE_GPIO_TS
   if (!isLibInitialized) {
+    Log->log("RFReceiver " RF_RECEIVER_VERSION " (with gpio-ts kernel module).");
     if( access( "/sys/class/gpio-ts", F_OK|R_OK|X_OK ) == -1 ) {
-      puts("ERROR: Kernel module gpio-ts is not loaded.\n");
+      Log->error("Kernel module gpio-ts is not loaded.");
       exit(1);
     }
 
     isLibInitialized = true;
     signal((int) SIGINT, signalHandler);
+    signal((int) SIGUSR1, signalHandler);
   }
 #else
   if (!isLibInitialized) {
+    Log->log("RFReceiver " RF_RECEIVER_VERSION " (with pigpio library).");
     //unsigned version = gpioVersion();
     //printf("pigpio version is %d.\n", version);
     //gpioCfgMemAlloc(PI_MEM_ALLOC_PAGEMAP);
     if (gpioInitialise() < 0) {
-      puts("ERROR: Failed to initialize library pigpio.\n");
+      Log->error("Failed to initialize library pigpio.");
       exit(1);
     }
     isLibInitialized = true;
@@ -103,12 +106,17 @@ void RFReceiver::closeAll() {
 void RFReceiver::signalHandler(int signum) {
 
   switch(signum) {
-  case SIGUSR1:
-     // TODO debug?
+  case SIGUSR1: {
+    RFReceiver* p = first;
+    while (p != NULL) {
+        p->printDebugStatistics();
+        p = p->next;
+    }
     break;
+  }
 
   case SIGUSR2:
-    //printDebugStatistics();
+     // TODO debug?
     break;
 
   case SIGPIPE:
@@ -121,12 +129,14 @@ void RFReceiver::signalHandler(int signum) {
 
   case SIGINT:
     printf("\nGot Ctrl-C. Terminating...\n");
+    Log->log("Got Ctrl-C. Terminating...");
     RFReceiver::closeAll();
-    exit(1);
+    exit(0);
     break;
 
   default:
-    printf("Unhandled signal %d. Terminating...\n", signum);
+    printf("\nUnhandled signal %d. Terminating...\n", signum);
+    Log->log("Unhandled signal %d. Terminating...", signum);
     RFReceiver::closeAll();
     exit(1);
   }
@@ -182,7 +192,7 @@ bool RFReceiver::enableReceive() {
     snprintf(filepath, 40, "/dev/gpiots%d", gpio);
     //DBG("enableReceive() opening \"%s\"...", filepath);
     if ((fd = open(filepath, O_RDONLY|O_NONBLOCK)) < 0) {
-      printf("ERROR: Failed to open gpio-ts file \"%s\": %s.\n", filepath, strerror(errno));
+      Log->error("Failed to open gpio-ts file \"%s\": %s.", filepath, strerror(errno));
       exit(2);
     }
 
@@ -190,17 +200,17 @@ bool RFReceiver::enableReceive() {
 
     long rc = ioctl(fd, GPIOTS_IOCTL_SET_MAX_DURATION, max_duration);
     if (rc != 0) {
-      printf("ERROR: Failed to set maximum duration to %ld.\n", max_duration);
+      Log->error("Failed to set maximum duration to %ld.", max_duration);
       exit(2);
     }
     rc = ioctl(fd, GPIOTS_IOCTL_SET_MIN_DURATION, min_duration);
     if (rc != 0) {
-      printf("ERROR: Failed to set minimum duration to %ld.\n", min_duration);
+      Log->error("Failed to set minimum duration to %ld.", min_duration);
       exit(2);
     }
     rc = ioctl(fd, GPIOTS_IOCTL_SET_MIN_SEQ_LEN, MIN_SEQUENCE_LENGTH);
     if (rc != 0) {
-      printf("ERROR: Failed to set minimum sequence length to %d.\n", MIN_SEQUENCE_LENGTH);
+      Log->error("Failed to set minimum sequence length to %d.", MIN_SEQUENCE_LENGTH);
       exit(2);
     }
     ioctl(fd, GPIOTS_IOCTL_SET_MIN_SEQ_LEN, MIN_SEQUENCE_LENGTH);
@@ -214,7 +224,7 @@ bool RFReceiver::enableReceive() {
     // see http://abyz.co.uk/rpi/pigpio/cif.html#gpioSetISRFuncEx
     int rc = gpioSetISRFuncEx(gpio, EITHER_EDGE, 0, interruptCallback, (void*)this);
     if (rc < 0) {
-      printf("ERROR: Error code %d from gpioSetISRFuncEx().\n", rc);
+      Log->error("Error code %d from gpioSetISRFuncEx().\n", rc);
       exit(2);
     }
 #endif
@@ -230,7 +240,7 @@ void RFReceiver::disableReceive() {
     fd = -1;
     if (fd != -1) {
       if (::close(fd) != 0) {
-        printf("WARNING: Failed to close gpio-ts file: %s.\n", strerror(errno));
+        Log->warning("Failed to close gpio-ts file: %s.", strerror(errno));
       }
       // TODO close
     }
@@ -306,7 +316,7 @@ int RFReceiver::readSequences() {
     //DBG("select() => rv=%d", rv);
     if (rv <= 0) {
       //if (rv == 0) return 0; // timeout
-      if (rv == -1) printf("ERROR: Failed call select: %s.\n", strerror(errno));
+      if (rv == -1) Log->error("Failed call select: %s.", strerror(errno));
       return rv;
     }
 
@@ -316,7 +326,7 @@ int RFReceiver::readSequences() {
       if (bytes_read == 0) continue;
       int err = errno;
       if (errno == EAGAIN) continue;
-      printf("ERROR: Failed read: %s.\n", strerror(err));
+      Log->error("Failed read: %s.", strerror(err));
       return -1;
     }
 
@@ -575,51 +585,51 @@ void RFReceiver::startDecoder() {
 }
 
 void RFReceiver::decoder() {
-  //printf("started decoder...\n");
-  do {
-    while (!stopDecoder && iSequenceReady == iSequenceWrite) {
+  Log->log("Decoder thread has been started.\n");
+  while (!stopDecoder) {
 #ifdef USE_GPIO_TS
 
+    if (iSequenceReady == iSequenceWrite) {
       int rc = readSequences();
       //DBG("readSequences() => rc=%d", rc);
       if (rc <= 0) {
         if (rc < 0) {
           stop();
-          isDecoderStarted = false;
-          return;
+          break;
         }
         // timeout
         if (uCurrentStatisticsTimer != 0) raiseTimerEvent();
         continue;
       }
+    }
 #else
-      //pthread_mutex_lock(&sequencePoolLock);
-      while (!stopDecoder && iSequenceReady == iSequenceWrite) {
-        //pthread_cond_wait(&sequenceReadyForDecoding, &sequencePoolLock);
-        gpioSleep(PI_TIME_RELATIVE, 0, 500000); // = 0.5 second
-      }
-      //pthread_mutex_unlock(&sequencePoolLock);
+    //pthread_mutex_lock(&sequencePoolLock);
+    while (!stopDecoder && iSequenceReady == iSequenceWrite) {
+      //pthread_cond_wait(&sequenceReadyForDecoding, &sequencePoolLock);
+      gpioSleep(PI_TIME_RELATIVE, 0, 500000); // = 0.5 second
+    }
+    //pthread_mutex_unlock(&sequencePoolLock);
 #endif
 
-      ReceivedData* message = createNewMessage();
+    ReceivedData* message = createNewMessage();
+    if (message == NULL) continue;
 
-      bool decoded = (protocols&PROTOCOL_00592TXR) != 0 && decode00592TXR(message);
-      if (!decoded && (protocols&PROTOCOL_F007TH) != 0) {
-        uint32_t nF007TH;
-        decoded = decodeF007TH(message, nF007TH);
-      }
-
-      // TODO do not queue the message if it is not decoded and no need to print undecoded messages.
-
-      // put new message into output queue
-      pthread_mutex_lock(&messageQueueLock);
-      *lastMessagePtr = message;
-      lastMessagePtr = &message->next;
-      pthread_cond_broadcast(&messageReady);
-      pthread_mutex_unlock(&messageQueueLock);
+    bool decoded = (protocols&PROTOCOL_00592TXR) != 0 && decode00592TXR(message);
+    if (!decoded && (protocols&PROTOCOL_F007TH) != 0) {
+      uint32_t nF007TH;
+      decoded = decodeF007TH(message, nF007TH);
     }
 
-  } while (!stopDecoder);
+    // TODO do not queue the message if it is not decoded and no need to print undecoded messages.
+
+    // put new message into output queue
+    pthread_mutex_lock(&messageQueueLock);
+    *lastMessagePtr = message;
+    lastMessagePtr = &message->next;
+    pthread_cond_broadcast(&messageReady);
+    pthread_mutex_unlock(&messageQueueLock);
+  }
+  Log->log("Decoder stopped");
   isDecoderStarted = false;
 }
 
@@ -711,7 +721,7 @@ bool RFReceiver::decodeManchester(ReceivedData* message, int startIndex, int end
       interval = pSequence[startIndex+intervalIndex];
       if ( interval>=MAX_HALF_DURATION ) {
         manchester_OOS++;
-        //Log.info( "    Bad sequence at index %d: %d.", intervalIndex, interval );
+        //Log->info( "    Bad sequence at index %d: %d.", intervalIndex, interval );
         message->decodingStatus |= 2;
         return true;
       }
@@ -874,32 +884,13 @@ bool RFReceiver::decode00592TXR(ReceivedData* message) {
     message->decodingStatus |= 32;
     return false;
   }
-/*
-  printf("decode00592TXR(): bits=");
-  for (int i=0; i<56; i++) {
-    putchar(bits.getBit(i)?'1':'0');
-  }
-  putchar('\n');
-*/
-  //unsigned id = bits.getInt(8,8);
-  //printf("decode00592TXR(): bits.getInt(8,8) = %02x\n", id);
-/*
-  if (id != 0x00a8u) {
-    printf("decode00592TXR(): bits.getInt(40,8) = %02x\n", bits.getReverse(40,8));
-    return false;
-  }
-*/
+
   unsigned status = bits.getInt(16,8)&255;
   if (status != 0x0044u && status != 0x0084) {
     ///printf("decode00592TXR(): bad status byte 0x%02x\n",status);
     message->decodingStatus |= 128;
     return false;
   }
-  //unsigned rh = bits.getInt(24,8)&127;
-  //printf("decode00592TXR(): rh = %d\n",rh);
-
-  //unsigned t = ((bits.getInt(33,7)<<7)|(bits.getInt(40,8)&127))-1000;
-  //printf("decode00592TXR(): t = %d\n",t);
 
   unsigned checksum = 0;
   for (int i = 0; i < 48; i+=8) {
@@ -922,6 +913,8 @@ bool RFReceiver::decode00592TXR(ReceivedData* message) {
 
 
 ReceivedData* RFReceiver::createNewMessage() {
+  if (iSequenceReady == iSequenceWrite) return NULL;
+
   int index = iSequenceReady;
   int iCurrentSequenceSize = iSequenceSize[index];
   int iCurrentSequenceStart = iSequenceStart[index];
@@ -1035,7 +1028,8 @@ void RFReceiver::printStatisticsPeriodically(uint32_t millis) {
 
 void RFReceiver::printStatistics() {
 #ifdef USE_GPIO_TS
-    printf("statistics: sequences=%d dropped=%d overflow=%d\n", sequences, dropped, sequence_pool_overflow);
+  Log->info("statistics(%d): sequences=%ld dropped=%ld overflow=%ld\n",
+      gpio, sequences, dropped, sequence_pool_overflow);
 #else
     printf("statistics: sequences=%d skipped=%d dropped=%d corrected=%d overflow=%d\n",
         sequences, skipped, dropped, corrected, sequence_pool_overflow);
@@ -1043,7 +1037,12 @@ void RFReceiver::printStatistics() {
 }
 void RFReceiver::printDebugStatistics() {
 #ifdef USE_GPIO_TS
-    printf("statistics: sequences=%d dropped=%d overflow=%d\n", sequences, dropped, sequence_pool_overflow);
+  long irq_data_overflow_counter = ioctl(fd, GPIOTS_IOCTL_GET_IRQ_OVERFLOW_CNT);
+  long buffer_overflow_counter = ioctl(fd, GPIOTS_IOCTL_GET_BUF_OVERFLOW_CNT);
+  long isr_counter = ioctl(fd, GPIOTS_IOCTL_GET_ISR_CNT);
+
+  Log->info("statistics(%d): sequences=%ld dropped=%ld overflow=%ld irq_data_overflow_counter=%ld buffer_overflow_counter=%ld isr_counter=%ld\n",
+      gpio, sequences, dropped, sequence_pool_overflow, irq_data_overflow_counter, buffer_overflow_counter, isr_counter);
 #else
     printf("statistics: interrupted=%d sequences=%d skipped=%d dropped=%d corrected=%d overflow=%d\n",
         interrupted, sequences, skipped, dropped, corrected, sequence_pool_overflow);
