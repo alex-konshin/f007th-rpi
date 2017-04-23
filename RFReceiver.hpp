@@ -56,11 +56,23 @@
 
 
 #ifdef BPiM3
-#define MAX_GPIO 362
-#else
-#define MAX_GPIO 53
+#include "mach/bpi-m3.h"
 #endif
 
+#ifdef ODROIDC2
+#include "mach/odroid-c2.h"
+#endif
+
+#ifdef RPI
+#include "mach/rpi3.h"
+#endif
+
+#ifndef MAX_GPIO
+#define MAX_GPIO 53
+#endif
+#ifndef DEFAULT_PIN
+#define DEFAULT_PIN 27
+#endif
 
 #ifndef ASSERT
 #ifdef  NDEBUG

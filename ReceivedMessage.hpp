@@ -345,7 +345,7 @@ public:
         else if (buffer == __null)
           fputs("ERROR: Invalid call json(char*,size_t,bool,bool): buffer is not specified.\n", stderr);
         else
-          fprintf(stderr, "ERROR: Invalid call json(char*,size_t,bool,bool): invalid size (%d) of the buffer.\n", buflen);
+          fprintf(stderr, "ERROR: Invalid call json(char*,size_t,bool,bool): invalid size (%d) of the buffer.\n", (int)buflen);
       }
       return -1;
     }
@@ -401,7 +401,7 @@ public:
         else if (buffer == __null)
           fputs("ERROR: Invalid call influxDB(char*,size_t,bool): buffer is not specified.\n", stderr);
         else
-          fprintf(stderr, "ERROR: Invalid call influxDB(char*,size_t,bool): invalid size (%d) of the buffer.\n", buflen);
+          fprintf(stderr, "ERROR: Invalid call influxDB(char*,size_t,bool): invalid size (%d) of the buffer.\n", (int)buflen);
       }
       return -1;
     }

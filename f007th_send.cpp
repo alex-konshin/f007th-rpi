@@ -14,13 +14,6 @@
 
 #define SERVER_TYPE_REST 0
 
-#ifdef BPiM3
-// pin 12 on the connector
-#define DEFAULT_PIN 35
-#else
-// pin 13 on the connector
-#define DEFAULT_PIN 27
-#endif
 #define to_str(x) #x
 #define DEFAULT_PIN_STR to_str(DEFAULT_PIN)
 
@@ -328,7 +321,7 @@ static size_t read_callback(void *ptr, size_t size, size_t nmemb, struct PutData
 static size_t write_callback(void *ptr, size_t size, size_t nmemb, struct PutData* data) {
   size_t curl_size = nmemb * size;
   size_t to_copy = (data->response_len < curl_size) ? data->response_len : curl_size;
-  if (data->verbose) fprintf(stderr, "receiving %d bytes...\n", to_copy);
+  if (data->verbose) fprintf(stderr, "receiving %d bytes...\n", (int)to_copy);
   if (to_copy > 0) {
     memcpy(data->response_data, ptr, to_copy);
     data->response_len -= to_copy;
