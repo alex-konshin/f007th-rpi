@@ -78,6 +78,10 @@ struct gpio_ts_data {
     uint32_t max_duration;
     unsigned gpio;
     unsigned gpio_index;
+#if defined(CONFIG_ARCH_MESON64_ODROIDC2)
+    int irq0_bank;
+    int irq1_bank;
+#endif
     volatile unsigned read_index;
     volatile unsigned write_index;
     volatile unsigned current_seq_index;
