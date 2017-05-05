@@ -14,12 +14,12 @@ cp f007th-rpi ${BUILD_HOME}/bin/
 cd ${BUILD_HOME}/f007th-rpi_send
 make f007th-rpi_send
 status=$?
-if [ "$status" == 0 ]; then cp f007th-rpi_send ${BUILD_HOME}/bin/; fi
+if [ "$status" = 0 ]; then cp f007th-rpi_send ${BUILD_HOME}/bin/; fi
 
 cd ${BUILD_HOME}/f007th-ts-rpi
 make f007th-send
 status=$?
-if [ "$status" == 0 ]; then cp f007th-send ${BUILD_HOME}/bin/; fi
+if [ "$status" = 0 ]; then cp f007th-send ${BUILD_HOME}/bin/; fi
 cd ${BUILD_HOME}/bin
 
 exit $status
