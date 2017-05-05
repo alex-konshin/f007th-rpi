@@ -148,6 +148,7 @@ void RFReceiver::processCtrlBreak(int signum, void *userdata) {
   //receiver->stop();
   printf("\nGot Ctrl-C. Terminating...\n");
   RFReceiver::closeAll();
+  exit(0);
 }
 #endif
 
