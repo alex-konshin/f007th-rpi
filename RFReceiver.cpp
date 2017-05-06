@@ -733,6 +733,8 @@ bool RFReceiver::decodeManchester(ReceivedData* message, int startIndex, int end
   return true;
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-overflow"
 bool RFReceiver::decodeF007TH(ReceivedData* message, uint32_t& nF007TH) {
   if (message->sensorData.fields.protocol != 0) {
     if (message->sensorData.fields.protocol == PROTOCOL_F007TH) {
@@ -815,7 +817,7 @@ bool RFReceiver::decodeF007TH(ReceivedData* message, uint32_t& nF007TH) {
   nF007TH = data;
   return true;
 }
-
+#pragma GCC diagnostic pop
 
 bool RFReceiver::decode00592TXR(ReceivedData* message) {
   int iSequenceSize = message->iSequenceSize;

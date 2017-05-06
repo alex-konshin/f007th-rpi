@@ -67,6 +67,10 @@
 #include "mach/rpi3.h"
 #endif
 
+#ifdef __x86_64__
+#include "mach/x86_64.h"
+#endif
+
 #ifndef MAX_GPIO
 #define MAX_GPIO 53
 #endif

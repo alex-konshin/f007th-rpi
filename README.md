@@ -1,5 +1,5 @@
 # f007th-rpi
-## Raspberry Pi: Receiving data from temperature/humidity sensors with cheap RF 433MHz receiver
+## Raspberry Pi: Receiving data from temperature/humidity sensors with cheap RF receiver
 ###### Project source can be downloaded from [https://github.com/alex-konshin/f007th-rpi.git](https://github.com/alex-konshin/f007th-rpi.git)
 
 ### Author and Contributors
@@ -8,17 +8,18 @@ Alex Konshin <akonshin@gmail.com>
 ### Overview
 The main goal of this project is to intercept and decode radio signals from temperature/humidity sensors and show on console or send to REST/InfluxDB servers this received data.
 
-The data is received with cheap RF 433.92MHz receivers like [RXB6](http://www.jmrth.com/en/images/proimages/RXB6_en_v3.pdf), [SeeedStudio RF-R-ASK](https://www.seeedstudio.com/433MHz-ASK%26amp%3BOOK-Super-heterodyne-Receiver-module-p-2205.html), RX-RM-5V, etc. It is tested with RXB6 and SeeedStudio RF-R-ASK.
+The data is received with cheap RF 433.92MHz (315MHz, 868.35MHz, etc) receivers like [RXB6](http://www.jmrth.com/en/images/proimages/RXB6_en_v3.pdf), [SeeedStudio RF-R-ASK](https://www.seeedstudio.com/433MHz-ASK%26amp%3BOOK-Super-heterodyne-Receiver-module-p-2205.html), RX-RM-5V, etc. It is tested with RXB6 and SeeedStudio RF-R-ASK.
 
 This project currently supports following sensors:    
 - [Ambient Weather F007TH](http://www.ambientweather.com/amf007th.html)
-- [AcuRite 592TXR/06002RM](https://www.acurite.com/kbase/592TXR.html)    
+- [AcuRite 00592TXR/06002RM](https://www.acurite.com/kbase/592TXR.html)    
 
 ### Supported platforms
 Following platforms are supported and tested:
 - Raspberry Pi 3
 - [Banana Pi M3](https://bananapi.gitbooks.io/bpi-m3/content/en/)
 - [ODROID C2](http://www.hardkernel.com/main/products/prdt_info.php?g_code=G145457216438&tab_idx=1)
+- [MinnowBoard MAX/Turbot](https://www.minnowboard.org/) (tested with [MinnowBoard Turbot QUAD Core Board](https://store.netgate.com/Turbot4.aspx))
 
 ##### Raspberry Pi
 There are 3 executables on this platform: You can use it with pigpio library
@@ -26,7 +27,7 @@ There are 3 executables on this platform: You can use it with pigpio library
 - **f007th-rpi_send** is more advanced program that sends received and decoded data to a remote InfluxDB or REST server. This executable requires root permissions.
 - **f007th-send** is the same as above but uses [gpio-ts driver](https://github.com/alex-konshin/gpio-ts). This executable does not require root privileges but gpio-ts module must be already loaded.
 
-##### Banana Pi M3 and ODROID C2.
+##### Banana Pi M3, ODROID C2, MinnowBoard.
 On these platforms only **f007th-send** is supported and tested. This utility sends received and decoded data to a remote InfluxDB or REST server. It does not require root privileges but [gpio-ts module](https://github.com/alex-konshin/gpio-ts) must be already loaded.
 
 
@@ -36,6 +37,7 @@ On these platforms only **f007th-send** is supported and tested. This utility se
 | `mach/rpi3.h` | Contains macros that are specific for platform Raspberry Pi 3.|
 | `mach/bpi-m3.h` | Contains macros that are specific for platform Banana Pi M3.|
 | `mach/odroid-c2.h` | Contains macros that are specific for platform ODROID C2.|
+| `mach/x86_64.h` | Contains macros that are specific for platform x86_64 (ex: MinnowBoard).|
 | `Bits.hpp` | Operations with long set of bits. It is used for storing decoded bits in Manchester decoder.|
 | `F007TH.cpp` | Source code of **f007th-rpi** executable.|
 | `f007th_send.cpp` | Source code of **f007th-rpi_send** executable. |
@@ -69,7 +71,24 @@ git clone https://github.com/alex-konshin/f007th-rpi.git
 /bin/sh f007th-rpi/build.sh
 ```
 - Executables are created in directory `f007th-rpi/bin`. Note that you must run them with root privileges (for example with `sudo`). Use Ctrl-C to terminate the program.
- 
+
+##### Building on MinnowBoard
+- Build [gpio-ts module](https://github.com/alex-konshin/gpio-ts) first.
+- Install [libcurl library](https://curl.haxx.se/libcurl/).
+```
+sudo apt-get install libcurl4-openssl-dev
+```
+- Clone sources from GitHub. The following command will create new sub-directory f007th-rpi in the current directory and download sources
+```
+
+git clone https://github.com/alex-konshin/f007th-rpi.git
+```
+- Build
+```
+/bin/sh f007th-rpi/f007th-ts-x86_64/build.sh
+```
+- Executable file `f007th-send` is created in directory `~/bin`.
+
 ### Running f007th-rpi_send or f007th-send
 The command can send data to InfluxDB server or virtually any REST server that supports PUT requests.
 How to setup these servers? It is out of the scope of this instruction because there are many possible solutions. For REST server I personally use [LoopBack](https://loopback.io/) with [PostgreSQL](https://www.postgresql.org/) that are run on QNAP NAS server.
