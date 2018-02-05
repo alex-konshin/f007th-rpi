@@ -8,9 +8,9 @@ Alex Konshin <akonshin@gmail.com>
 ### Overview
 The main goal of this project is to intercept and decode radio signals from temperature/humidity sensors and show on console or send to REST/InfluxDB servers this received data.
 
-The data is received with cheap RF 433.92MHz (315MHz, 868.35MHz, etc) receivers like [RXB6](http://www.jmrth.com/en/images/proimages/RXB6_en_v3.pdf), [SeeedStudio RF-R-ASK](https://www.seeedstudio.com/433MHz-ASK%26amp%3BOOK-Super-heterodyne-Receiver-module-p-2205.html), RX-RM-5V, etc. It is tested with RXB6 and SeeedStudio RF-R-ASK.
+The data is received with cheap RF 433.92MHz (315MHz, 868.35MHz, etc - it depends on sensors used in your project) receivers like [RXB6](http://www.jmrth.com/en/images/proimages/RXB6_en_v3.pdf), [SeeedStudio RF-R-ASK](https://www.seeedstudio.com/433MHz-ASK%26amp%3BOOK-Super-heterodyne-Receiver-module-p-2205.html), RX-RM-5V, etc. It is tested with RXB6 and SeeedStudio RF-R-ASK.
 
-This project currently supports following sensors:    
+This project currently supports and tested with following sensors:    
 - [Ambient Weather F007TH](http://www.ambientweather.com/amf007th.html)
 - [AcuRite 00592TXR/06002RM](https://www.acurite.com/kbase/592TXR.html)    
 
@@ -22,10 +22,10 @@ Following platforms are supported and tested:
 - [MinnowBoard MAX/Turbot](https://www.minnowboard.org/) (tested with [MinnowBoard Turbot QUAD Core Board](https://store.netgate.com/Turbot4.aspx))
 
 ##### Raspberry Pi
-There are 3 executables on this platform: You can use it with pigpio library
-- **f007th-rpi** is a demo/test program that receive data from sensors and prints it in plain text or JSON format.
-- **f007th-rpi_send** is more advanced program that sends received and decoded data to a remote InfluxDB or REST server. This executable requires root permissions.
-- **f007th-send** is the same as above but uses [gpio-ts driver](https://github.com/alex-konshin/gpio-ts). This executable does not require root privileges but gpio-ts module must be already loaded.
+There are 3 executables on this platform:
+- **f007th-rpi** is a demo/test program that receive data from sensors and prints it in plain text or JSON format. This executable requires pigpio library to be installed and should be run as root (via sudo).
+- **f007th-rpi_send** is more advanced program that sends received and decoded data to a remote InfluxDB or REST server. This executable requires pigpio library to be installed and should be run as root (via sudo).
+- **f007th-send** is the same as above but uses [gpio-ts driver](https://github.com/alex-konshin/gpio-ts). This executable does not require root privileges but [gpio-ts module](https://github.com/alex-konshin/gpio-ts) must be already loaded.
 
 ##### Banana Pi M3, ODROID C2, MinnowBoard.
 On these platforms only **f007th-send** is supported and tested. This utility sends received and decoded data to a remote InfluxDB or REST server. It does not require root privileges but [gpio-ts module](https://github.com/alex-konshin/gpio-ts) must be already loaded.
@@ -70,7 +70,7 @@ git clone https://github.com/alex-konshin/f007th-rpi.git
 ```
 /bin/sh f007th-rpi/build.sh
 ```
-- Executables are created in directory `f007th-rpi/bin`. Note that you must run them with root privileges (for example with `sudo`). Use Ctrl-C to terminate the program.
+- Executables are created in directory `f007th-rpi/bin`. Note that some of them must be run with root privileges (for example with `sudo`). Use Ctrl-C to terminate utilities.
 
 ##### Building on MinnowBoard
 - Build [gpio-ts module](https://github.com/alex-konshin/gpio-ts) first.
@@ -97,7 +97,7 @@ The command sends JSON to REST server with following fields:
 `"time", "valid", "channel", "rolling_code", "temperature", "humidity","battery_ok"`.  
 The value of field `temperature` is integer number of dF ("deciFahrenheit" = 1/10 of Fahrenheit). For example, if the value is 724 then the temperature is 72.4&deg;F.  
 
-Instructions for InfluxDB can be found on site [https://docs.influxdata.com/influxdb/v1.2/introduction/installation/](https://docs.influxdata.com/influxdb/v1.2/introduction/installation/). The command sends 3 types of metrics: "temperature", "humidity" and "sensor_battery_status" with tags "type" (always "F007TH"), "channel" and "rolling_code". The value of "temperature" is in Fahrenheit.
+Instructions for InfluxDB can be found on site [https://docs.influxdata.com/influxdb/v1.2/introduction/installation/](https://docs.influxdata.com/influxdb/v1.2/introduction/installation/). The command sends 3 types of metrics: "temperature", "humidity" and "sensor_battery_status" with tags "type" (either "F007TH" or "00592TXR"), "channel" and "rolling_code". The value of "temperature" is in Fahrenheit. Note that rolling code is changed when you replace batteries.
 
 #### Command line arguments of utility f007th-rpi_send:
 ##### --gpio, -g
@@ -129,13 +129,13 @@ Print received data on console with temperature in degrees Celsius:
 `sudo f007th-rpi_send -C -A`  
  
 Run the command in background and send data to InfluxDB database `smarthome` on server `server.dom`:  
-`sudo f007th-send -t InfluxDB http://server.dom:8086/write?db=smarthome &`  
+`f007th-send -t InfluxDB http://server.dom:8086/write?db=smarthome &`  
 or  
-`sudo f007th-send --type=InfluxDB -s http://server.dom:8086/write?db=smarthome &`  
+`f007th-send --type=InfluxDB -s http://server.dom:8086/write?db=smarthome &`  
 or  
-`sudo f007th-send --type=InfluxDB --send-to http://server.dom:8086/write?db=smarthome &`  
+`f007th-send --type=InfluxDB --send-to http://server.dom:8086/write?db=smarthome &`  
  
 Send data to Loopback (REST server) on server `qnap.dom`:  
-`sudo f007th-send http://qnap.dom:3000/api/roomtemps`  
+`f007th-send http://qnap.dom:3000/api/roomtemps`  
 or  
-`sudo f007th-send -t REST -s http://qnap.dom:3000/api/roomtemps`  
+`f007th-send -t REST -s http://qnap.dom:3000/api/roomtemps`  
