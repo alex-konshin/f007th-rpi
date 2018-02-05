@@ -94,6 +94,12 @@ public:
     return data == __null ? -1 : data->decodingStatus;
   }
 
+  const char* getSensorTypeName() {
+    if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return "F007TH";
+    if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) return "00592TXR";
+    return "UNKNOWN";
+  }
+
   // random number that is changed when battery is changed
   uint8_t getRollingCode() {
     if (data != __null) {
@@ -414,7 +420,8 @@ public:
 
     char id[60];
     int len = snprintf( id, sizeof(id),
-      "type=F007TH,channel=%d,rolling_code=%d",
+      "type=%s,channel=%d,rolling_code=%d",
+      getSensorTypeName(),
       getChannelNumber(),
       getRollingCode()
     );
