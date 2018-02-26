@@ -139,3 +139,10 @@ Send data to Loopback (REST server) on server `qnap.dom`:
 `f007th-send http://qnap.dom:3000/api/roomtemps`  
 or  
 `f007th-send -t REST -s http://qnap.dom:3000/api/roomtemps`  
+
+#### Example of wiring RXB6 to Raspberry Pi 3 ####
+
+Raspberry Pi is on the left:  
+3.3v (pin 1) <==> +5v/VDD (pin 5)  
+GPIO27 (pin 13) <==> DATA (pin 7)  
+Ground (pin 25) <==> GND (pin 8) 
