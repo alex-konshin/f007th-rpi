@@ -145,4 +145,5 @@ or
 Raspberry Pi is on the left:  
 3.3v (pin 1) <==> +5v/VDD (pin 5)  
 GPIO27 (pin 13) <==> DATA (pin 7)  
-Ground (pin 25) <==> GND (pin 8) 
+Ground (pin 25) <==> GND (pin 8)  
+![Picture of wiring RXB6 to Raspberry Pi 3](https://github.com/alex-konshin/f007th-rpi/blob/master/RXB6_wiring.JPG)
