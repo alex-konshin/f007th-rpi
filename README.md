@@ -11,8 +11,9 @@ The main goal of this project is to intercept and decode radio signals from temp
 The data is received with cheap RF 433.92MHz (315MHz, 868.35MHz, etc - it depends on sensors used in your project) receivers like [RXB6](http://www.jmrth.com/en/images/proimages/RXB6_en_v3.pdf), [SeeedStudio RF-R-ASK](https://www.seeedstudio.com/433MHz-ASK%26amp%3BOOK-Super-heterodyne-Receiver-module-p-2205.html), RX-RM-5V, etc. It is tested with RXB6 and SeeedStudio RF-R-ASK.
 
 This project currently supports and tested with following sensors:    
-- [Ambient Weather F007TH](http://www.ambientweather.com/amf007th.html)
-- [AcuRite 00592TXR/06002RM](https://www.acurite.com/kbase/592TXR.html)    
+- [Ambient Weather F007TH](http://www.ambientweather.com/amf007th.html)   
+- [AcuRite 00592TXR/06002RM](https://www.acurite.com/kbase/592TXR.html)  
+- [LaCrosse TX7U](https://www.lacrossetechnology.com/tx7u) (probably TX3/TX6 may also work).    
 
 ### Supported platforms
 Following platforms are supported and tested:
@@ -70,7 +71,7 @@ git clone https://github.com/alex-konshin/f007th-rpi.git
 ```
 /bin/sh f007th-rpi/build.sh
 ```
-- Executables are created in directory `f007th-rpi/bin`. Note that some of them must be run with root privileges (for example with `sudo`). Use Ctrl-C to terminate utilities.
+- Executables are created in directory `f007th-rpi/bin`. Note that some of them must be run with root privileges (for example with `sudo`). Use Ctrl-C or command kill to terminate utilities.
 
 ##### Building on MinnowBoard
 - Build [gpio-ts module](https://github.com/alex-konshin/gpio-ts) first.
@@ -94,10 +95,10 @@ The command can send data to InfluxDB server or virtually any REST server that s
 How to setup these servers? It is out of the scope of this instruction because there are many possible solutions. For REST server I personally use [LoopBack](https://loopback.io/) with [PostgreSQL](https://www.postgresql.org/) that are run on QNAP NAS server.
  
 The command sends JSON to REST server with following fields:  
-`"time", "valid", "channel", "rolling_code", "temperature", "humidity","battery_ok"`.  
-The value of field `temperature` is integer number of dF ("deciFahrenheit" = 1/10 of Fahrenheit). For example, if the value is 724 then the temperature is 72.4&deg;F.  
+`"time", "valid", "type", "channel", "rolling_code", "temperature", "humidity","battery_ok"`.  
+The value of field `temperature` is integer number of dF ("deciFahrenheit" = 1/10 of Fahrenheit). For example, if the value is 724 then the temperature is 72.4&deg;F. Note that not all fields are always present in each report. 
 
-Instructions for InfluxDB can be found on site [https://docs.influxdata.com/influxdb/v1.2/introduction/installation/](https://docs.influxdata.com/influxdb/v1.2/introduction/installation/). The command sends 3 types of metrics: "temperature", "humidity" and "sensor_battery_status" with tags "type" (either "F007TH" or "00592TXR"), "channel" and "rolling_code". The value of "temperature" is in Fahrenheit. Note that rolling code is changed when you replace batteries.
+Instructions for InfluxDB can be found on site [https://docs.influxdata.com/influxdb/v1.2/introduction/installation/](https://docs.influxdata.com/influxdb/v1.2/introduction/installation/). The command sends 3 types of metrics: "temperature", "humidity" and "sensor_battery_status" with tags "type" (either "F007TH" or "00592TXR" or "TX7"), "channel" and "rolling_code". The value of "temperature" is in Fahrenheit. Note that rolling code is changed when you replace batteries.
 
 #### Command line arguments of utility f007th-rpi_send:
 ##### --gpio, -g

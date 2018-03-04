@@ -150,6 +150,30 @@ public:
       return TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED | NEW_UID;
     }
 
+    if (sensorData->fields.protocol == PROTOCOL_TX7U) {
+      uint16_t id = (sensorData->u64>>25)&0x7ff; // type and rolling_code
+      uint16_t value = (sensorData->u32.low>>12)&0x0fff;
+      uint8_t type = sensorData->u32.hi&15;
+
+      for (int index = 0; index<size; index++) {
+        SensorData* p = &items[index];
+        if ((p->fields.protocol != PROTOCOL_TX7U) || (((p->u64>>25)&0x7ff) != id)) continue;
+
+        int result = 0;
+        if (((p->u32.low>>12)&0x0fff) != value) {
+          if (type == 0)
+            result |= TEMPERATURE_IS_CHANGED;
+          else if (type == 14)
+            result |= HUMIDITY_IS_CHANGED;
+        }
+
+        if (result != 0) p->u64 = sensorData->u64;
+        return result;
+      }
+      add(sensorData);
+      return type == 0 ? TEMPERATURE_IS_CHANGED | NEW_UID : type == 14 ? HUMIDITY_IS_CHANGED | NEW_UID : NEW_UID;
+    }
+
     return 0;
   }
 

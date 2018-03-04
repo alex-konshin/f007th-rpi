@@ -24,7 +24,7 @@ static bool send(ReceivedMessage& message, const char* url, ServerType server_ty
 
 static void help() {
   fputs(
-    "(c) 2017 Alex Konshin\n"\
+    "(c) 2017-2018 Alex Konshin\n"\
     "Receive data from sensors Ambient Weather F007TH then print it to stdout or send it to remote server via REST API.\n\n"\
     "--gpio, -g\n"\
     "    Value is GPIO pin number (default is "DEFAULT_PIN_STR") as defined on page http://abyz.co.uk/rpi/pigpio/index.html\n"\
@@ -68,7 +68,7 @@ int main(int argc, char *argv[]) {
   bool tz_set = false;
   bool type_is_set = false;
 
-  const char* short_options = "g:s:Al:vVt:TCULd70";
+  const char* short_options = "g:s:Al:vVt:TCULd703";
   const struct option long_options[] = {
       { "gpio", required_argument, NULL, 'g' },
       { "send-to", required_argument, NULL, 's' },
@@ -84,6 +84,7 @@ int main(int argc, char *argv[]) {
       { "debug", no_argument, NULL, 'd' },
       { "f007th", no_argument, NULL, '7' },
       { "00592txr", no_argument, NULL, '0' },
+      { "tx6", no_argument, NULL, '6' },
       { NULL, 0, NULL, 0 }
   };
 
@@ -172,10 +173,13 @@ int main(int argc, char *argv[]) {
       options |= VERBOSITY_INFO | VERBOSITY_PRINT_JSON | VERBOSITY_PRINT_CURL | VERBOSITY_PRINT_UNDECODED | VERBOSITY_PRINT_DETAILS;
       break;
 
-    case '0':
+    case '0': // AcuRite 00592TXR
       protocols |= PROTOCOL_00592TXR;
       break;
-    case '7':
+    case '3': // LaCrosse TX3/TX6/TX7
+      protocols |= PROTOCOL_TX7U;
+      break;
+    case '7': // Ambient Weather F007TH
       protocols |= PROTOCOL_F007TH;
       break;
 

@@ -50,6 +50,10 @@
 #define MIN_PERIOD 900
 #define MAX_PERIOD 1150
 
+// LaCrosse TX-6U/TX-7U
+#define MIN_DURATION_TX7U 500
+#define MAX_DURATION_TX7U 1450
+
 // Noise filter
 #define IGNORABLE_SKIP 60
 #define MAX_IGNORD_SKIPS 2
@@ -111,6 +115,7 @@ public:
 
   bool decodeF007TH(ReceivedData* message, uint32_t& nF007TH);
   bool decode00592TXR(ReceivedData* message);
+  bool decodeTX7U(ReceivedData* message);
 
   void setProtocols(unsigned protocols);
 

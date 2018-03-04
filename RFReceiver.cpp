@@ -11,7 +11,7 @@ RFReceiver* RFReceiver::first = NULL;
 
 RFReceiver::RFReceiver(int gpio) {
   this->gpio = gpio;
-  protocols = PROTOCOL_F007TH|PROTOCOL_00592TXR;
+  protocols = PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_TX7U;
   isEnabled = false;
   isDecoderStarted = false;
   stopDecoder = false;
@@ -175,16 +175,22 @@ bool RFReceiver::enableReceive() {
     resetReceiverBuffer();
     initLib();
 
+    max_duration = 0;
+    min_duration = 0;
+    if ((protocols & PROTOCOL_TX7U) != 0) {
+      max_duration = MAX_DURATION_TX7U;
+      min_duration = MIN_DURATION_TX7U;
+    }
     if ((protocols & PROTOCOL_00592TXR) != 0) {
-      min_duration = MIN_DURATION_00592TXR;
-    } else {
-      min_duration = MIN_DURATION_F007TH;
+      if ( min_duration==0 || min_duration>MIN_DURATION_00592TXR ) min_duration = MIN_DURATION_00592TXR;
+      if ( max_duration==0 || max_duration<MAX_DURATION_00592TXR ) max_duration = MAX_DURATION_00592TXR;
     }
     if ((protocols & PROTOCOL_F007TH) != 0) {
-      max_duration = MAX_DURATION_F007TH;
-    } else {
-      max_duration = MAX_DURATION_00592TXR;
+      if ( min_duration==0 || min_duration>MIN_DURATION_F007TH ) min_duration = MIN_DURATION_F007TH;
+      if ( max_duration==0 || max_duration<MAX_DURATION_F007TH ) max_duration = MAX_DURATION_F007TH;
     }
+    if ( min_duration==0 ) min_duration = MIN_DURATION_00592TXR;
+    if ( max_duration==0 ) max_duration = MAX_DURATION_TX7U;
 
 #ifdef USE_GPIO_TS
 
@@ -616,8 +622,17 @@ void RFReceiver::decoder() {
     if (message == NULL) continue;
 
     bool decoded = (protocols&PROTOCOL_00592TXR) != 0 && decode00592TXR(message);
+    if (!decoded && (protocols&PROTOCOL_TX7U) != 0) {
+      //uint16_t decodingStatus = message->decodingStatus;
+      //uint16_t decodedBits = message->decodedBits;
+      message->decodingStatus = 0;
+      message->decodedBits = 0;
+      decoded = decodeTX7U(message);
+    }
     if (!decoded && (protocols&PROTOCOL_F007TH) != 0) {
       uint32_t nF007TH;
+      message->decodingStatus = 0;
+      message->decodedBits = 0;
       decoded = decodeF007TH(message, nF007TH);
     }
 
@@ -910,6 +925,158 @@ bool RFReceiver::decode00592TXR(ReceivedData* message) {
 
   message->sensorData.u64 = n00592TXR;
   message->sensorData.fields.protocol = PROTOCOL_00592TXR;
+
+  return true;
+}
+
+/*
+ * Decoding LaCrosse TX6U/TX7U
+ *
+ * zero = 1400us high, 1000 us low
+ * one = 550us high, 1000 us low
+ *
+ * https://web.archive.org/web/20141003000354/http://www.f6fbb.org:80/domo/sensors/tx3_th.php
+ *
+ */
+#define TX7U_LOW_MIN 900
+#define TX7U_LOW_MAX 1100
+#define TX7U_0_MIN 1240
+#define TX7U_0_MAX 1450
+#define TX7U_1_MIN 500
+#define TX7U_1_MAX 650
+
+bool RFReceiver::decodeTX7U(ReceivedData* message) {
+  int iSequenceSize = message->iSequenceSize;
+  if (iSequenceSize < 87) {
+    message->decodingStatus |= 8;
+    return false;
+  }
+
+  int16_t* pSequence = message->pSequence;
+  int16_t item;
+  // skip till sync sequence
+  // 1400,1000,1400,1000,1400,1000,1400,1000
+
+  int dataStartIndex = -1;
+  for ( int index = 0; index<(iSequenceSize-86); index++ ) {
+    // bit[0] == 0
+    item = pSequence[index];
+    if (item<=TX7U_0_MIN || item>=TX7U_0_MAX) continue;
+    item = pSequence[index+1];
+    if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
+
+    // bit[1] == 0
+    item = pSequence[index+2];
+    if (item<=TX7U_0_MIN || item>=TX7U_0_MAX) continue;
+    item = pSequence[index+3];
+    if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
+
+    // bit[2] == 0
+    item = pSequence[index+4];
+    if (item<=TX7U_0_MIN || item>=TX7U_0_MAX) continue;
+    item = pSequence[index+5];
+    if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
+
+    // bit[3] == 0
+    item = pSequence[index+6];
+    if (item<=TX7U_0_MIN || item>=TX7U_0_MAX) continue;
+    item = pSequence[index+7];
+    if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
+
+    // bit[4] == 1
+    item = pSequence[index+8];
+    if (item<=TX7U_1_MIN || item>=TX7U_1_MAX) continue;
+    item = pSequence[index+9];
+    if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
+
+    // bit[5] == 0
+    item = pSequence[index+10];
+    if (item<=TX7U_0_MIN || item>=TX7U_0_MAX) continue;
+    item = pSequence[index+11];
+    if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
+
+    // bit[6] == 1
+    item = pSequence[index+12];
+    if (item<=TX7U_1_MIN || item>=TX7U_1_MAX) continue;
+    item = pSequence[index+13];
+    if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
+
+    // bit[7] == 0
+    item = pSequence[index+14];
+    if (item<=TX7U_0_MIN || item>=TX7U_0_MAX) continue;
+    item = pSequence[index+15];
+    if (item>TX7U_LOW_MIN && item<TX7U_LOW_MAX) {
+      dataStartIndex = index;
+      break;
+    }
+  }
+  if ( dataStartIndex==-1 ) {
+    message->decodingStatus |= 16;
+    return false;
+  }
+
+  // Decoding bits
+
+  Bits bits(44);
+  for ( int index = dataStartIndex; index<86; index+=2 ) {
+
+    item = pSequence[index+1];
+    if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) {
+      message->decodingStatus |= 4;
+      return false;
+    }
+
+    item = pSequence[index];
+    if (item>TX7U_0_MIN && item<TX7U_0_MAX) {
+      bits.addBit(0);
+    } else if (item>TX7U_1_MIN && item<TX7U_1_MAX) {
+      bits.addBit(1);
+    } else {
+      message->decodingStatus |= 4;
+      return false;
+    }
+  }
+  item = pSequence[86];
+  if (item>TX7U_0_MIN && item<TX7U_0_MAX) {
+    bits.addBit(0);
+  } else if (item>TX7U_1_MIN && item<TX7U_1_MAX) {
+    bits.addBit(1);
+  } else {
+    message->decodingStatus |= 4;
+    return false;
+  }
+
+  uint64_t nTX7U = bits.getInt64(0, 44);
+
+  message->sensorData.u64 = nTX7U;
+  message->sensorData.fields.protocol = PROTOCOL_TX7U;
+  message->decodedBits = (uint16_t)bits.getSize();
+
+  if ( (bits.getInt(20,8)&255)!=(bits.getInt(32,8)&255) ) {
+    message->decodingStatus |= 0x0180;
+    return false;
+  }
+
+  // parity check (bit 19)
+  uint32_t n = bits.getInt(8, 32);
+  uint32_t k = 0;
+  for (int i=0; i<8; i++) {
+    k ^= (n&15);
+    n = n>>4;
+  }
+  if ( ((1<<k)&0b0110100110010110)!=0 ) {
+    message->decodingStatus |= 0x0280;
+    return false;
+  }
+
+  unsigned checksum = 0;
+  for (int i = 0; i < 40; i+=4) {
+    checksum += bits.getInt(i, 4);
+  }
+  if (((bits.getInt(40,4)^checksum)&15) != 0) {
+    message->decodingStatus |= 0x0380;
+    return false;
+  }
 
   return true;
 }

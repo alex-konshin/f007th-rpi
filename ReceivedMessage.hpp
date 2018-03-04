@@ -13,6 +13,7 @@
 
 #define PROTOCOL_F007TH    1
 #define PROTOCOL_00592TXR  2
+#define PROTOCOL_TX7U      4
 
 #include "SensorsData.hpp"
 
@@ -49,6 +50,18 @@ class ReceivedMessage {
 private:
   ReceivedData* data;
   time_t data_time;
+
+  int getTX7temperature() {
+    return
+        ((data->sensorData.u32.low >> 20)&15)*100 +
+        ((data->sensorData.u32.low >> 16)&15)*10 +
+        ((data->sensorData.u32.low >> 12)&15);
+  }
+  int getTX7humidity() {
+    return
+        ((data->sensorData.u32.low >> 20)&15)*10 +
+        ((data->sensorData.u32.low >> 16)&15);
+  }
 
 public:
   ReceivedMessage() {
@@ -97,6 +110,7 @@ public:
   const char* getSensorTypeName() {
     if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return "F007TH";
     if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) return "00592TXR";
+    if (data->sensorData.fields.protocol == PROTOCOL_TX7U) return "TX7";
     return "UNKNOWN";
   }
 
@@ -105,6 +119,7 @@ public:
     if (data != __null) {
       if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return (data->sensorData.nF007TH >> 24) & 255;
       if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) return data->sensorData.fields.rolling_code;
+      if (data->sensorData.fields.protocol == PROTOCOL_TX7U) return (data->sensorData.u32.low >> 25);
     }
     return 0;
   }
@@ -156,6 +171,21 @@ public:
     return -1;
   }
 
+  bool hasHumidity() {
+    if (data->sensorData.fields.protocol == PROTOCOL_F007TH || data->sensorData.fields.protocol == PROTOCOL_00592TXR) return true;
+    if (data->sensorData.fields.protocol == PROTOCOL_TX7U) return (data->sensorData.u32.hi&15)==14;
+    return false;
+  }
+  bool hasTemperature() {
+    if (data->sensorData.fields.protocol == PROTOCOL_F007TH || data->sensorData.fields.protocol == PROTOCOL_00592TXR) return true;
+    if (data->sensorData.fields.protocol == PROTOCOL_TX7U) return (data->sensorData.u32.hi&15)==0;
+    return false;
+  }
+  bool hasBatteryStatus() {
+    if (data->sensorData.fields.protocol == PROTOCOL_F007TH || data->sensorData.fields.protocol == PROTOCOL_00592TXR) return true;
+    return false;
+  }
+
   int getTemperatureCx10() {
     if (data != __null) {
       if (data->sensorData.fields.protocol == PROTOCOL_F007TH)
@@ -163,6 +193,11 @@ public:
 
       if (data->sensorData.fields.protocol == PROTOCOL_00592TXR)
         return ((((data->sensorData.fields.t_hi)&127)<<7) | (data->sensorData.fields.t_low&127)) - 1000;
+
+      if (data->sensorData.fields.protocol == PROTOCOL_TX7U) {
+        if (hasTemperature()) return getTX7temperature()-500;
+        //return -2732;
+      }
     }
     return -2732;
   }
@@ -177,6 +212,10 @@ public:
         int c = ((((data->sensorData.fields.t_hi)&127)<<7) | (data->sensorData.fields.t_low&127)) - 1000;
         return (c*9/5)+320;
       }
+      if (data->sensorData.fields.protocol == PROTOCOL_TX7U) {
+        if (hasTemperature()) return ((getTX7temperature()-500)*9/5)+320;
+        //return -4597;
+      }
     }
     return -4597;
   }
@@ -186,6 +225,7 @@ public:
     if (data != __null) {
       if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return data->sensorData.nF007TH&255;
       if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) return data->sensorData.fields.rh & 127;
+      if (data->sensorData.fields.protocol == PROTOCOL_TX7U) return hasHumidity() ? getTX7humidity() : 0;
     }
     return 0;
   }
@@ -240,6 +280,8 @@ public:
           fprintf(file, "  00592TXR data     = %02x %02x %02x %02x %02x %02x %02x\n",
               data->sensorData.fields.channel, data->sensorData.fields.rolling_code, data->sensorData.fields.status, data->sensorData.fields.rh,
               data->sensorData.fields.t_hi, data->sensorData.fields.t_low, data->sensorData.fields.checksum);
+        else if (data->sensorData.fields.protocol == PROTOCOL_TX7U)
+          fprintf(file, "  TX3/TX6/TX7 data  = %03x%08x\n", (data->sensorData.u32.hi&0xfff), data->sensorData.u32.low); //FIXME
       } else {
         fputs(dt, file);
         fputc('\n', file);
@@ -252,25 +294,28 @@ public:
           fprintf(file, "  *** no checksum (error %04x) ***\n", decodingStatus);
       }
 
-      int temperature = (options&OPTION_CELSIUS) != 0 ? getTemperatureCx10() : getTemperatureFx10();
 
       if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) {
         fprintf(file, "  type              = AcuRite 00592TXR\n  channel           = %c\n", getChannel00592TXR());
 
       } else if (data->sensorData.fields.protocol == PROTOCOL_F007TH) {
         fprintf(file, "  type              = Ambient Weather F007TH\n  channel           = %d\n", getChannelF007TH());
+
+      } else if (data->sensorData.fields.protocol == PROTOCOL_TX7U) {
+        fprintf(file, "  type              = LaCrosse TX3/TX6/TX7(%s)\n", hasTemperature()?"temperature":hasHumidity()?"humidity":"unknown");
       }
 
-      fprintf( file,
-        "  rolling code      = %02x\n"\
-        "  temperature       = %d.%c%c\n"\
-        "  humidity          = %d%%\n"\
-        "  battery           = %s\n",
-        getRollingCode(),
-        temperature/10, '0'+(temperature%10), (options&OPTION_CELSIUS) != 0 ? 'C' : 'F',
-        getHumidity(),
-        getBatteryStatus() ? "OK" :"Bad"
-      );
+      fprintf(file, "  rolling code      = %02x\n", getRollingCode());
+      if (hasTemperature()) {
+        int temperature = (options&OPTION_CELSIUS) != 0 ? getTemperatureCx10() : getTemperatureFx10();
+        fprintf(file, "  temperature       = %d.%c%c\n", temperature/10, '0'+((temperature<0?-temperature:temperature)%10), (options&OPTION_CELSIUS) != 0 ? 'C' : 'F');
+      }
+      if (hasHumidity()) {
+        fprintf(file, "  humidity          = %d%%\n", getHumidity());
+      }
+      if (hasBatteryStatus()) {
+        fprintf(file, "  battery           = %s\n", getBatteryStatus() ? "OK" :"Bad");
+      }
 
     } else if (print_undecoded) {
       fputs(dt, file);
@@ -318,24 +363,27 @@ public:
         tm = *localtime(&data_time); // convert time_t to struct tm
         strftime(dt, sizeof dt, "%Y-%m-%d %H:%M:%S %Z", &tm);
       }
-      fprintf( file, "{\"time\":\"%s\",", dt );
+      fprintf( file, "{\"time\":\"%s\"", dt );
 
       if ((decodingStatus & 0xc0) != 0 ) {
-        fputs("\"valid\":false,", file);
+        fputs(",\"valid\":false,", file);
       }
 
-      fprintf( file,
-        "\"channel\":%d,"\
-        "\"rolling_code\":%d,"\
-        "\"temperature\":%d,"\
-        "\"humidity\":%d,"\
-        "\"battery_ok\":%s}\n",
-        getChannel(),
-        getRollingCode(),
-        (options&OPTION_CELSIUS) != 0 ? getTemperatureCx10() : getTemperatureFx10(),
-        getHumidity(),
-        getBatteryStatus() ? "true" :"false"
-      );
+      if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) {
+        fputs(",\"type\":\"AcuRite 00592TXR\"", file);
+      } else if (data->sensorData.fields.protocol == PROTOCOL_F007TH) {
+        fputs(",\"type\":\"Ambient Weather F007TH\"", file);
+      } else if (data->sensorData.fields.protocol == PROTOCOL_TX7U) {
+        fputs(",\"type\":\"LaCrosse TX3/TX6/TX7\"", file);
+      }
+
+      int channel = getChannelNumber();
+      if (channel >= 0) fprintf(file, ",\"channel\":%d", channel);
+      fprintf(file, ",\"rolling_code\":%d", getRollingCode());
+      if (hasTemperature()) fprintf(file, ",\"temperature\":%d", (options&OPTION_CELSIUS) != 0 ? getTemperatureCx10() : getTemperatureFx10());
+      if (hasHumidity()) fprintf(file, ",\"humidity\":%d", getHumidity());
+      if (hasBatteryStatus()) fprintf(file, ",\"battery_ok\":%s", getBatteryStatus() ? "true" :"false" );
+      fputs("}\n", file);
 
     }
 
@@ -349,9 +397,9 @@ public:
         if (data == __null)
           fputs("JSON data was not generated because no data was decoded.\n", stderr);
         else if (buffer == __null)
-          fputs("ERROR: Invalid call json(char*,size_t,bool,bool): buffer is not specified.\n", stderr);
+          fputs("ERROR: Invalid call ReceivedMessage::json(char*,size_t,bool,bool): buffer is not specified.\n", stderr);
         else
-          fprintf(stderr, "ERROR: Invalid call json(char*,size_t,bool,bool): invalid size (%d) of the buffer.\n", (int)buflen);
+          fprintf(stderr, "ERROR: Invalid call of ReceivedMessage::json(char*,size_t,bool,bool): invalid size (%d) of the buffer.\n", (int)buflen);
       }
       return -1;
     }
@@ -373,26 +421,25 @@ public:
     }
 
     int len = snprintf( buffer, buflen,
-      "{\"time\":\"%s\","\
-      "\"valid\":%s,"\
-      "\"channel\":%d,"\
-      "\"rolling_code\":%d,"\
-      "\"temperature\":%d,"\
-      "\"humidity\":%d,"\
-      "\"battery_ok\":%s}\n",
+      "{\"time\":\"%s\",\"type\":\"%s\",\"valid\":%s",
       dt,
-      decodingStatus == 0 ? "true" : "false",
-      getChannel(),
-      getRollingCode(),
-      (options&OPTION_CELSIUS) != 0 ? getTemperatureCx10() : getTemperatureFx10(),
-      getHumidity(),
-      getBatteryStatus() ? "true" :"false"
+      data->sensorData.fields.protocol == PROTOCOL_00592TXR ? "AcuRite 00592TXR" :
+      data->sensorData.fields.protocol == PROTOCOL_F007TH ? "Ambient Weather F007TH" :
+      data->sensorData.fields.protocol == PROTOCOL_TX7U ? "LaCrosse TX3/TX6/TX7" : "unknown",
+      decodingStatus == 0 ? "true" : "false"
     );
+
+    int channel = getChannelNumber();
+    if (channel >= 0) len += snprintf(buffer+len, buflen-len, ",\"channel\":%d", channel);
+    len += snprintf(buffer+len, buflen-len, ",\"rolling_code\":%d", getRollingCode());
+    if (hasTemperature()) len += snprintf(buffer+len, buflen-len, ",\"temperature\":%d", (options&OPTION_CELSIUS) != 0 ? getTemperatureCx10() : getTemperatureFx10());
+    if (hasHumidity()) len += snprintf(buffer+len, buflen-len, ",\"humidity\":%d", getHumidity());
+    if (hasBatteryStatus()) len += snprintf(buffer+len, buflen-len, ",\"battery_ok\":%s", getBatteryStatus() ? "true" :"false");
+    len += snprintf(buffer+len, buflen-len, "\n");
 
     if (verbose) {
       //fprintf(stderr, "JSON data size is %d bytes.\n", len*sizeof(unsigned char));
       fputs(buffer, stderr);
-      fputc('\n', stderr);
     }
 
     return len*sizeof(unsigned char);
@@ -431,7 +478,7 @@ public:
     if ((changed&TEMPERATURE_IS_CHANGED) != 0) {
       int t = (options&OPTION_CELSIUS) != 0 ? getTemperatureCx10() : getTemperatureFx10();
       int tF = t/10;
-      char dF = '0'+(t%10);
+      char dF = '0'+((t<0?-t:t)%10);
       int len = snprintf( output, remain,
         "temperature,%s value=%d.%c\n",
         id, tF, dF
@@ -457,7 +504,7 @@ public:
     }
     len = buflen - remain;
 
-    if (verbose) {
+    if ((options&VERBOSITY_INFO) != 0) {
       //fprintf(stderr, "JSON data size is %d bytes.\n", len*sizeof(unsigned char));
       fputs(buffer, stderr);
       fputc('\n', stderr);
