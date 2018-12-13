@@ -86,7 +86,7 @@ git clone https://github.com/alex-konshin/f007th-rpi.git
 ```
 - Build
 ```
-/bin/sh f007th-rpi/f007th-ts-x86_64/build.sh
+/bin/bash f007th-rpi/f007th-ts-x86_64/build.sh
 ```
 - Executable file `f007th-send` is created in directory `~/bin`.
 

@@ -175,22 +175,30 @@ bool RFReceiver::enableReceive() {
     resetReceiverBuffer();
     initLib();
 
+    unsigned long min_sequence_length = 0;
     max_duration = 0;
     min_duration = 0;
-    if ((protocols & PROTOCOL_TX7U) != 0) {
-      max_duration = MAX_DURATION_TX7U;
-      min_duration = MIN_DURATION_TX7U;
+
+    if (protocols == PROTOCOL_ALL) {
+      min_duration = 50;
+      max_duration = 10000;
+      min_sequence_length = 32;
+    } else {
+      if ((protocols & PROTOCOL_TX7U) != 0) {
+        max_duration = MAX_DURATION_TX7U;
+        min_duration = MIN_DURATION_TX7U;
+      }
+      if ((protocols & PROTOCOL_00592TXR) != 0) {
+        if ( min_duration==0 || min_duration>MIN_DURATION_00592TXR ) min_duration = MIN_DURATION_00592TXR;
+        if ( max_duration==0 || max_duration<MAX_DURATION_00592TXR ) max_duration = MAX_DURATION_00592TXR;
+      }
+      if ((protocols & PROTOCOL_F007TH) != 0) {
+        if ( min_duration==0 || min_duration>MIN_DURATION_F007TH ) min_duration = MIN_DURATION_F007TH;
+        if ( max_duration==0 || max_duration<MAX_DURATION_F007TH ) max_duration = MAX_DURATION_F007TH;
+      }
+      if ( min_duration==0 ) min_duration = MIN_DURATION_00592TXR;
+      if ( max_duration==0 ) max_duration = MAX_DURATION_TX7U;
     }
-    if ((protocols & PROTOCOL_00592TXR) != 0) {
-      if ( min_duration==0 || min_duration>MIN_DURATION_00592TXR ) min_duration = MIN_DURATION_00592TXR;
-      if ( max_duration==0 || max_duration<MAX_DURATION_00592TXR ) max_duration = MAX_DURATION_00592TXR;
-    }
-    if ((protocols & PROTOCOL_F007TH) != 0) {
-      if ( min_duration==0 || min_duration>MIN_DURATION_F007TH ) min_duration = MIN_DURATION_F007TH;
-      if ( max_duration==0 || max_duration<MAX_DURATION_F007TH ) max_duration = MAX_DURATION_F007TH;
-    }
-    if ( min_duration==0 ) min_duration = MIN_DURATION_00592TXR;
-    if ( max_duration==0 ) max_duration = MAX_DURATION_TX7U;
 
 #ifdef USE_GPIO_TS
 
@@ -215,12 +223,12 @@ bool RFReceiver::enableReceive() {
       Log->error("Failed to set minimum duration to %ld.", min_duration);
       exit(2);
     }
-    rc = ioctl(fd, GPIOTS_IOCTL_SET_MIN_SEQ_LEN, MIN_SEQUENCE_LENGTH);
+    if ( min_sequence_length==0 ) min_sequence_length = MIN_SEQUENCE_LENGTH;
+    rc = ioctl(fd, GPIOTS_IOCTL_SET_MIN_SEQ_LEN, min_sequence_length);
     if (rc != 0) {
-      Log->error("Failed to set minimum sequence length to %d.", MIN_SEQUENCE_LENGTH);
+      Log->error("Failed to set minimum sequence length to %d.", min_sequence_length);
       exit(2);
     }
-    ioctl(fd, GPIOTS_IOCTL_SET_MIN_SEQ_LEN, MIN_SEQUENCE_LENGTH);
 
     startDecoder();
 

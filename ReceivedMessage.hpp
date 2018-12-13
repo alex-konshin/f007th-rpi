@@ -14,6 +14,7 @@
 #define PROTOCOL_F007TH    1
 #define PROTOCOL_00592TXR  2
 #define PROTOCOL_TX7U      4
+#define PROTOCOL_ALL       (unsigned)(-1)
 
 #include "SensorsData.hpp"
 
@@ -189,10 +190,10 @@ public:
   int getTemperatureCx10() {
     if (data != __null) {
       if (data->sensorData.fields.protocol == PROTOCOL_F007TH)
-        return (((data->sensorData.nF007TH>>8)&4095)-720) * 5 / 9;
+        return (int)(((data->sensorData.nF007TH>>8)&4095)-720) * 5 / 9;
 
       if (data->sensorData.fields.protocol == PROTOCOL_00592TXR)
-        return ((((data->sensorData.fields.t_hi)&127)<<7) | (data->sensorData.fields.t_low&127)) - 1000;
+        return (int)((((data->sensorData.fields.t_hi)&127)<<7) | (data->sensorData.fields.t_low&127)) - 1000;
 
       if (data->sensorData.fields.protocol == PROTOCOL_TX7U) {
         if (hasTemperature()) return getTX7temperature()-500;
@@ -206,10 +207,10 @@ public:
   int getTemperatureFx10() {
     if (data != __null) {
       if (data->sensorData.fields.protocol == PROTOCOL_F007TH)
-        return ((data->sensorData.nF007TH>>8)&4095)-400;
+        return (int)((data->sensorData.nF007TH>>8)&4095)-400;
 
       if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) {
-        int c = ((((data->sensorData.fields.t_hi)&127)<<7) | (data->sensorData.fields.t_low&127)) - 1000;
+        int c = (int)((((data->sensorData.fields.t_hi)&127)<<7) | (data->sensorData.fields.t_low&127)) - 1000;
         return (c*9/5)+320;
       }
       if (data->sensorData.fields.protocol == PROTOCOL_TX7U) {
