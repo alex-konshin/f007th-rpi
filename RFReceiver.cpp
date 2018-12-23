@@ -175,6 +175,8 @@ bool RFReceiver::enableReceive() {
     resetReceiverBuffer();
     initLib();
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
     unsigned long min_sequence_length = 0;
     max_duration = 0;
     min_duration = 0;
@@ -196,9 +198,16 @@ bool RFReceiver::enableReceive() {
         if ( min_duration==0 || min_duration>MIN_DURATION_F007TH ) min_duration = MIN_DURATION_F007TH;
         if ( max_duration==0 || max_duration<MAX_DURATION_F007TH ) max_duration = MAX_DURATION_F007TH;
       }
+      if ((protocols & PROTOCOL_HG02832) != 0) {
+        if ( min_duration==0 || min_duration>MIN_DURATION_HG02832 ) min_duration = MIN_DURATION_HG02832;
+        if ( max_duration==0 || max_duration<MAX_DURATION_HG02832 ) max_duration = MAX_DURATION_HG02832;
+        if ( min_sequence_length==0 || min_sequence_length>MIN_SEQUENCE_HG02832 ) min_sequence_length = MIN_SEQUENCE_HG02832;
+      }
       if ( min_duration==0 ) min_duration = MIN_DURATION_00592TXR;
       if ( max_duration==0 ) max_duration = MAX_DURATION_TX7U;
     }
+    if ( min_sequence_length==0 ) min_sequence_length = MIN_SEQUENCE_LENGTH;
+#pragma GCC diagnostic pop
 
 #ifdef USE_GPIO_TS
 
@@ -223,7 +232,6 @@ bool RFReceiver::enableReceive() {
       Log->error("Failed to set minimum duration to %ld.", min_duration);
       exit(2);
     }
-    if ( min_sequence_length==0 ) min_sequence_length = MIN_SEQUENCE_LENGTH;
     rc = ioctl(fd, GPIOTS_IOCTL_SET_MIN_SEQ_LEN, min_sequence_length);
     if (rc != 0) {
       Log->error("Failed to set minimum sequence length to %d.", min_sequence_length);
@@ -636,6 +644,11 @@ void RFReceiver::decoder() {
       message->decodingStatus = 0;
       message->decodedBits = 0;
       decoded = decodeTX7U(message);
+    }
+    if (!decoded && (protocols&PROTOCOL_HG02832) != 0) {
+      message->decodingStatus = 0;
+      message->decodedBits = 0;
+      decoded = decodeHG02832(message);
     }
     if (!decoded && (protocols&PROTOCOL_F007TH) != 0) {
       uint32_t nF007TH;
@@ -1086,6 +1099,94 @@ bool RFReceiver::decodeTX7U(ReceivedData* message) {
     return false;
   }
 
+  return true;
+}
+
+/*
+ * Decoding Auriol HG02832 (IAN 283582)
+ *
+ */
+bool RFReceiver::decodeHG02832(ReceivedData* message) {
+  int iSequenceSize = message->iSequenceSize;
+  if (iSequenceSize < 87) {
+    message->decodingStatus |= 8;
+    return false;
+  }
+
+  int16_t* pSequence = message->pSequence;
+  int16_t item;
+
+  // skip and check preamble
+  int dataStartIndex = -1;
+  for ( int preambleIndex = 0; preambleIndex<=(iSequenceSize-87); preambleIndex++ ) {
+
+    item = pSequence[preambleIndex];
+    if (item<=300 || item>=450) continue;
+
+    item = pSequence[preambleIndex+1];
+    if (item<=700 || item>=850) continue;
+    item = pSequence[preambleIndex+2];
+    if (item<=850 || item>=MAX_DURATION_HG02832) continue;
+    item = pSequence[preambleIndex+3];
+    if (item<=700 || item>=850) continue;
+    item = pSequence[preambleIndex+4];
+    if (item<=850 || item>=MAX_DURATION_HG02832) continue;
+    item = pSequence[preambleIndex+5];
+    if (item<=700 || item>=850) continue;
+    item = pSequence[preambleIndex+6];
+    if (item<=850 || item>=MAX_DURATION_HG02832) continue;
+    item = pSequence[preambleIndex+7];
+    if (item>700 && item<850) {
+      dataStartIndex = preambleIndex+8;
+      break;
+    }
+  }
+  if ( dataStartIndex==-1 ) {
+    message->decodingStatus |= 16;
+    return false;
+  }
+
+  // Decoding bits
+
+  int n;
+  Bits bits(40);
+  for ( int index = dataStartIndex; index<87; index+=2 ) {
+    item = pSequence[index];
+    if ( n<MIN_DURATION_HG02832 || n>700 ) {
+      message->decodingStatus |= 4;
+      return false;
+    }
+    if ( index+1<iSequenceSize ) {
+      n = pSequence[index+1];
+      if ( n<150 || n>700 ) {
+        message->decodingStatus |= 4;
+        return false;
+      }
+      n += item;
+      if ( n<800 || n>900 ) {
+        message->decodingStatus |= 4;
+        return false;
+      }
+    }
+    bits.addBit(item>400);
+  }
+
+  uint64_t data = bits.getInt64(0, 32);
+
+  message->sensorData.u64 = data;
+  message->sensorData.fields.protocol = PROTOCOL_HG02832;
+  message->decodedBits = (uint16_t)bits.getSize();
+
+/* FIXME checksum calculation algorithm is unknown yet
+  unsigned checksum = 0;
+  for (int i = 0; i < 40; i+=4) {
+    checksum += bits.getInt(i, 4);
+  }
+  if (((bits.getInt(40,4)^checksum)&15) != 0) {
+    message->decodingStatus |= 0x0380;
+    return false;
+  }
+*/
   return true;
 }
 

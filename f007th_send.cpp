@@ -68,7 +68,7 @@ int main(int argc, char *argv[]) {
   bool tz_set = false;
   bool type_is_set = false;
 
-  const char* short_options = "g:s:Al:vVt:TCULd706D";
+  const char* short_options = "g:s:Al:vVt:TCULd7068D";
   const struct option long_options[] = {
       { "gpio", required_argument, NULL, 'g' },
       { "send-to", required_argument, NULL, 's' },
@@ -85,6 +85,7 @@ int main(int argc, char *argv[]) {
       { "f007th", no_argument, NULL, '7' },
       { "00592txr", no_argument, NULL, '0' },
       { "tx6", no_argument, NULL, '6' },
+      { "hg02832", no_argument, NULL, '8' },
       { "DEBUG", no_argument, NULL, 'D' },
       { NULL, 0, NULL, 0 }
   };
@@ -182,6 +183,9 @@ int main(int argc, char *argv[]) {
       break;
     case '7': // Ambient Weather F007TH
       protocols |= PROTOCOL_F007TH;
+      break;
+    case '8': // Auriol HG02832
+      protocols |= PROTOCOL_HG02832;
       break;
     case 'D': // debug receiving
       protocols |= PROTOCOL_ALL;

@@ -75,8 +75,8 @@ public:
     return index<0 || index>=size ? __null : &items[index];
   }
 
-  SensorData* getData(uint8_t protocol, int channel, int rolling_code = -1) {
-    if (protocol != PROTOCOL_F007TH && protocol != PROTOCOL_00592TXR) return __null;
+  SensorData* getData(uint8_t protocol, int channel, uint8_t rolling_code = -1) {
+    if ((protocol&(PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_HG02832)) == 0) return __null;
     if (channel < 1 || channel > 8) return 0;
     if (rolling_code > 255 || (rolling_code < 0 && rolling_code != -1)) return __null;
 
@@ -99,6 +99,13 @@ public:
         if (p->fields.protocol != PROTOCOL_00592TXR) continue;
         if (rolling_code != -1 && p->fields.rolling_code != rolling_code) continue;
         if (p->fields.channel == channel) return p;
+      }
+    } else if (protocol == PROTOCOL_HG02832) {
+      for (int index = 0; index<size; index++) {
+        SensorData* p = &items[index];
+        if (p->fields.protocol != PROTOCOL_HG02832) continue;
+        if (rolling_code != -1 && (p->u32.low>>24) != rolling_code) continue;
+        if (((p->u32.low>>12)&3)+1 == (uint8_t)channel) return p;
       }
     }
     return __null;
@@ -172,6 +179,28 @@ public:
       }
       add(sensorData);
       return type == 0 ? TEMPERATURE_IS_CHANGED | NEW_UID : type == 14 ? HUMIDITY_IS_CHANGED | NEW_UID : NEW_UID;
+    }
+
+    if (sensorData->fields.protocol == PROTOCOL_HG02832) {
+      uint32_t new_w = sensorData->u32.low;
+
+      for (int index = 0; index<size; index++) {
+        SensorData* p = &items[index];
+        uint32_t w;
+        if (p->fields.protocol != PROTOCOL_HG02832) continue;
+        w = p->u32.low;
+        if (w == new_w) return 0; // nothing has changed
+        if (((w^new_w)&0xff003000) == 0) { // compare rolling code and channel
+          int result = 0;
+          if (((w^new_w)&0x00000fff) != 0) result |= TEMPERATURE_IS_CHANGED;
+          if (((w^new_w)&0x00ff0000) != 0) result |= HUMIDITY_IS_CHANGED;
+          if (((w^new_w)&0x00008000) != 0) result |= BATTERY_STATUS_IS_CHANGED;
+          if (result != 0) p->u64 = sensorData->u64;
+          return result;
+        }
+      }
+      add(sensorData);
+      return TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED | NEW_UID;
     }
 
     return 0;

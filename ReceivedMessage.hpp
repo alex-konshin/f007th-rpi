@@ -14,6 +14,7 @@
 #define PROTOCOL_F007TH    1
 #define PROTOCOL_00592TXR  2
 #define PROTOCOL_TX7U      4
+#define PROTOCOL_HG02832   8
 #define PROTOCOL_ALL       (unsigned)(-1)
 
 #include "SensorsData.hpp"
@@ -112,6 +113,7 @@ public:
     if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return "F007TH";
     if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) return "00592TXR";
     if (data->sensorData.fields.protocol == PROTOCOL_TX7U) return "TX7";
+    if (data->sensorData.fields.protocol == PROTOCOL_HG02832) return "HG02832";
     return "UNKNOWN";
   }
 
@@ -121,6 +123,7 @@ public:
       if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return (data->sensorData.nF007TH >> 24) & 255;
       if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) return data->sensorData.fields.rolling_code;
       if (data->sensorData.fields.protocol == PROTOCOL_TX7U) return (data->sensorData.u32.low >> 25);
+      if (data->sensorData.fields.protocol == PROTOCOL_HG02832) return (data->sensorData.u32.low >> 24);
     }
     return 0;
   }
@@ -130,6 +133,7 @@ public:
     if (data != __null) {
       if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return (data->sensorData.nF007TH&0x00800000) == 0;
       if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) return data->sensorData.fields.status==0x44;
+      if (data->sensorData.fields.protocol == PROTOCOL_HG02832) return (data->sensorData.u32.low&0x00008000) == 0;
     }
     return false;
   }
@@ -151,10 +155,14 @@ public:
     }
     return '?';
   }
+  int getChannelHG02832() {
+    return data == __null ? -1 : ((data->sensorData.u32.low>>12)&3)+1;
+  }
   int getChannel() {
     if (data != __null) {
       if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return ((data->sensorData.nF007TH>>20)&7)+1;
       if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) return ((data->sensorData.fields.channel>>6)&3)^3;
+      if (data->sensorData.fields.protocol == PROTOCOL_HG02832) return ((data->sensorData.u32.low>>12)&3)+1;
     }
     return -1;
   }
@@ -168,22 +176,23 @@ public:
         case 0: return 3;
         }
       }
+      if (data->sensorData.fields.protocol == PROTOCOL_HG02832) return ((data->sensorData.u32.low>>12)&3)+1;
     }
     return -1;
   }
 
   bool hasHumidity() {
-    if (data->sensorData.fields.protocol == PROTOCOL_F007TH || data->sensorData.fields.protocol == PROTOCOL_00592TXR) return true;
+    if ((data->sensorData.fields.protocol&(PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_HG02832)) != 0) return true;
     if (data->sensorData.fields.protocol == PROTOCOL_TX7U) return (data->sensorData.u32.hi&15)==14;
     return false;
   }
   bool hasTemperature() {
-    if (data->sensorData.fields.protocol == PROTOCOL_F007TH || data->sensorData.fields.protocol == PROTOCOL_00592TXR) return true;
+    if ((data->sensorData.fields.protocol&(PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_HG02832)) != 0) return true;
     if (data->sensorData.fields.protocol == PROTOCOL_TX7U) return (data->sensorData.u32.hi&15)==0;
     return false;
   }
   bool hasBatteryStatus() {
-    if (data->sensorData.fields.protocol == PROTOCOL_F007TH || data->sensorData.fields.protocol == PROTOCOL_00592TXR) return true;
+    if ((data->sensorData.fields.protocol&(PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_HG02832)) != 0) return true;
     return false;
   }
 
@@ -194,6 +203,12 @@ public:
 
       if (data->sensorData.fields.protocol == PROTOCOL_00592TXR)
         return (int)((((data->sensorData.fields.t_hi)&127)<<7) | (data->sensorData.fields.t_low&127)) - 1000;
+
+      if (data->sensorData.fields.protocol == PROTOCOL_HG02832) {
+        int result = (int)((data->sensorData.u32.low)&0x0fff);
+        if ((result&0x0800) != 0) result |= 0xfffff000;
+        return result;
+      }
 
       if (data->sensorData.fields.protocol == PROTOCOL_TX7U) {
         if (hasTemperature()) return getTX7temperature()-500;
@@ -213,6 +228,9 @@ public:
         int c = (int)((((data->sensorData.fields.t_hi)&127)<<7) | (data->sensorData.fields.t_low&127)) - 1000;
         return (c*9/5)+320;
       }
+      if (data->sensorData.fields.protocol == PROTOCOL_HG02832) {
+        return (getTemperatureCx10()*9/5)+320;
+      }
       if (data->sensorData.fields.protocol == PROTOCOL_TX7U) {
         if (hasTemperature()) return ((getTX7temperature()-500)*9/5)+320;
         //return -4597;
@@ -227,6 +245,7 @@ public:
       if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return data->sensorData.nF007TH&255;
       if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) return data->sensorData.fields.rh & 127;
       if (data->sensorData.fields.protocol == PROTOCOL_TX7U) return hasHumidity() ? getTX7humidity() : 0;
+      if (data->sensorData.fields.protocol == PROTOCOL_HG02832) return (data->sensorData.u32.low>>16) & 255;
     }
     return 0;
   }
@@ -283,6 +302,8 @@ public:
               data->sensorData.fields.t_hi, data->sensorData.fields.t_low, data->sensorData.fields.checksum);
         else if (data->sensorData.fields.protocol == PROTOCOL_TX7U)
           fprintf(file, "  TX3/TX6/TX7 data  = %03x%08x\n", (data->sensorData.u32.hi&0xfff), data->sensorData.u32.low); //FIXME
+        else if (data->sensorData.fields.protocol == PROTOCOL_HG02832)
+          fprintf(file, "  HG02832 data  = %08x\n", data->sensorData.u32.low);
       } else {
         fputs(dt, file);
         fputc('\n', file);
@@ -304,6 +325,9 @@ public:
 
       } else if (data->sensorData.fields.protocol == PROTOCOL_TX7U) {
         fprintf(file, "  type              = LaCrosse TX3/TX6/TX7(%s)\n", hasTemperature()?"temperature":hasHumidity()?"humidity":"unknown");
+
+      } else if (data->sensorData.fields.protocol == PROTOCOL_HG02832) {
+        fprintf(file, "  type              = Auriol HG02832 (IAN 283582)\n  channel           = %d\n", getChannelHG02832());
       }
 
       fprintf(file, "  rolling code      = %02x\n", getRollingCode());
@@ -376,6 +400,8 @@ public:
         fputs(",\"type\":\"Ambient Weather F007TH\"", file);
       } else if (data->sensorData.fields.protocol == PROTOCOL_TX7U) {
         fputs(",\"type\":\"LaCrosse TX3/TX6/TX7\"", file);
+      } else if (data->sensorData.fields.protocol == PROTOCOL_HG02832) {
+        fputs(",\"type\":\"Auriol HG02832 (IAN 283582)\"", file);
       }
 
       int channel = getChannelNumber();
@@ -426,6 +452,7 @@ public:
       dt,
       data->sensorData.fields.protocol == PROTOCOL_00592TXR ? "AcuRite 00592TXR" :
       data->sensorData.fields.protocol == PROTOCOL_F007TH ? "Ambient Weather F007TH" :
+      data->sensorData.fields.protocol == PROTOCOL_HG02832 ? "Auriol HG02832 (IAN 283582)" :
       data->sensorData.fields.protocol == PROTOCOL_TX7U ? "LaCrosse TX3/TX6/TX7" : "unknown",
       decodingStatus == 0 ? "true" : "false"
     );

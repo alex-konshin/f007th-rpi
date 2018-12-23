@@ -27,7 +27,7 @@
 #include <pigpio.h>
 #endif
 
-#define RF_RECEIVER_VERSION "2.0"
+#define RF_RECEIVER_VERSION "2.1"
 
 #include "Logger.hpp"
 #include "Bits.hpp"
@@ -53,6 +53,11 @@
 // LaCrosse TX-6U/TX-7U
 #define MIN_DURATION_TX7U 500
 #define MAX_DURATION_TX7U 1450
+
+// Auriol HG02832
+#define MIN_DURATION_HG02832 150
+#define MAX_DURATION_HG02832 1000
+#define MIN_SEQUENCE_HG02832 87
 
 // Noise filter
 #define IGNORABLE_SKIP 60
@@ -116,6 +121,7 @@ public:
   bool decodeF007TH(ReceivedData* message, uint32_t& nF007TH);
   bool decode00592TXR(ReceivedData* message);
   bool decodeTX7U(ReceivedData* message);
+  bool decodeHG02832(ReceivedData* message);
 
   void setProtocols(unsigned protocols);
 
