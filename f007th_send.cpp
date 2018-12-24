@@ -24,8 +24,13 @@ static bool send(ReceivedMessage& message, const char* url, ServerType server_ty
 
 static void help() {
   fputs(
+#ifndef TEST_DECODING
+    "(c) 2018 Alex Konshin\n"\
+    "Test decoding of received data for f007th* utilities.\n\n"
+#else
     "(c) 2017-2018 Alex Konshin\n"\
-    "Receive data from sensors Ambient Weather F007TH then print it to stdout or send it to remote server via REST API.\n\n"\
+    "Receive data from thermometers then print it to stdout or send it to remote server via REST API.\n\n"
+#endif
     "--gpio, -g\n"\
     "    Value is GPIO pin number (default is "DEFAULT_PIN_STR") as defined on page http://abyz.co.uk/rpi/pigpio/index.html\n"\
     "--celsius, -C\n"\
@@ -41,7 +46,11 @@ static void help() {
     "--all, -A\n"\
     "    Send all data. Only changed and valid data is sent by default.\n"\
     "--log-file, -l\n"\
-    "    Parameter is a path to log file.\n"\
+    "    Parameter is a path to log file.\n"
+#ifndef TEST_DECODING
+    "--input-log, -I\n"\
+    "    Parameter is a path to input log file to be processed.\n"
+#endif
     "--verbose, -v\n"\
     "    Verbose output.\n"\
     "--more_verbose, -V\n"\
@@ -68,7 +77,13 @@ int main(int argc, char *argv[]) {
   bool tz_set = false;
   bool type_is_set = false;
 
+#ifdef TEST_DECODING
+  const char* input_log_file_path = NULL;
+
+  const char* short_options = "g:s:Al:vVt:TCULd7068DI:";
+#else
   const char* short_options = "g:s:Al:vVt:TCULd7068D";
+#endif
   const struct option long_options[] = {
       { "gpio", required_argument, NULL, 'g' },
       { "send-to", required_argument, NULL, 's' },
@@ -87,6 +102,9 @@ int main(int argc, char *argv[]) {
       { "tx6", no_argument, NULL, '6' },
       { "hg02832", no_argument, NULL, '8' },
       { "DEBUG", no_argument, NULL, 'D' },
+#ifdef TEST_DECODING
+      { "input-log", required_argument, NULL, 'I' },
+#endif
       { NULL, 0, NULL, 0 }
   };
 
@@ -117,6 +135,12 @@ int main(int argc, char *argv[]) {
     case 'l':
       log_file_path = optarg;
       break;
+
+#ifdef TEST_DECODING
+    case 'I':
+      input_log_file_path = optarg;
+      break;
+#endif
 
     case 's':
       server_url = optarg;
@@ -219,9 +243,19 @@ int main(int argc, char *argv[]) {
       help();
     }
   }
+#ifdef TEST_DECODING
+  if (input_log_file_path == NULL) {
+    fputs("ERROR: Input log file must be specified (option --input-log or -I).\n", stderr);
+    exit(1);
+  }
+#endif
 
   if (log_file_path == NULL || log_file_path[0]=='\0') {
+#ifdef TEST_DECODING
+    log_file_path = "f007th-test-decoding.log";
+#else
     log_file_path = "f007th-send.log";
+#endif
   }
 
   FILE* log = fopen(log_file_path, "w+");
@@ -239,6 +273,9 @@ int main(int argc, char *argv[]) {
 
   RFReceiver receiver(gpio);
   Log->setLogFile(log);
+#ifdef TEST_DECODING
+  receiver.setInputLogFile(input_log_file_path);
+#endif
 
   if (protocols != 0) receiver.setProtocols(protocols);
 

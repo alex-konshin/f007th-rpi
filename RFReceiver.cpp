@@ -11,13 +11,16 @@ RFReceiver* RFReceiver::first = NULL;
 
 RFReceiver::RFReceiver(int gpio) {
   this->gpio = gpio;
-  protocols = PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_TX7U;
+  protocols = PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_TX7U|PROTOCOL_HG02832;
   isEnabled = false;
   isDecoderStarted = false;
   stopDecoder = false;
   stopMessageReader = false;
   stopped = false;
-#ifdef USE_GPIO_TS
+#ifdef TEST_DECODING
+  inputLogFilePath = NULL;
+  inputLogFileStream = NULL;
+#elif defined(USE_GPIO_TS)
   fd = -1;
 #else
   interrupted = 0;
@@ -54,7 +57,13 @@ void RFReceiver::setProtocols(unsigned protocols) {
 }
 
 void RFReceiver::initLib() {
-#ifdef USE_GPIO_TS
+#ifdef TEST_DECODING
+  if (!isLibInitialized) {
+    isLibInitialized = true;
+    signal((int) SIGINT, signalHandler);
+    signal((int) SIGUSR1, signalHandler);
+  }
+#elif defined(USE_GPIO_TS)
   if (!isLibInitialized) {
     Log->log("RFReceiver " RF_RECEIVER_VERSION " (with gpio-ts kernel module).");
     if( access( "/sys/class/gpio-ts", F_OK|R_OK|X_OK ) == -1 ) {
@@ -84,7 +93,7 @@ void RFReceiver::initLib() {
 
 void RFReceiver::closeLib() {
   if (isLibInitialized) {
-#ifndef USE_GPIO_TS
+#if !defined(USE_GPIO_TS) && !defined(TEST_DECODING)
     gpioTerminate();
 #endif
     isLibInitialized = false;
@@ -102,7 +111,7 @@ void RFReceiver::closeAll() {
   closeLib();
 }
 
-#ifdef USE_GPIO_TS
+#if defined(USE_GPIO_TS)||defined(TEST_DECODING)
 void RFReceiver::signalHandler(int signum) {
 
   switch(signum) {
@@ -154,6 +163,13 @@ void RFReceiver::processCtrlBreak(int signum, void *userdata) {
 
 void RFReceiver::close() {
   disableReceive();
+
+#ifdef TEST_DECODING
+  if (inputLogFileStream != NULL) {
+    fclose(inputLogFileStream);
+    inputLogFileStream = NULL;
+  }
+#endif
 
   // TODO use atomic CAS
   RFReceiver** pp = &first;
@@ -209,7 +225,10 @@ bool RFReceiver::enableReceive() {
     if ( min_sequence_length==0 ) min_sequence_length = MIN_SEQUENCE_LENGTH;
 #pragma GCC diagnostic pop
 
-#ifdef USE_GPIO_TS
+#ifdef TEST_DECODING
+    startDecoder();
+
+#elif defined(USE_GPIO_TS)
 
     char filepath[40];
 //    sprintf(filepath, "/sys/class/gpio-ts/gpiots%d", gpio);
@@ -258,7 +277,10 @@ bool RFReceiver::enableReceive() {
 
 void RFReceiver::disableReceive() {
   if (isEnabled) {
-#ifdef USE_GPIO_TS
+#ifdef TEST_DECODING
+    // do nothing for now
+
+#elif defined(USE_GPIO_TS)
     int fd = this->fd;
     fd = -1;
     if (fd != -1) {
@@ -313,10 +335,138 @@ void RFReceiver::resetReceiverBuffer() {
   lastLevel = -1;
 }
 
-#ifdef USE_GPIO_TS
+#ifdef TEST_DECODING
+
+void RFReceiver::setInputLogFile(const char* inputLogFilePath) {
+  if (inputLogFilePath == NULL) {
+    Log->error("Input log file is not specified.");
+    exit(1);
+  }
+  inputLogFileStream = fopen(inputLogFilePath, "r");
+  if (inputLogFileStream == NULL) {
+    Log->error("Cannot open input log file \"%s\".", inputLogFilePath);
+    exit(1);
+  }
+  this->inputLogFilePath = inputLogFilePath;
+}
+
+static int16_t readInt(const char*& p) {
+  int16_t n = 0;
+
+  char ch;
+  while ((ch=*p)==' ') p++;
+
+  if (ch=='\0' || ch=='\n') return -1;
+
+  do {
+    n = n*10+(ch-'0');
+    ch = *++p;
+  } while (ch>='0' && ch<='9');
+
+  if (ch==',') p++;
+  return n;
+}
+
+
+int RFReceiver::readSequences() {
+  char* line = NULL;
+  size_t bufsize = 0;
+  ssize_t bytesread;
+  while (!stopDecoder && inputLogFileStream != NULL && iSequenceReady == iSequenceWrite ) {
+    usleep(500000);
+    while ((bytesread = getline(&line, &bufsize, inputLogFileStream)) != -1) {
+      size_t len = strlen(line);
+      if (len<46 || strncmp(line+23," sequence size=",15)!=0) continue;
+
+      const char* p = line+38;
+      while (*p!=' ' && *p!='\0' && *p!='\n') p++;
+      if (*p!=' ') continue;
+
+      Log->info("input: %s", p);
+
+      int16_t duration;
+      while ((duration=readInt(p)) != -1) {
+        int nextIndex = (iPoolWrite+1)&(POOL_SIZE-1);
+
+        if (iPoolRead != nextIndex) { // checking free space in pool
+          pool[iPoolWrite] = duration;
+          iPoolWrite = nextIndex;
+          if (++iCurrentSequenceSize < MAX_SEQUENCE_LENGTH) continue; // done with updating the current sequence
+          // the current sequence is already too long
+        }
+      }
+      //DBG("readSequences() => iCurrentSequenceSize=%d iPoolRead=%d iPoolWrite=%d", iCurrentSequenceSize, iPoolRead, iPoolWrite );
+
+      // End of sequence
+      if (iCurrentSequenceSize == 0) continue;
+
+      if (iCurrentSequenceSize<MIN_SEQUENCE_LENGTH) {
+        //DBG("readSequences() => dropped");
+/* debug
+        for (int i = 0; i < n_items; i++) {
+          uint32_t item = buffer[i];
+          uint32_t duration = item_to_duration(item);
+          status = item_to_status(item);
+          if (i > 0) fputs(", ", stdout);
+          if (duration == GPIO_TS_MAX_DURATION) {
+              printf("%d:MAX", status);
+          } else {
+              printf("%d:%u", status, duration);
+          }
+        }
+        putchar('\n');
+*/
+
+        // drop the current sequence because it is too short
+        dropped++;
+        iPoolWrite = iCurrentSequenceStart;
+
+      } else {
+        int nextSequenceIndex = (iSequenceWrite + 1)&(MAX_CHAINS-1);
+
+        if (iSequenceReady == nextSequenceIndex) {
+          //DBG("readSequences() => sequence_pool_overflow %d", sequence_pool_overflow);
+          // overflow
+          sequence_pool_overflow++;
+          return 1;
+        }
+
+        // Put new sequence into queue
+
+        iSequenceSize[iSequenceWrite] = (int16_t)iCurrentSequenceSize;
+        iSequenceStart[iSequenceWrite] = (int16_t)iCurrentSequenceStart;
+        uSequenceStartTime[iSequenceWrite] = uCurrentSequenceStartTime;
+
+        iSequenceWrite = nextSequenceIndex;
+
+        iCurrentSequenceStart = iPoolWrite;
+        sequences++;
+        //DBG("readSequences() => put sequence in queue sequences=%d", sequences);
+      }
+
+      iCurrentSequenceSize = 0;
+      break;
+    }
+
+    if (bytesread == -1) {
+      if (inputLogFileStream != NULL) {
+        fclose(inputLogFileStream);
+        inputLogFileStream = NULL;
+      }
+      Log->info("Finished reading input log file.");
+      break;
+    }
+
+  }
+
+  if (line != NULL) free(line);
+
+  return 1;
+}
+
+#elif defined(USE_GPIO_TS)
 
 #define N_ITEMS 512
-
 
 // returns: 1 - sequence is ready, 0 - timeout, (-1) - error reading
 int RFReceiver::readSequences() {
@@ -610,7 +760,7 @@ void RFReceiver::startDecoder() {
 void RFReceiver::decoder() {
   Log->log("Decoder thread has been started.\n");
   while (!stopDecoder) {
-#ifdef USE_GPIO_TS
+#if defined(USE_GPIO_TS) || defined(TEST_DECODING)
 
     if (iSequenceReady == iSequenceWrite) {
       int rc = readSequences();
@@ -1107,6 +1257,7 @@ bool RFReceiver::decodeTX7U(ReceivedData* message) {
  *
  */
 bool RFReceiver::decodeHG02832(ReceivedData* message) {
+
   int iSequenceSize = message->iSequenceSize;
   if (iSequenceSize < 87) {
     message->decodingStatus |= 8;
@@ -1146,24 +1297,28 @@ bool RFReceiver::decodeHG02832(ReceivedData* message) {
     return false;
   }
 
+  //DBG("decodeHG02832() after preamble");
   // Decoding bits
 
   int n;
   Bits bits(40);
   for ( int index = dataStartIndex; index<87; index+=2 ) {
     item = pSequence[index];
-    if ( n<MIN_DURATION_HG02832 || n>700 ) {
+    if ( item<MIN_DURATION_HG02832 || item>700 ) {
+      //DBG("decodeHG02832() pSequence[%d]=%d => (n<%d || n>700)",index,item,MIN_DURATION_HG02832);
       message->decodingStatus |= 4;
       return false;
     }
     if ( index+1<iSequenceSize ) {
       n = pSequence[index+1];
       if ( n<150 || n>700 ) {
+        //DBG("decodeHG02832() pSequence[%d]=%d => (n<150 || n>700)",index+1,n);
         message->decodingStatus |= 4;
         return false;
       }
       n += item;
-      if ( n<800 || n>900 ) {
+      if ( n<750 || n>950 ) {
+        //DBG("decodeHG02832() pair sum=%d => (n<800 || n>900)",n);
         message->decodingStatus |= 4;
         return false;
       }
@@ -1279,8 +1434,9 @@ void RFReceiver::setTimer(uint32_t millis) {
     initLib();
   }
   uCurrentStatisticsTimer = millis;
-#ifdef USE_GPIO_TS
+#ifdef TEST_DECODING
 
+#elif defined(USE_GPIO_TS)
     //TODO
 
 #else
@@ -1306,16 +1462,22 @@ void RFReceiver::printStatisticsPeriodically(uint32_t millis) {
 }
 
 void RFReceiver::printStatistics() {
-#ifdef USE_GPIO_TS
+#ifdef TEST_DECODING
+  Log->info("statistics(%d): sequences=%ld dropped=%ld overflow=%ld\n",
+      gpio, sequences, dropped, sequence_pool_overflow);
+
+#elif defined(USE_GPIO_TS)
   Log->info("statistics(%d): sequences=%ld dropped=%ld overflow=%ld\n",
       gpio, sequences, dropped, sequence_pool_overflow);
 #else
-    printf("statistics: sequences=%d skipped=%d dropped=%d corrected=%d overflow=%d\n",
-        sequences, skipped, dropped, corrected, sequence_pool_overflow);
+  printf("statistics: sequences=%d skipped=%d dropped=%d corrected=%d overflow=%d\n",
+      sequences, skipped, dropped, corrected, sequence_pool_overflow);
 #endif
 }
 void RFReceiver::printDebugStatistics() {
-#ifdef USE_GPIO_TS
+#ifdef TEST_DECODING
+
+#elif defined(USE_GPIO_TS)
   long irq_data_overflow_counter = ioctl(fd, GPIOTS_IOCTL_GET_IRQ_OVERFLOW_CNT);
   long buffer_overflow_counter = ioctl(fd, GPIOTS_IOCTL_GET_BUF_OVERFLOW_CNT);
   long isr_counter = ioctl(fd, GPIOTS_IOCTL_GET_ISR_CNT);
@@ -1323,8 +1485,8 @@ void RFReceiver::printDebugStatistics() {
   Log->info("statistics(%d): sequences=%ld dropped=%ld overflow=%ld irq_data_overflow_counter=%ld buffer_overflow_counter=%ld isr_counter=%ld\n",
       gpio, sequences, dropped, sequence_pool_overflow, irq_data_overflow_counter, buffer_overflow_counter, isr_counter);
 #else
-    printf("statistics: interrupted=%d sequences=%d skipped=%d dropped=%d corrected=%d overflow=%d\n",
-        interrupted, sequences, skipped, dropped, corrected, sequence_pool_overflow);
+  printf("statistics: interrupted=%d sequences=%d skipped=%d dropped=%d corrected=%d overflow=%d\n",
+      interrupted, sequences, skipped, dropped, corrected, sequence_pool_overflow);
 #endif
 }
 

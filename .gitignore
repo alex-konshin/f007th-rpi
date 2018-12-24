@@ -30,9 +30,11 @@
 *.exe
 *.out
 *.app
+*.log
 /.project
 /.cproject
 /.settings
 /f007th-rpi/f007th-rpi
 /f007th-rpi_send/f007th-rpi_send
+/test/test_decode
 f007th-send

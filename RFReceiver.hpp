@@ -16,8 +16,9 @@
 #include <signal.h>
 #include <getopt.h>
 
-#ifdef USE_GPIO_TS
-//FIXME
+#ifdef TEST_DECODING
+#include <unistd.h>
+#elif defined(USE_GPIO_TS)
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -126,12 +127,15 @@ public:
   void setProtocols(unsigned protocols);
 
   void setLogger(Logger logger);
+#ifdef TEST_DECODING
+  void setInputLogFile(const char* inputLogFilePath);
+#endif
 
 private:
   static void initLib();
   static void closeLib();
   static void closeAll();
-#ifdef USE_GPIO_TS
+#if defined(USE_GPIO_TS)||defined(TEST_DECODING)
   static void signalHandler(int signum);
 #else
   static void processCtrlBreak(int signum, void *userdata);
@@ -148,7 +152,7 @@ private:
   static void destroyMessage(ReceivedData* message);
   ReceivedData* createNewMessage();
 
-#ifdef USE_GPIO_TS
+#if defined(USE_GPIO_TS)||defined(TEST_DECODING)
   int readSequences();
 #else
   void handleInterrupt(int level, uint32_t tick);
@@ -175,7 +179,10 @@ private:
   unsigned long min_duration;
   unsigned long max_duration;
 
-#ifdef USE_GPIO_TS
+#ifdef TEST_DECODING
+  const char* inputLogFilePath;
+  FILE* inputLogFileStream;
+#elif defined(USE_GPIO_TS)
   int fd; // gpiots file
 #else
   int nNoiseFilterCounter;
@@ -219,7 +226,8 @@ private:
 
   // statistics
 
-#ifndef USE_GPIO_TS
+#ifdef TEST_DECODING
+#elif defined(USE_GPIO_TS)
   uint32_t interrupted;
   uint32_t skipped;
   uint32_t corrected;
