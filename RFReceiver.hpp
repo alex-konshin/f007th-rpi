@@ -227,7 +227,7 @@ private:
   // statistics
 
 #ifdef TEST_DECODING
-#elif defined(USE_GPIO_TS)
+#elif !defined(USE_GPIO_TS)
   uint32_t interrupted;
   uint32_t skipped;
   uint32_t corrected;
