@@ -8,7 +8,7 @@ Alex Konshin <akonshin@gmail.com>
 ### Overview
 The main goal of this project is to intercept and decode radio signals from temperature/humidity sensors and show on console or send to REST/InfluxDB servers this received data.
 
-The data is received with cheap RF 433.92MHz (315MHz, 868.35MHz, etc - it depends on sensors used in your project) receivers like [RXB6](http://www.jmrth.com/en/images/proimages/RXB6_en_v3.pdf), [SeeedStudio RF-R-ASK](https://www.seeedstudio.com/433MHz-ASK%26amp%3BOOK-Super-heterodyne-Receiver-module-p-2205.html), RX-RM-5V, etc. It is tested with RXB6 and SeeedStudio RF-R-ASK.
+The data is received with cheap RF 433.92MHz receivers like [RXB6](http://www.jmrth.com/en/images/proimages/RXB6_en_v3.pdf), [SeeedStudio RF-R-ASK](https://www.seeedstudio.com/433MHz-ASK%26amp%3BOOK-Super-heterodyne-Receiver-module-p-2205.html), RX-RM-5V, etc. It is tested with RXB6 and SeeedStudio RF-R-ASK.
 
 This project currently supports and tested with following sensors:    
 - [Ambient Weather F007TH](http://www.ambientweather.com/amf007th.html)   
