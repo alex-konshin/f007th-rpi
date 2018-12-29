@@ -4,5 +4,5 @@
 
 USER_OBJS :=
 
-LIBS := -lpigpio -lrt -lcurl
+LIBS := -lpigpio -lmicrohttpd -lrt -lcurl
 

@@ -58,7 +58,7 @@ You can look at [this good instruction about setting up Eclipse for cross-compil
 ##### Building on Raspberry Pi
 - You need to install [libcurl library](https://curl.haxx.se/libcurl/).
 ```
-sudo apt-get install libcurl4-openssl-dev
+sudo apt-get install libcurl4-openssl-dev libmicrohttpd-dev
 ```
 - If you want to use [pigpio library](http://abyz.co.uk/rpi/pigpio/index.html) then you need to install it.
 ```
@@ -78,7 +78,7 @@ git clone https://github.com/alex-konshin/f007th-rpi.git
 - Build [gpio-ts module](https://github.com/alex-konshin/gpio-ts) first.
 - Install [libcurl library](https://curl.haxx.se/libcurl/).
 ```
-sudo apt-get install libcurl4-openssl-dev
+sudo apt-get install libcurl4-openssl-dev libmicrohttpd-dev
 ```
 - Clone sources from GitHub. The following command will create new sub-directory f007th-rpi in the current directory and download sources
 ```
@@ -118,6 +118,8 @@ Parameter value is server type. Possible values are REST (default) or InfluxDB.
 Send all data. Only changed and valid data is sent by default.
 ##### --log-file, -l
 Parameter is a path to log file.
+##### --httpd, -H
+Run HTTPD server on the specified port. If this option is specified then the utility will serve HTTP requests on this port. Currently it just sends JSON with current values from all sensors.    
 ##### --verbose, -v
 Verbose output.
 ##### --more_verbose, -V

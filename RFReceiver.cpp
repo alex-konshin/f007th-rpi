@@ -87,6 +87,7 @@ void RFReceiver::initLib() {
     }
     isLibInitialized = true;
     gpioSetSignalFuncEx(SIGINT, processCtrlBreak, NULL);
+    gpioSetSignalFuncEx(SIGTERM, processCtrlBreak, NULL);
   }
 #endif
 }
@@ -139,6 +140,13 @@ void RFReceiver::signalHandler(int signum) {
   case SIGINT:
     printf("\nGot Ctrl-C. Terminating...\n");
     Log->log("Got Ctrl-C. Terminating...");
+    RFReceiver::closeAll();
+    exit(0);
+    break;
+
+  case SIGTERM:
+    printf("\nTerminating...\n");
+    Log->log("Terminating...");
     RFReceiver::closeAll();
     exit(0);
     break;
@@ -787,24 +795,33 @@ void RFReceiver::decoder() {
     ReceivedData* message = createNewMessage();
     if (message == NULL) continue;
 
-    bool decoded = (protocols&PROTOCOL_00592TXR) != 0 && decode00592TXR(message);
+    message->sensorData.protocol = 0;
+    message->decodedBits = 0;
+    message->decodingStatus = 0x8000;
+    memset(message->detailedDecodingStatus, 0x8000, sizeof(uint16_t)*NUMBER_OF_PROTOCOLS);
+    memset(message->detailedDecodedBits, 0x8000, sizeof(uint16_t)*NUMBER_OF_PROTOCOLS);
+
+    bool decoded = false;
+    if ((protocols&PROTOCOL_00592TXR) != 0) {
+      decoded = decode00592TXR(message);
+      message->detailedDecodingStatus[PROTOCOL_INDEX_00592TXR] = message->decodingStatus;
+      message->detailedDecodedBits[PROTOCOL_INDEX_00592TXR] = message->decodedBits;
+    }
     if (!decoded && (protocols&PROTOCOL_TX7U) != 0) {
-      //uint16_t decodingStatus = message->decodingStatus;
-      //uint16_t decodedBits = message->decodedBits;
-      message->decodingStatus = 0;
-      message->decodedBits = 0;
       decoded = decodeTX7U(message);
+      message->detailedDecodingStatus[PROTOCOL_INDEX_TX7U] = message->decodingStatus;
+      message->detailedDecodedBits[PROTOCOL_INDEX_TX7U] = message->decodedBits;
     }
     if (!decoded && (protocols&PROTOCOL_HG02832) != 0) {
-      message->decodingStatus = 0;
-      message->decodedBits = 0;
       decoded = decodeHG02832(message);
+      message->detailedDecodingStatus[PROTOCOL_INDEX_HG02832] = message->decodingStatus;
+      message->detailedDecodedBits[PROTOCOL_INDEX_HG02832] = message->decodedBits;
     }
     if (!decoded && (protocols&PROTOCOL_F007TH) != 0) {
-      uint32_t nF007TH;
-      message->decodingStatus = 0;
-      message->decodedBits = 0;
+      uint32_t nF007TH = 0;
       decoded = decodeF007TH(message, nF007TH);
+      message->detailedDecodingStatus[PROTOCOL_INDEX_F007TH] = message->decodingStatus;
+      message->detailedDecodedBits[PROTOCOL_INDEX_F007TH] = message->decodedBits;
     }
 
     // TODO do not queue the message if it is not decoded and no need to print undecoded messages.
@@ -922,8 +939,8 @@ bool RFReceiver::decodeManchester(ReceivedData* message, int startIndex, int end
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-overflow"
 bool RFReceiver::decodeF007TH(ReceivedData* message, uint32_t& nF007TH) {
-  if (message->sensorData.fields.protocol != 0) {
-    if (message->sensorData.fields.protocol == PROTOCOL_F007TH) {
+  if (message->sensorData.protocol != 0) {
+    if (message->sensorData.protocol == PROTOCOL_F007TH) {
       nF007TH = message->sensorData.nF007TH;
       return true;
     }
@@ -999,13 +1016,17 @@ bool RFReceiver::decodeF007TH(ReceivedData* message, uint32_t& nF007TH) {
 
   uint32_t data = bits.getInt(dataIndex, 32);
   message->sensorData.nF007TH = data;
-  message->sensorData.fields.protocol = PROTOCOL_F007TH;
+  message->sensorData.protocol = PROTOCOL_F007TH;
   nF007TH = data;
   return true;
 }
 #pragma GCC diagnostic pop
 
 bool RFReceiver::decode00592TXR(ReceivedData* message) {
+  message->decodingStatus = 0;
+  message->decodedBits = 0;
+  message->sensorData.protocol = 0;
+
   int iSequenceSize = message->iSequenceSize;
   if (iSequenceSize < 121 || iSequenceSize > 200) {
     message->decodingStatus |= 8;
@@ -1017,19 +1038,32 @@ bool RFReceiver::decode00592TXR(ReceivedData* message) {
   // check sync sequence. Expecting 8 items with values around 600
 
   int dataStartIndex = -1;
-
+  int failedIndex = 0;
   for ( int index = 0; index<=(iSequenceSize-121); index+=2 ) {
     bool good = true;
-    for ( int i = 0; i<8; i++) {
-      int16_t item = pSequence[index+i];
-      if (item < 520 || item > 700) {
+    for ( int i = 0; i<8; i+=2) {
+      failedIndex = index+i;
+      int16_t item1 = pSequence[failedIndex];
+      if (item1 < 400 || item1 > 1000) {
+        good = false;
+        break;
+      }
+      int16_t item2 = pSequence[failedIndex+1];
+      if (item1 < 400 || item1 > 1000) {
+        good = false;
+        failedIndex++;
+        break;
+      }
+      int16_t pair = item1+item2;
+      if (pair < 1000 || pair > 1450) {
         good = false;
         break;
       }
     }
     if (good) { // expected around 200 or 400
-      int16_t item = pSequence[index+8];
-      if (item > 460 || item < 140) {
+      failedIndex = index+8;
+      int16_t item = pSequence[failedIndex];
+      if (item > 680 || item < 120) {
         good = false;
         continue;
       }
@@ -1039,7 +1073,7 @@ bool RFReceiver::decode00592TXR(ReceivedData* message) {
   }
   if (dataStartIndex < 0) {
     //printf("decode00592TXR(): bad sync sequence\n");
-    message->decodingStatus |= 16;
+    message->decodingStatus |= (16 | (failedIndex<<8));
     return false;
   }
 
@@ -1050,21 +1084,21 @@ bool RFReceiver::decode00592TXR(ReceivedData* message) {
   for ( int index = dataStartIndex; index<iSequenceSize-1; index+=2 ) {
     int16_t item1 = pSequence[index];
     if (item1 < 120 || item1 > 680) {
-      message->decodingStatus |= 4;
+      message->decodingStatus |= (4 | (index<<8));
       return false;
     }
     int16_t item2 = pSequence[index+1];
     if (item2 < 120 || item2 > 680) {
-      message->decodingStatus |= 4;
+      message->decodingStatus |= (5 | ((index+1)<<8));
       return false;
     }
-    if (item1 < 280 && item2 > 320) {
+    if (item1 < 290 && item2 > 310) {
       bits.addBit(0);
-    } else if (item2 < 280 && item1>320) {
+    } else if (item2 < 290 && item1 > 310) {
       bits.addBit(1);
     } else {
       //printf("decode00592TXR(): bad items %d: %d %d\n", index, item1, item2);
-      message->decodingStatus |= 4;
+      message->decodingStatus |= (6 | (index<<8));
       return false;
     }
   }
@@ -1095,8 +1129,7 @@ bool RFReceiver::decode00592TXR(ReceivedData* message) {
   uint64_t n00592TXR = bits.getInt64(0, 56);
 
   message->sensorData.u64 = n00592TXR;
-  message->sensorData.fields.protocol = PROTOCOL_00592TXR;
-
+  message->sensorData.protocol = PROTOCOL_00592TXR;
   return true;
 }
 
@@ -1109,16 +1142,20 @@ bool RFReceiver::decode00592TXR(ReceivedData* message) {
  * https://web.archive.org/web/20141003000354/http://www.f6fbb.org:80/domo/sensors/tx3_th.php
  *
  */
-#define TX7U_LOW_MIN 900
-#define TX7U_LOW_MAX 1100
-#define TX7U_0_MIN 1240
-#define TX7U_0_MAX 1450
-#define TX7U_1_MIN 500
+#define TX7U_LOW_MIN 800
+#define TX7U_LOW_MAX 1200
+#define TX7U_0_MIN 1100
+#define TX7U_0_MAX 1500
+#define TX7U_1_MIN 400
 #define TX7U_1_MAX 650
 
 bool RFReceiver::decodeTX7U(ReceivedData* message) {
+  message->decodingStatus = 0;
+  message->decodedBits = 0;
+  message->sensorData.protocol = 0;
+
   int iSequenceSize = message->iSequenceSize;
-  if (iSequenceSize < 87) {
+  if (iSequenceSize < 87 || iSequenceSize > 240) {
     message->decodingStatus |= 8;
     return false;
   }
@@ -1128,61 +1165,69 @@ bool RFReceiver::decodeTX7U(ReceivedData* message) {
   // skip till sync sequence
   // 1400,1000,1400,1000,1400,1000,1400,1000
 
+  int failIndex = 0;
   int dataStartIndex = -1;
+  bool good_start = false;
   for ( int index = 0; index<(iSequenceSize-86); index++ ) {
     // bit[0] == 0
-    item = pSequence[index];
+    failIndex = index;
+    item = pSequence[failIndex];
     if (item<=TX7U_0_MIN || item>=TX7U_0_MAX) continue;
-    item = pSequence[index+1];
+    item = pSequence[++failIndex];
     if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
 
     // bit[1] == 0
-    item = pSequence[index+2];
+    item = pSequence[++failIndex];
     if (item<=TX7U_0_MIN || item>=TX7U_0_MAX) continue;
-    item = pSequence[index+3];
+    item = pSequence[++failIndex];
     if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
 
     // bit[2] == 0
-    item = pSequence[index+4];
+    item = pSequence[++failIndex];
     if (item<=TX7U_0_MIN || item>=TX7U_0_MAX) continue;
-    item = pSequence[index+5];
+    item = pSequence[++failIndex];
     if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
 
+    good_start = true;
+
     // bit[3] == 0
-    item = pSequence[index+6];
+    item = pSequence[++failIndex];
     if (item<=TX7U_0_MIN || item>=TX7U_0_MAX) continue;
-    item = pSequence[index+7];
+    item = pSequence[++failIndex];
     if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
 
     // bit[4] == 1
-    item = pSequence[index+8];
+    item = pSequence[++failIndex];
     if (item<=TX7U_1_MIN || item>=TX7U_1_MAX) continue;
-    item = pSequence[index+9];
+    item = pSequence[++failIndex];
     if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
 
     // bit[5] == 0
-    item = pSequence[index+10];
+    item = pSequence[++failIndex];
     if (item<=TX7U_0_MIN || item>=TX7U_0_MAX) continue;
-    item = pSequence[index+11];
+    item = pSequence[++failIndex];
     if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
 
     // bit[6] == 1
-    item = pSequence[index+12];
+    item = pSequence[++failIndex];
     if (item<=TX7U_1_MIN || item>=TX7U_1_MAX) continue;
-    item = pSequence[index+13];
+    item = pSequence[++failIndex];
     if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
 
     // bit[7] == 0
-    item = pSequence[index+14];
+    item = pSequence[++failIndex];
     if (item<=TX7U_0_MIN || item>=TX7U_0_MAX) continue;
-    item = pSequence[index+15];
+    item = pSequence[++failIndex];
     if (item>TX7U_LOW_MIN && item<TX7U_LOW_MAX) {
       dataStartIndex = index;
       break;
     }
   }
   if ( dataStartIndex==-1 ) {
-    message->decodingStatus |= 16;
+    if (good_start)
+      message->decodingStatus |= (16 | 1);
+    else
+      message->decodingStatus |= (16 | (failIndex<<8));
     return false;
   }
 
@@ -1193,7 +1238,7 @@ bool RFReceiver::decodeTX7U(ReceivedData* message) {
 
     item = pSequence[index+1];
     if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) {
-      message->decodingStatus |= 4;
+      message->decodingStatus |= (4 | ((index+1)<<8));
       return false;
     }
 
@@ -1203,7 +1248,7 @@ bool RFReceiver::decodeTX7U(ReceivedData* message) {
     } else if (item>TX7U_1_MIN && item<TX7U_1_MAX) {
       bits.addBit(1);
     } else {
-      message->decodingStatus |= 4;
+      message->decodingStatus |= (4 | (index<<8));
       return false;
     }
   }
@@ -1213,14 +1258,14 @@ bool RFReceiver::decodeTX7U(ReceivedData* message) {
   } else if (item>TX7U_1_MIN && item<TX7U_1_MAX) {
     bits.addBit(1);
   } else {
-    message->decodingStatus |= 4;
+    message->decodingStatus |= (4 | (86<<8));
     return false;
   }
 
   uint64_t nTX7U = bits.getInt64(0, 44);
 
   message->sensorData.u64 = nTX7U;
-  message->sensorData.fields.protocol = PROTOCOL_TX7U;
+  message->sensorData.protocol = PROTOCOL_TX7U;
   message->decodedBits = (uint16_t)bits.getSize();
 
   if ( (bits.getInt(20,8)&255)!=(bits.getInt(32,8)&255) ) {
@@ -1257,6 +1302,9 @@ bool RFReceiver::decodeTX7U(ReceivedData* message) {
  *
  */
 bool RFReceiver::decodeHG02832(ReceivedData* message) {
+  message->decodingStatus = 0;
+  message->decodedBits = 0;
+  message->sensorData.protocol = 0;
 
   int iSequenceSize = message->iSequenceSize;
   if (iSequenceSize < 87) {
@@ -1329,7 +1377,7 @@ bool RFReceiver::decodeHG02832(ReceivedData* message) {
   uint64_t data = bits.getInt64(0, 32);
 
   message->sensorData.u64 = data;
-  message->sensorData.fields.protocol = PROTOCOL_HG02832;
+  message->sensorData.protocol = PROTOCOL_HG02832;
   message->decodedBits = (uint16_t)bits.getSize();
 
 /* FIXME checksum calculation algorithm is unknown yet
@@ -1376,6 +1424,7 @@ ReceivedData* RFReceiver::createNewMessage() {
   iPoolRead = (iCurrentSequenceStart+iCurrentSequenceSize)&(POOL_SIZE-1);
 
   message->sensorData.u64 = 0LL;
+  message->sensorData.protocol = 0;
   message->decodingStatus = 0;
   message->decodedBits = 0;
 

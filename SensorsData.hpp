@@ -8,6 +8,29 @@
 #ifndef SENSORSDATA_HPP_
 #define SENSORSDATA_HPP_
 
+#define PROTOCOL_F007TH    1
+#define PROTOCOL_00592TXR  2
+#define PROTOCOL_TX7U      4
+#define PROTOCOL_HG02832   8
+#define PROTOCOL_ALL       (unsigned)(-1)
+
+#define PROTOCOL_INDEX_F007TH    0
+#define PROTOCOL_INDEX_00592TXR  1
+#define PROTOCOL_INDEX_TX7U      2
+#define PROTOCOL_INDEX_HG02832   3
+#define NUMBER_OF_PROTOCOLS      4
+
+#define VERBOSITY_DEBUG            1
+#define VERBOSITY_INFO             2
+#define VERBOSITY_PRINT_DETAILS    4
+#define VERBOSITY_PRINT_STATISTICS 8
+#define VERBOSITY_PRINT_UNDECODED 16
+#define VERBOSITY_PRINT_JSON      32
+#define VERBOSITY_PRINT_CURL      64
+
+#define OPTION_CELSIUS           256
+#define OPTION_UTC               512
+
 #define SENSOR_UID_MASK  0xff700000L
 #define SENSOR_TEMPERATURE_MASK 0x000fff00L
 #define SENSOR_HUMIDITY_MASK    0x000000ffL
@@ -19,7 +42,14 @@
 #define BATTERY_STATUS_IS_CHANGED    4
 #define NEW_UID                      8
 
+#define JSON_SIZE_PER_ITEM  200
+
+#include <time.h>
+#include <stdio.h>
+
 typedef struct SensorData {
+  time_t data_time;
+  uint8_t protocol;
   union {
     uint64_t u64;
     uint32_t nF007TH; // F007TH data - 4 bytes
@@ -36,9 +66,161 @@ typedef struct SensorData {
       uint8_t channel;
       // end 00592TXR
 
-      uint8_t protocol;
     } fields;
   };
+public:
+  int getChannel() {
+    if (protocol == PROTOCOL_F007TH) return ((nF007TH>>20)&7)+1;
+    if (protocol == PROTOCOL_00592TXR) return ((fields.channel>>6)&3)^3;
+    if (protocol == PROTOCOL_HG02832) return ((u32.low>>12)&3)+1;
+    return -1;
+  }
+  int getChannelNumber() {
+      if (protocol == PROTOCOL_F007TH) return ((nF007TH>>20)&7)+1;
+      if (protocol == PROTOCOL_00592TXR) {
+        switch ((fields.channel>>6)&3) {
+        case 3: return 1;
+        case 2: return 2;
+        case 0: return 3;
+        }
+      }
+      if (protocol == PROTOCOL_HG02832) return ((u32.low>>12)&3)+1;
+    return -1;
+  }
+  bool hasBatteryStatus() {
+    if ((protocol&(PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_HG02832)) != 0) return true;
+    return false;
+  }
+  // true => OK
+  bool getBatteryStatus() {
+    if (protocol == PROTOCOL_F007TH) return (nF007TH&0x00800000) == 0;
+    if (protocol == PROTOCOL_00592TXR) return fields.status==0x44;
+    if (protocol == PROTOCOL_HG02832) return (u32.low&0x00008000) == 0;
+    return false;
+  }
+
+
+  bool hasTemperature() {
+    if ((protocol&(PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_HG02832)) != 0) return true;
+    if (protocol == PROTOCOL_TX7U) return (u32.hi&15)==0 || (u32.hi&0x00800000)!=0;
+    return false;
+  }
+  int getTemperature10(bool celsius) {
+    return celsius ? getTemperatureCx10() : getTemperatureFx10();
+  }
+  int getTemperatureCx10() {
+    if (protocol == PROTOCOL_F007TH)
+      return (int)(((nF007TH>>8)&4095)-720) * 5 / 9;
+
+    if (protocol == PROTOCOL_00592TXR)
+      return (int)((((fields.t_hi)&127)<<7) | (fields.t_low&127)) - 1000;
+
+    if (protocol == PROTOCOL_HG02832) {
+      int result = (int)((u32.low)&0x0fff);
+      if ((result&0x0800) != 0) result |= 0xfffff000;
+      return result;
+    }
+
+    if (protocol == PROTOCOL_TX7U) {
+      if (hasTemperature()) return getTX7temperature()-500;
+      //return -2732;
+    }
+    return -2732;
+  }
+
+  // Temperature, dF = t*10(F). Ex: 72.5F = 725 dF
+  int getTemperatureFx10() {
+    if (protocol == PROTOCOL_F007TH)
+      return (int)((nF007TH>>8)&4095)-400;
+
+    if (protocol == PROTOCOL_00592TXR) {
+      int c = (int)((((fields.t_hi)&127)<<7) | (fields.t_low&127)) - 1000;
+      return (c*9/5)+320;
+    }
+    if (protocol == PROTOCOL_HG02832) {
+      return (getTemperatureCx10()*9/5)+320;
+    }
+    if (protocol == PROTOCOL_TX7U) {
+      if (hasTemperature()) return ((getTX7temperature()-500)*9/5)+320;
+      //return -4597;
+    }
+    return -4597;
+  }
+
+  bool hasHumidity() {
+    if ((protocol&(PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_HG02832)) != 0) return true;
+    if (protocol == PROTOCOL_TX7U) return (u32.hi&15)==14 || (u32.hi&0x80000000)!=0;
+    return false;
+  }
+  // Relative Humidity, 0..100%
+  int getHumidity() {
+    if (protocol == PROTOCOL_F007TH) return nF007TH&255;
+    if (protocol == PROTOCOL_00592TXR) return fields.rh & 127;
+    if (protocol == PROTOCOL_TX7U) return hasHumidity() ? getTX7humidity() : 0;
+    if (protocol == PROTOCOL_HG02832) return (u32.low>>16) & 255;
+    return 0;
+  }
+
+  const char* getSensorTypeName() {
+    if (protocol == PROTOCOL_F007TH) return "F007TH";
+    if (protocol == PROTOCOL_00592TXR) return "00592TXR";
+    if (protocol == PROTOCOL_TX7U) return "TX7";
+    if (protocol == PROTOCOL_HG02832) return "HG02832";
+    return "UNKNOWN";
+  }
+
+  // random number that is changed when battery is changed
+  uint8_t getRollingCode() {
+    if (protocol == PROTOCOL_F007TH) return (nF007TH >> 24) & 255;
+    if (protocol == PROTOCOL_00592TXR) return fields.rolling_code;
+    if (protocol == PROTOCOL_TX7U) return (u32.low >> 25);
+    if (protocol == PROTOCOL_HG02832) return (u32.low >> 24);
+    return 0;
+  }
+
+
+  size_t generateJson(char* ptr, size_t buffer_size, int options) {
+
+    char dt[32];
+    struct tm tm;
+    if ((options&OPTION_UTC) != 0) { // UTC time zone
+      tm = *gmtime(&data_time); // convert time_t to struct tm
+      strftime(dt, sizeof dt, "%FT%TZ", &tm); // ISO format
+    } else { // local time zone
+      tm = *localtime(&data_time); // convert time_t to struct tm
+      strftime(dt, sizeof dt, "%Y-%m-%d %H:%M:%S %Z", &tm);
+    }
+
+    int len = snprintf(ptr, buffer_size, "{\"time\":\"%s\",\"type\":\"%s\"", dt, getSensorTypeName() );
+
+    int channel = getChannelNumber();
+    if (channel >= 0) len += snprintf(ptr+len, buffer_size-len, ",\"channel\":%d", channel);
+    len += snprintf(ptr+len, buffer_size-len, ",\"rolling_code\":%d", getRollingCode());
+    if (hasTemperature())
+      len += snprintf(ptr+len, buffer_size-len, ",\"temperature\":%d", getTemperature10((options&OPTION_CELSIUS) != 0));
+    if (hasHumidity())
+      len += snprintf(ptr+len, buffer_size-len, ",\"humidity\":%d", getHumidity());
+    if (hasBatteryStatus())
+      len += snprintf(ptr+len, buffer_size-len, ",\"battery_ok\":%s", getBatteryStatus() ? "true" :"false");
+    len += snprintf(ptr+len, buffer_size-len, "}");
+
+    return (size_t)(len*sizeof(unsigned char));
+  }
+
+protected:
+  inline int getTX7temperature() {
+    return
+        (u32.hi&0x00800000)!=0
+        ? (u32.hi>>12)&0x07ff
+        : ((u32.low >> 20)&15)*100 + ((u32.low >> 16)&15)*10 + ((u32.low >> 12)&15);
+  }
+  inline int getTX7humidity() {
+    return
+        (u32.hi&0x80000000)!=0
+        ? (u32.hi>>24)&0x7f
+        : ((u32.low >> 20)&15)*10 + ((u32.low >> 16)&15);
+  }
+
 } SensorData;
 
 
@@ -47,19 +229,22 @@ class SensorsData {
 private:
   int size;
   int capacity;
+  int options;
   struct SensorData *items;
 
 public:
-  SensorsData() {
+  SensorsData(int options) {
     items = (SensorData*)calloc(8, sizeof(SensorData));
     capacity = 8;
     size = 0;
+    this->options = options;
   }
-  SensorsData(int capacity) {
+  SensorsData(int capacity, int options) {
     if (capacity <= 0) capacity = 8;
     items = (SensorData*)calloc(capacity, sizeof(SensorData));
     this->capacity = capacity;
     size = 0;
+    this->options = options;
   }
 
   ~SensorsData() {
@@ -76,8 +261,8 @@ public:
   }
 
   SensorData* getData(uint8_t protocol, int channel, uint8_t rolling_code = -1) {
-    if ((protocol&(PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_HG02832)) == 0) return __null;
-    if (channel < 1 || channel > 8) return 0;
+    if ((protocol&(PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_HG02832|PROTOCOL_TX7U)) == 0) return __null;
+    if (protocol!=PROTOCOL_TX7U && (channel < 1 || channel > 8)) return __null;
     if (rolling_code > 255 || (rolling_code < 0 && rolling_code != -1)) return __null;
 
     if (protocol == PROTOCOL_F007TH) {
@@ -96,28 +281,34 @@ public:
     } else if (protocol == PROTOCOL_00592TXR) {
       for (int index = 0; index<size; index++) {
         SensorData* p = &items[index];
-        if (p->fields.protocol != PROTOCOL_00592TXR) continue;
+        if (p->protocol != PROTOCOL_00592TXR) continue;
         if (rolling_code != -1 && p->fields.rolling_code != rolling_code) continue;
         if (p->fields.channel == channel) return p;
       }
     } else if (protocol == PROTOCOL_HG02832) {
       for (int index = 0; index<size; index++) {
         SensorData* p = &items[index];
-        if (p->fields.protocol != PROTOCOL_HG02832) continue;
+        if (p->protocol != PROTOCOL_HG02832) continue;
         if (rolling_code != -1 && (p->u32.low>>24) != rolling_code) continue;
         if (((p->u32.low>>12)&3)+1 == (uint8_t)channel) return p;
+      }
+    } else if (protocol == PROTOCOL_TX7U) {
+      for (int index = 0; index<size; index++) {
+        SensorData* p = &items[index];
+        if (p->protocol != PROTOCOL_TX7U) continue;
+        if (rolling_code == -1 || ((p->u32.low >> 25)&0x7f) == rolling_code) return p;
       }
     }
     return __null;
   }
 
-  int update(SensorData* sensorData) {
-    if (sensorData->fields.protocol == PROTOCOL_F007TH) {
+  int update(SensorData* sensorData, time_t data_time) {
+    if (sensorData->protocol == PROTOCOL_F007TH) {
       uint32_t nF007TH = sensorData->nF007TH;
       uint32_t uid = nF007TH & SENSOR_UID_MASK;
       for (int index = 0; index<size; index++) {
         SensorData* p = &items[index];
-        if (p->fields.protocol != PROTOCOL_F007TH) continue;
+        if (p->protocol != PROTOCOL_F007TH) continue;
         uint32_t item = p->nF007TH;
         if ((item & SENSOR_UID_MASK) == uid) {
           uint32_t changed = (item ^ nF007TH)& SENSOR_DATA_MASK;
@@ -127,20 +318,21 @@ public:
           if ((changed&SENSOR_TEMPERATURE_MASK) != 0) result |= TEMPERATURE_IS_CHANGED;
           if ((changed&SENSOR_HUMIDITY_MASK) != 0) result |= HUMIDITY_IS_CHANGED;
           if ((changed&BATTERY_STATUS_IS_CHANGED) != 0) result |= BATTERY_STATUS_IS_CHANGED;
+          p->data_time = data_time;
           return result;
         }
       }
-      add(sensorData);
+      add(sensorData, data_time);
       return TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED | NEW_UID;
     }
 
-    if (sensorData->fields.protocol == PROTOCOL_00592TXR) {
+    if (sensorData->protocol == PROTOCOL_00592TXR) {
       uint8_t channel = sensorData->fields.channel;
       uint8_t rolling_code = sensorData->fields.rolling_code;
 
       for (int index = 0; index<size; index++) {
         SensorData* p = &items[index];
-        if (p->fields.protocol != PROTOCOL_00592TXR) continue;
+        if (p->protocol != PROTOCOL_00592TXR) continue;
         if (p->fields.rolling_code != rolling_code) continue;
         if (p->fields.channel == channel) {
           int result = 0;
@@ -150,44 +342,56 @@ public:
           if (p->fields.status != sensorData->fields.status) result |= BATTERY_STATUS_IS_CHANGED;
 
           if (result != 0) p->u64 = sensorData->u64;
+          p->data_time = data_time;
           return result;
         }
       }
-      add(sensorData);
+      add(sensorData, data_time);
       return TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED | NEW_UID;
     }
 
-    if (sensorData->fields.protocol == PROTOCOL_TX7U) {
-      uint16_t id = (sensorData->u64>>25)&0x7ff; // type and rolling_code
-      uint16_t value = (sensorData->u32.low>>12)&0x0fff;
+    if (sensorData->protocol == PROTOCOL_TX7U) {
+      uint16_t id = (sensorData->u64>>25)&0x7f; // type and rolling_code
       uint8_t type = sensorData->u32.hi&15;
+      uint32_t mask;
+      uint32_t new_value;
+      int result = 0;
+      if (type == 0) {
+        new_value = ((sensorData->u32.low >> 20)&15)*100 + ((sensorData->u32.low >> 16)&15)*10 + ((sensorData->u32.low >> 12)&15);
+        new_value = 0x00800000 | (new_value << 12);
+        mask = 0x00fff000;
+        result = TEMPERATURE_IS_CHANGED;
+      } else if (type == 14) {
+        new_value = (((sensorData->u32.low >> 20)&15)*10 + ((sensorData->u32.low >> 16)&15))&0x7f;
+        new_value = 0x80000000 | (new_value << 24);
+        mask = 0xff000000;
+        result = HUMIDITY_IS_CHANGED;
+      } else {
+        return 0;
+      }
 
       for (int index = 0; index<size; index++) {
         SensorData* p = &items[index];
-        if ((p->fields.protocol != PROTOCOL_TX7U) || (((p->u64>>25)&0x7ff) != id)) continue;
-
-        int result = 0;
-        if (((p->u32.low>>12)&0x0fff) != value) {
-          if (type == 0)
-            result |= TEMPERATURE_IS_CHANGED;
-          else if (type == 14)
-            result |= HUMIDITY_IS_CHANGED;
+        if ((p->protocol == PROTOCOL_TX7U) && (((p->u64>>25)&0x7f) == id)) {
+          if (((p->u32.hi)&mask) == new_value) return 0;
+          p->data_time = data_time;
+          p->u32.low = sensorData->u32.low;
+          p->u32.hi = (p->u32.hi & ~mask) | new_value;
+          return result;
         }
-
-        if (result != 0) p->u64 = sensorData->u64;
-        return result;
       }
-      add(sensorData);
+
+      add(sensorData, data_time);
       return type == 0 ? TEMPERATURE_IS_CHANGED | NEW_UID : type == 14 ? HUMIDITY_IS_CHANGED | NEW_UID : NEW_UID;
     }
 
-    if (sensorData->fields.protocol == PROTOCOL_HG02832) {
+    if (sensorData->protocol == PROTOCOL_HG02832) {
       uint32_t new_w = sensorData->u32.low;
 
       for (int index = 0; index<size; index++) {
         SensorData* p = &items[index];
         uint32_t w;
-        if (p->fields.protocol != PROTOCOL_HG02832) continue;
+        if (p->protocol != PROTOCOL_HG02832) continue;
         w = p->u32.low;
         if (w == new_w) return 0; // nothing has changed
         if (((w^new_w)&0xff003000) == 0) { // compare rolling code and channel
@@ -199,15 +403,77 @@ public:
           return result;
         }
       }
-      add(sensorData);
+      add(sensorData, data_time);
       return TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED | NEW_UID;
     }
 
     return 0;
   }
 
+  size_t generateJson(int index, void*& buffer, size_t& buffer_size) {
+    SensorData* sensorData = getItem(index);
+    if (sensorData == __null) return 0;
+
+    if (buffer == __null || buffer_size < JSON_SIZE_PER_ITEM) {
+      buffer = realloc(buffer, JSON_SIZE_PER_ITEM);
+      buffer_size = JSON_SIZE_PER_ITEM;
+    }
+
+    char* ptr = (char*)buffer;
+
+    return sensorData->generateJson(ptr, buffer_size, options);
+  }
+
+  size_t generateJson(void*& buffer, size_t& buffer_size) {
+    int nItems = getSize();
+    if (nItems <= 0) return 0;
+
+    size_t required_buffer_size = nItems*JSON_SIZE_PER_ITEM;
+    if (buffer == __null || buffer_size < required_buffer_size) {
+      buffer = realloc(buffer, required_buffer_size);
+      buffer_size = required_buffer_size;
+    }
+
+    char* ptr = (char*)buffer;
+    size_t total_len = 2;
+    size_t len = 2;
+
+    ptr[0] = '[';
+    ptr[1] = '\n';
+    ptr[2] = '\0';
+    ptr += 2;
+
+    for (int index=0; index<nItems; index++) {
+      if (buffer_size-total_len-3 < JSON_SIZE_PER_ITEM) break;
+      SensorData* sensorData = getItem(index);
+      if (sensorData == __null) continue;
+      if (total_len > 2) {
+        ptr[0] = ',';
+        ptr[1] = '\n';
+        ptr += 2;
+        total_len += 2;
+      }
+      len = sensorData->generateJson(ptr, buffer_size, options);
+      if (len > 0) {
+        total_len += len;
+        ptr += len;
+      } else if (total_len > 3) { // remove last comma
+        total_len -= 2;
+        ptr -= 2;
+      }
+    }
+    if (buffer_size-total_len > 3) {
+      ptr = (char*)buffer;
+      ptr[total_len++] = '\n';
+      ptr[total_len++] = ']';
+      ptr[total_len] = '\0';
+    }
+
+    return total_len;
+  }
+
 private:
-  void add(SensorData* item) {
+  void add(SensorData* item, time_t& data_time) {
     int index = size;
     int new_size = size+1;
     if (new_size > capacity) {
@@ -218,7 +484,19 @@ private:
       capacity = new_capacity;
     }
     size = new_size;
-    items[index].u64 = item->u64;
+    SensorData* new_item = &items[index];
+    new_item->u64 = item->u64;
+    new_item->data_time = data_time;
+    new_item->protocol = item->protocol;
+    if (item->protocol == PROTOCOL_TX7U) {
+      if (item->hasTemperature()) {
+        uint32_t raw_t = ((item->u32.low >> 20)&15)*100 + ((item->u32.low >> 16)&15)*10 + ((item->u32.low >> 12)&15);
+        new_item->u32.hi |= 0x00800000 | (raw_t << 12);
+      } else if (item->hasHumidity()) {
+        uint32_t raw_h = (((item->u32.low >> 20)&15)*10 + ((item->u32.low >> 16)&15))&0x7f;
+        new_item->u32.hi |= 0x80000000 | (raw_h << 24);
+      }
+    }
   }
 
 };

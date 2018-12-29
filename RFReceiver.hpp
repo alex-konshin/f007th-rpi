@@ -16,6 +16,15 @@
 #include <signal.h>
 #include <getopt.h>
 
+#ifdef INCLUDE_HTTPD
+#ifdef USE_GPIO_TS
+#define MIN_HTTPD_PORT 1024
+#else
+#define MIN_HTTPD_PORT 1
+#endif
+#include <microhttpd.h>
+#endif
+
 #ifdef TEST_DECODING
 #include <unistd.h>
 #elif defined(USE_GPIO_TS)
@@ -28,7 +37,7 @@
 #include <pigpio.h>
 #endif
 
-#define RF_RECEIVER_VERSION "2.1"
+#define RF_RECEIVER_VERSION "3.0"
 
 #include "Logger.hpp"
 #include "Bits.hpp"
@@ -52,8 +61,8 @@
 #define MAX_PERIOD 1150
 
 // LaCrosse TX-6U/TX-7U
-#define MIN_DURATION_TX7U 500
-#define MAX_DURATION_TX7U 1450
+#define MIN_DURATION_TX7U 400
+#define MAX_DURATION_TX7U 1500
 
 // Auriol HG02832
 #define MIN_DURATION_HG02832 150

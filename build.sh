@@ -16,7 +16,7 @@ make f007th-rpi_send
 status=$?
 if [ "$status" = 0 ]; then cp f007th-rpi_send ${BUILD_HOME}/bin/; fi
 
-cd ${BUILD_HOME}/f007th-ts-rpi
+cd ${BUILD_HOME}/f007th-ts-httpd-rpi
 make f007th-send
 status=$?
 if [ "$status" = 0 ]; then cp f007th-send ${BUILD_HOME}/bin/; fi

@@ -8,31 +8,10 @@
 #ifndef RECEIVEDMESSAGE_HPP_
 #define RECEIVEDMESSAGE_HPP_
 
-#include <stdio.h>
-#include <time.h>
-
-#define PROTOCOL_F007TH    1
-#define PROTOCOL_00592TXR  2
-#define PROTOCOL_TX7U      4
-#define PROTOCOL_HG02832   8
-#define PROTOCOL_ALL       (unsigned)(-1)
-
 #include "SensorsData.hpp"
 
 #define SEND_DATA_BUFFER_SIZE 1024
 #define SERVER_RESPONSE_BUFFER_SIZE 8192
-
-#define VERBOSITY_DEBUG            1
-#define VERBOSITY_INFO             2
-#define VERBOSITY_PRINT_DETAILS    4
-#define VERBOSITY_PRINT_STATISTICS 8
-#define VERBOSITY_PRINT_UNDECODED 16
-#define VERBOSITY_PRINT_JSON      32
-#define VERBOSITY_PRINT_CURL      64
-
-#define OPTION_CELSIUS           256
-#define OPTION_UTC               512
-
 
 typedef struct ReceivedData {
   struct ReceivedData *next;
@@ -43,6 +22,9 @@ typedef struct ReceivedData {
   uint16_t decodingStatus;
   uint16_t decodedBits;
 
+  uint16_t detailedDecodingStatus[NUMBER_OF_PROTOCOLS];
+  uint16_t detailedDecodedBits[NUMBER_OF_PROTOCOLS];
+
   int16_t iSequenceSize;
 
 } ReceivedData;
@@ -52,18 +34,6 @@ class ReceivedMessage {
 private:
   ReceivedData* data;
   time_t data_time;
-
-  int getTX7temperature() {
-    return
-        ((data->sensorData.u32.low >> 20)&15)*100 +
-        ((data->sensorData.u32.low >> 16)&15)*10 +
-        ((data->sensorData.u32.low >> 12)&15);
-  }
-  int getTX7humidity() {
-    return
-        ((data->sensorData.u32.low >> 20)&15)*10 +
-        ((data->sensorData.u32.low >> 16)&15);
-  }
 
 public:
   ReceivedMessage() {
@@ -97,6 +67,10 @@ public:
     return &data->sensorData;
   }
 
+  time_t getTime() {
+    return data_time;
+  }
+
   inline bool isEmpty() { return data == __null; }
 
   inline bool isValid() {
@@ -110,32 +84,17 @@ public:
   }
 
   const char* getSensorTypeName() {
-    if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return "F007TH";
-    if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) return "00592TXR";
-    if (data->sensorData.fields.protocol == PROTOCOL_TX7U) return "TX7";
-    if (data->sensorData.fields.protocol == PROTOCOL_HG02832) return "HG02832";
-    return "UNKNOWN";
+    return data == __null ? __null : data->sensorData.getSensorTypeName();
   }
 
   // random number that is changed when battery is changed
   uint8_t getRollingCode() {
-    if (data != __null) {
-      if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return (data->sensorData.nF007TH >> 24) & 255;
-      if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) return data->sensorData.fields.rolling_code;
-      if (data->sensorData.fields.protocol == PROTOCOL_TX7U) return (data->sensorData.u32.low >> 25);
-      if (data->sensorData.fields.protocol == PROTOCOL_HG02832) return (data->sensorData.u32.low >> 24);
-    }
-    return 0;
+    return data == __null ? 0 : data->sensorData.getRollingCode();
   }
 
   // true => OK
   bool getBatteryStatus() {
-    if (data != __null) {
-      if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return (data->sensorData.nF007TH&0x00800000) == 0;
-      if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) return data->sensorData.fields.status==0x44;
-      if (data->sensorData.fields.protocol == PROTOCOL_HG02832) return (data->sensorData.u32.low&0x00008000) == 0;
-    }
-    return false;
+    return data != __null && data->sensorData.getBatteryStatus();
   }
 
   // Channel number 1..8
@@ -146,7 +105,7 @@ public:
     return data == __null ? -1 : ((data->sensorData.nF007TH>>20)&7)+1;
   }
   char getChannel00592TXR() {
-    if (data != __null && data->sensorData.fields.protocol == PROTOCOL_00592TXR) {
+    if (data != __null && data->sensorData.protocol == PROTOCOL_00592TXR) {
       switch ((data->sensorData.fields.channel>>6)&3) {
       case 3: return 'A';
       case 2: return 'B';
@@ -159,95 +118,34 @@ public:
     return data == __null ? -1 : ((data->sensorData.u32.low>>12)&3)+1;
   }
   int getChannel() {
-    if (data != __null) {
-      if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return ((data->sensorData.nF007TH>>20)&7)+1;
-      if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) return ((data->sensorData.fields.channel>>6)&3)^3;
-      if (data->sensorData.fields.protocol == PROTOCOL_HG02832) return ((data->sensorData.u32.low>>12)&3)+1;
-    }
-    return -1;
+    return data == __null ? -1 : data->sensorData.getChannel();
   }
   int getChannelNumber() {
-    if (data != __null) {
-      if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return ((data->sensorData.nF007TH>>20)&7)+1;
-      if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) {
-        switch ((data->sensorData.fields.channel>>6)&3) {
-        case 3: return 1;
-        case 2: return 2;
-        case 0: return 3;
-        }
-      }
-      if (data->sensorData.fields.protocol == PROTOCOL_HG02832) return ((data->sensorData.u32.low>>12)&3)+1;
-    }
-    return -1;
+    return data == __null ? -1 : data->sensorData.getChannelNumber();
   }
 
   bool hasHumidity() {
-    if ((data->sensorData.fields.protocol&(PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_HG02832)) != 0) return true;
-    if (data->sensorData.fields.protocol == PROTOCOL_TX7U) return (data->sensorData.u32.hi&15)==14;
-    return false;
+    return data != __null && data->sensorData.hasHumidity();
   }
   bool hasTemperature() {
-    if ((data->sensorData.fields.protocol&(PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_HG02832)) != 0) return true;
-    if (data->sensorData.fields.protocol == PROTOCOL_TX7U) return (data->sensorData.u32.hi&15)==0;
-    return false;
+    return data != __null && data->sensorData.hasTemperature();
   }
   bool hasBatteryStatus() {
-    if ((data->sensorData.fields.protocol&(PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_HG02832)) != 0) return true;
-    return false;
+    return data != __null && data->sensorData.hasBatteryStatus();
   }
 
   int getTemperatureCx10() {
-    if (data != __null) {
-      if (data->sensorData.fields.protocol == PROTOCOL_F007TH)
-        return (int)(((data->sensorData.nF007TH>>8)&4095)-720) * 5 / 9;
-
-      if (data->sensorData.fields.protocol == PROTOCOL_00592TXR)
-        return (int)((((data->sensorData.fields.t_hi)&127)<<7) | (data->sensorData.fields.t_low&127)) - 1000;
-
-      if (data->sensorData.fields.protocol == PROTOCOL_HG02832) {
-        int result = (int)((data->sensorData.u32.low)&0x0fff);
-        if ((result&0x0800) != 0) result |= 0xfffff000;
-        return result;
-      }
-
-      if (data->sensorData.fields.protocol == PROTOCOL_TX7U) {
-        if (hasTemperature()) return getTX7temperature()-500;
-        //return -2732;
-      }
-    }
-    return -2732;
+    return data == __null ? -2732 : data->sensorData.getTemperatureCx10();
   }
 
   // Temperature, dF = t*10(F). Ex: 72.5F = 725 dF
   int getTemperatureFx10() {
-    if (data != __null) {
-      if (data->sensorData.fields.protocol == PROTOCOL_F007TH)
-        return (int)((data->sensorData.nF007TH>>8)&4095)-400;
-
-      if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) {
-        int c = (int)((((data->sensorData.fields.t_hi)&127)<<7) | (data->sensorData.fields.t_low&127)) - 1000;
-        return (c*9/5)+320;
-      }
-      if (data->sensorData.fields.protocol == PROTOCOL_HG02832) {
-        return (getTemperatureCx10()*9/5)+320;
-      }
-      if (data->sensorData.fields.protocol == PROTOCOL_TX7U) {
-        if (hasTemperature()) return ((getTX7temperature()-500)*9/5)+320;
-        //return -4597;
-      }
-    }
-    return -4597;
+    return data == __null ? -4597 : data->sensorData.getTemperatureFx10();
   }
 
   // Relative Humidity, 0..100%
   int getHumidity() {
-    if (data != __null) {
-      if (data->sensorData.fields.protocol == PROTOCOL_F007TH) return data->sensorData.nF007TH&255;
-      if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) return data->sensorData.fields.rh & 127;
-      if (data->sensorData.fields.protocol == PROTOCOL_TX7U) return hasHumidity() ? getTX7humidity() : 0;
-      if (data->sensorData.fields.protocol == PROTOCOL_HG02832) return (data->sensorData.u32.low>>16) & 255;
-    }
-    return 0;
+    return data == __null ? 0 : data->sensorData.getHumidity();
   }
 
   bool printInputSequence(FILE* file) {
@@ -285,24 +183,25 @@ public:
       strftime(dt, sizeof dt, "%Y-%m-%d %H:%M:%S %Z", &tm);
     }
 
-    if (print_details) {
+    uint16_t decodingStatus = data->decodingStatus;
+
+    if (print_details || (print_undecoded && (decodingStatus & 0x3f) != 0)) {
       fprintf(file, "%s ", dt);
       printInputSequence(file);
     }
 
-    uint16_t decodingStatus = data->decodingStatus;
     if ((decodingStatus & 0x3f) == 0 ) {
 
       if (print_details) {
-        if (data->sensorData.fields.protocol == PROTOCOL_F007TH)
+        if (data->sensorData.protocol == PROTOCOL_F007TH)
           fprintf(file, "  F007TH data       = %08x\n", data->sensorData.nF007TH);
-        else if (data->sensorData.fields.protocol == PROTOCOL_00592TXR)
+        else if (data->sensorData.protocol == PROTOCOL_00592TXR)
           fprintf(file, "  00592TXR data     = %02x %02x %02x %02x %02x %02x %02x\n",
               data->sensorData.fields.channel, data->sensorData.fields.rolling_code, data->sensorData.fields.status, data->sensorData.fields.rh,
               data->sensorData.fields.t_hi, data->sensorData.fields.t_low, data->sensorData.fields.checksum);
-        else if (data->sensorData.fields.protocol == PROTOCOL_TX7U)
+        else if (data->sensorData.protocol == PROTOCOL_TX7U)
           fprintf(file, "  TX3/TX6/TX7 data  = %03x%08x\n", (data->sensorData.u32.hi&0xfff), data->sensorData.u32.low); //FIXME
-        else if (data->sensorData.fields.protocol == PROTOCOL_HG02832)
+        else if (data->sensorData.protocol == PROTOCOL_HG02832)
           fprintf(file, "  HG02832 data  = %08x\n", data->sensorData.u32.low);
       } else {
         fputs(dt, file);
@@ -317,16 +216,16 @@ public:
       }
 
 
-      if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) {
+      if (data->sensorData.protocol == PROTOCOL_00592TXR) {
         fprintf(file, "  type              = AcuRite 00592TXR\n  channel           = %c\n", getChannel00592TXR());
 
-      } else if (data->sensorData.fields.protocol == PROTOCOL_F007TH) {
+      } else if (data->sensorData.protocol == PROTOCOL_F007TH) {
         fprintf(file, "  type              = Ambient Weather F007TH\n  channel           = %d\n", getChannelF007TH());
 
-      } else if (data->sensorData.fields.protocol == PROTOCOL_TX7U) {
+      } else if (data->sensorData.protocol == PROTOCOL_TX7U) {
         fprintf(file, "  type              = LaCrosse TX3/TX6/TX7(%s)\n", hasTemperature()?"temperature":hasHumidity()?"humidity":"unknown");
 
-      } else if (data->sensorData.fields.protocol == PROTOCOL_HG02832) {
+      } else if (data->sensorData.protocol == PROTOCOL_HG02832) {
         fprintf(file, "  type              = Auriol HG02832 (IAN 283582)\n  channel           = %d\n", getChannelHG02832());
       }
 
@@ -345,12 +244,13 @@ public:
     } else if (print_undecoded) {
       fputs(dt, file);
       fputc('\n', file);
-      fprintf(file,
-        "  decoding status = %04x\n"\
-        "  decoded bits = %d\n",
-        decodingStatus,
-        data->decodedBits
-      );
+      fprintf(file, "  decoding status = %04x(", decodingStatus );
+      for (int proto_index = 0; proto_index<NUMBER_OF_PROTOCOLS; proto_index++) {
+        if (proto_index != 0) fputc(',', file);
+        fprintf(file, "%04x", data->detailedDecodingStatus[proto_index] );
+
+      }
+      fprintf(file, ")\n  decoded bits = %d\n", data->decodedBits);
       if ( (decodingStatus & 7)==0 ) {
         // Manchester decoding was successful
 /*
@@ -394,13 +294,13 @@ public:
         fputs(",\"valid\":false,", file);
       }
 
-      if (data->sensorData.fields.protocol == PROTOCOL_00592TXR) {
+      if (data->sensorData.protocol == PROTOCOL_00592TXR) {
         fputs(",\"type\":\"AcuRite 00592TXR\"", file);
-      } else if (data->sensorData.fields.protocol == PROTOCOL_F007TH) {
+      } else if (data->sensorData.protocol == PROTOCOL_F007TH) {
         fputs(",\"type\":\"Ambient Weather F007TH\"", file);
-      } else if (data->sensorData.fields.protocol == PROTOCOL_TX7U) {
+      } else if (data->sensorData.protocol == PROTOCOL_TX7U) {
         fputs(",\"type\":\"LaCrosse TX3/TX6/TX7\"", file);
-      } else if (data->sensorData.fields.protocol == PROTOCOL_HG02832) {
+      } else if (data->sensorData.protocol == PROTOCOL_HG02832) {
         fputs(",\"type\":\"Auriol HG02832 (IAN 283582)\"", file);
       }
 
@@ -450,10 +350,10 @@ public:
     int len = snprintf( buffer, buflen,
       "{\"time\":\"%s\",\"type\":\"%s\",\"valid\":%s",
       dt,
-      data->sensorData.fields.protocol == PROTOCOL_00592TXR ? "AcuRite 00592TXR" :
-      data->sensorData.fields.protocol == PROTOCOL_F007TH ? "Ambient Weather F007TH" :
-      data->sensorData.fields.protocol == PROTOCOL_HG02832 ? "Auriol HG02832 (IAN 283582)" :
-      data->sensorData.fields.protocol == PROTOCOL_TX7U ? "LaCrosse TX3/TX6/TX7" : "unknown",
+      data->sensorData.protocol == PROTOCOL_00592TXR ? "AcuRite 00592TXR" :
+      data->sensorData.protocol == PROTOCOL_F007TH ? "Ambient Weather F007TH" :
+      data->sensorData.protocol == PROTOCOL_HG02832 ? "Auriol HG02832 (IAN 283582)" :
+      data->sensorData.protocol == PROTOCOL_TX7U ? "LaCrosse TX3/TX6/TX7" : "unknown",
       decodingStatus == 0 ? "true" : "false"
     );
 
@@ -464,6 +364,10 @@ public:
     if (hasHumidity()) len += snprintf(buffer+len, buflen-len, ",\"humidity\":%d", getHumidity());
     if (hasBatteryStatus()) len += snprintf(buffer+len, buflen-len, ",\"battery_ok\":%s", getBatteryStatus() ? "true" :"false");
     len += snprintf(buffer+len, buflen-len, "\n");
+
+    buffer[len++] = '}';
+    buffer[len++] = '\n';
+    buffer[len] = '\0';
 
     if (verbose) {
       //fprintf(stderr, "JSON data size is %d bytes.\n", len*sizeof(unsigned char));

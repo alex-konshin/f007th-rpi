@@ -22,15 +22,21 @@ enum ServerType {STDOUT, REST, InfluxDB};
 
 static bool send(ReceivedMessage& message, const char* url, ServerType server_type, int changed, char* data_buffer, char* response_buffer, int options, FILE* log);
 
+#ifdef INCLUDE_HTTPD
+static struct MHD_Daemon* start_httpd(int port, SensorsData* sensorsData);
+static void stop_httpd(struct MHD_Daemon* httpd);
+#endif
+
 static void help() {
   fputs(
-#ifndef TEST_DECODING
+#ifdef TEST_DECODING
     "(c) 2018 Alex Konshin\n"\
-    "Test decoding of received data for f007th* utilities.\n\n"
+    "Test decoding of received data for f007th* utilities.\n"
 #else
     "(c) 2017-2018 Alex Konshin\n"\
-    "Receive data from thermometers then print it to stdout or send it to remote server via REST API.\n\n"
+    "Receive data from thermometers then print it to stdout or send it to remote server via REST API.\n"
 #endif
+    "Version "RF_RECEIVER_VERSION"\n\n"\
     "--gpio, -g\n"\
     "    Value is GPIO pin number (default is "DEFAULT_PIN_STR") as defined on page http://abyz.co.uk/rpi/pigpio/index.html\n"\
     "--celsius, -C\n"\
@@ -47,9 +53,13 @@ static void help() {
     "    Send all data. Only changed and valid data is sent by default.\n"\
     "--log-file, -l\n"\
     "    Parameter is a path to log file.\n"
-#ifndef TEST_DECODING
+#ifdef TEST_DECODING
     "--input-log, -I\n"\
     "    Parameter is a path to input log file to be processed.\n"
+#endif
+#ifdef INCLUDE_HTTPD
+    "--httpd, -H\n"\
+    "    Run HTTPD server on the specified port.\n"
 #endif
     "--verbose, -v\n"\
     "    Verbose output.\n"\
@@ -70,7 +80,6 @@ int main(int argc, char *argv[]) {
   const char* server_url = NULL;
   int gpio = DEFAULT_PIN;
   ServerType server_type = REST;
-  int options = 0;
   unsigned protocols = 0;
 
   bool changes_only = true;
@@ -78,11 +87,26 @@ int main(int argc, char *argv[]) {
   bool type_is_set = false;
 
 #ifdef TEST_DECODING
+  int options = VERBOSITY_PRINT_UNDECODED;
   const char* input_log_file_path = NULL;
+#ifdef INCLUDE_HTTPD
+  int httpd_port = 0;
 
-  const char* short_options = "g:s:Al:vVt:TCULd7068DI:";
+  const char* short_options = "g:s:Al:vVt:TCULd56780DI:H:";
 #else
-  const char* short_options = "g:s:Al:vVt:TCULd7068D";
+  const char* short_options = "g:s:Al:vVt:TCULd56780DI:";
+#endif
+
+#elif defined(INCLUDE_HTTPD)
+  int options = 0;
+  int httpd_port = 0;
+
+  const char* short_options = "g:s:Al:vVt:TCULd56780DH:";
+
+#else
+  int options = 0;
+
+  const char* short_options = "g:s:Al:vVt:TCULd56780D";
 #endif
   const struct option long_options[] = {
       { "gpio", required_argument, NULL, 'g' },
@@ -97,13 +121,17 @@ int main(int argc, char *argv[]) {
       { "more_verbose", no_argument, NULL, 'V' },
       { "statistics", no_argument, NULL, 'T' },
       { "debug", no_argument, NULL, 'd' },
+      { "any", no_argument, NULL, '0' },
       { "f007th", no_argument, NULL, '7' },
-      { "00592txr", no_argument, NULL, '0' },
+      { "00592txr", no_argument, NULL, '5' },
       { "tx6", no_argument, NULL, '6' },
       { "hg02832", no_argument, NULL, '8' },
       { "DEBUG", no_argument, NULL, 'D' },
 #ifdef TEST_DECODING
       { "input-log", required_argument, NULL, 'I' },
+#endif
+#ifdef INCLUDE_HTTPD
+      { "httpd", required_argument, NULL, 'H' },
 #endif
       { NULL, 0, NULL, 0 }
   };
@@ -139,6 +167,18 @@ int main(int argc, char *argv[]) {
 #ifdef TEST_DECODING
     case 'I':
       input_log_file_path = optarg;
+      break;
+#endif
+
+#ifdef INCLUDE_HTTPD
+    case 'H':
+      long_value = strtol(optarg, NULL, 10);
+
+      if (long_value<MIN_HTTPD_PORT || long_value>65535) {
+        fprintf(stderr, "ERROR: Invalid HTTPD port number \"%s\".\n", optarg);
+        help();
+      }
+      httpd_port = (int)long_value;
       break;
 #endif
 
@@ -199,10 +239,10 @@ int main(int argc, char *argv[]) {
       options |= VERBOSITY_INFO | VERBOSITY_PRINT_JSON | VERBOSITY_PRINT_CURL | VERBOSITY_PRINT_UNDECODED | VERBOSITY_PRINT_DETAILS;
       break;
 
-    case '0': // AcuRite 00592TXR
+    case '5': // AcuRite 00592TXR
       protocols |= PROTOCOL_00592TXR;
       break;
-    case '3': // LaCrosse TX3/TX6/TX7
+    case '6': // LaCrosse TX3/TX6/TX7
       protocols |= PROTOCOL_TX7U;
       break;
     case '7': // Ambient Weather F007TH
@@ -211,8 +251,12 @@ int main(int argc, char *argv[]) {
     case '8': // Auriol HG02832
       protocols |= PROTOCOL_HG02832;
       break;
-    case 'D': // debug receiving
+    case '0': // any protocol
       protocols |= PROTOCOL_ALL;
+      break;
+    case 'D': // print undecoded messages
+      options |= VERBOSITY_PRINT_UNDECODED;
+      changes_only = false;
       break;
 
     case '?':
@@ -269,7 +313,7 @@ int main(int argc, char *argv[]) {
     response_buffer = (char*)malloc(SERVER_RESPONSE_BUFFER_SIZE*sizeof(char));
   }
 
-  SensorsData sensorsData;
+  SensorsData sensorsData(options);
 
   RFReceiver receiver(gpio);
   Log->setLogFile(log);
@@ -283,6 +327,21 @@ int main(int argc, char *argv[]) {
 
   receiver.enableReceive();
 
+#ifdef INCLUDE_HTTPD
+  struct MHD_Daemon* httpd = NULL;
+
+  if (httpd_port >= MIN_HTTPD_PORT && httpd_port<65535) {
+    // start HTTPD server
+    Log->log("Starting HTTPD server on port %d...", httpd_port);
+    httpd = start_httpd(httpd_port, &sensorsData);
+    if (httpd == NULL) {
+      Log->error("Could not start HTTPD server on port %d.\n", httpd_port);
+      fclose(log);
+      exit(1);
+    }
+  }
+#endif
+
   if ((options&VERBOSITY_PRINT_STATISTICS) != 0)
     receiver.printStatisticsPeriodically(1000); // print statistics every second
 
@@ -295,6 +354,9 @@ int main(int argc, char *argv[]) {
       if ((options&VERBOSITY_INFO) != 0) {
         message.print(stdout, options);
         if (message.print(log, options)) fflush(log);
+      } else if ((options&VERBOSITY_PRINT_UNDECODED) != 0 && message.isUndecoded()) {
+        message.print(stdout, options);
+        if (message.print(log, options)) fflush(log);
       }
 
       if (message.isEmpty()) {
@@ -304,7 +366,7 @@ int main(int argc, char *argv[]) {
           fprintf(stderr, "Could not decode the received data (error %04x).\n", message.getDecodingStatus());
       } else {
         bool isValid = message.isValid();
-        int changed = isValid ? sensorsData.update(message.getSensorData()) : 0;
+        int changed = isValid ? sensorsData.update(message.getSensorData(), message.getTime()) : 0;
         if (changed == 0 && !changes_only && (isValid || server_type!=InfluxDB))
           changed = TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED;
         if (changed != 0) {
@@ -338,11 +400,18 @@ int main(int argc, char *argv[]) {
       receiver.printStatistics();
     }
   }
+
+#ifdef INCLUDE_HTTPD
+  if ((options&VERBOSITY_INFO) != 0) Log->log("Stopping HTTPD server...");
+  stop_httpd(httpd);
+#endif
+
   if ((options&VERBOSITY_INFO) != 0) fputs("\nExiting...\n", stderr);
 
   // finally
   free(data_buffer);
   if (response_buffer != NULL) free(response_buffer);
+  Log->log("Exiting...");
   fclose(log);
   if (server_type!=STDOUT) curl_global_cleanup();
 
@@ -475,5 +544,70 @@ bool send(ReceivedMessage& message, const char* url, ServerType server_type, int
   return success;
 }
 
+#ifdef INCLUDE_HTTPD
+/*
+ * Handling HTTP requests
+ */
+
+static int ahc_echo(
+    void* cls,
+    struct MHD_Connection * connection,
+    const char* url,
+    const char* method,
+    const char* version,
+    const char* upload_data,
+    size_t* upload_data_size,
+    void** ptr
+) {
+  static int dummy;
+  SensorsData* sensorsData = (SensorsData*)cls;
+  struct MHD_Response* response;
+  int ret;
+
+  if (strcmp(method, "GET") != 0) return MHD_NO; /* unexpected method */
+  if (&dummy != *ptr) {
+    /* The first time only the headers are valid, do not respond in the first round... */
+    *ptr = &dummy;
+    return MHD_YES;
+  }
+  if (0 != *upload_data_size) return MHD_NO; /* upload data in a GET!? */
+
+  *ptr = NULL; /* clear context pointer */
+  void* buffer = __null;
+  size_t buffer_size = 0;
+
+  size_t data_size = sensorsData->generateJson(buffer, buffer_size);
+  if (data_size == 0)
+    response = MHD_create_response_from_buffer(2, (void*)"[]", MHD_RESPMEM_PERSISTENT);
+  else
+    response = MHD_create_response_from_data(data_size, buffer, 1, 1);
+  MHD_add_response_header(response, "Content-Type", "application/json");
+
+  ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+  MHD_destroy_response(response);
+  return ret;
+}
+
+struct MHD_Daemon* start_httpd(int port, SensorsData* sensorsData) {
+  struct MHD_Daemon* httpd;
+  httpd =
+      MHD_start_daemon(
+          MHD_USE_THREAD_PER_CONNECTION,
+          port,
+          NULL,
+          NULL,
+          &ahc_echo,
+          (void*)sensorsData,
+          MHD_OPTION_END
+      );
+
+  return httpd;
+}
+
+void stop_httpd(struct MHD_Daemon* httpd) {
+  MHD_stop_daemon(httpd);
+}
+
+#endif
 
 
