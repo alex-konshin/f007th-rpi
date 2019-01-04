@@ -24,8 +24,7 @@ Following platforms are supported and tested:
 - [MinnowBoard MAX/Turbot](https://www.minnowboard.org/) (tested with [MinnowBoard Turbot QUAD Core Board](https://store.netgate.com/Turbot4.aspx))
 
 ##### Raspberry Pi
-There are 3 executables on this platform:
-- **f007th-rpi** is a demo/test program that receive data from sensors and prints it in plain text or JSON format. This executable requires pigpio library to be installed and should be run as root (via sudo).
+There are 2 executables on this platform:
 - **f007th-rpi_send** is more advanced program that sends received and decoded data to a remote InfluxDB or REST server. This executable requires pigpio library to be installed and should be run as root (via sudo).
 - **f007th-send** is the same as above but uses [gpio-ts driver](https://github.com/alex-konshin/gpio-ts). This executable does not require root privileges but [gpio-ts module](https://github.com/alex-konshin/gpio-ts) must be already loaded.
 
@@ -41,7 +40,7 @@ On these platforms only **f007th-send** is supported and tested. This utility se
 | `mach/odroid-c2.h` | Contains macros that are specific for platform ODROID C2.|
 | `mach/x86_64.h` | Contains macros that are specific for platform x86_64 (ex: MinnowBoard).|
 | `Bits.hpp` | Operations with long set of bits. It is used for storing decoded bits in Manchester decoder.|
-| `F007TH.cpp` | Source code of **f007th-rpi** executable.|
+| `F007TH.cpp` | Simple example of code that receives and prints messages from sensors.|
 | `f007th_send.cpp` | Source code of **f007th-rpi_send** executable. |
 | `ReceivedMessage.hpp` | Container for received and decoded data. |
 | `RFReceiver.cpp` | Implementation part of main class `RFReceiver` that actually receives and decodes data. |
@@ -56,7 +55,7 @@ There are several ways to do it. I actually cross-build this project in Eclipse 
 You can look at [this good instruction about setting up Eclipse for cross-compilation](http://www.cososo.co.uk/2015/12/cross-development-using-eclipse-and-gcc-for-the-rpi/).  
 
 ##### Building on Raspberry Pi
-- You need to install [libcurl library](https://curl.haxx.se/libcurl/).
+- You need to install [libcurl](https://curl.haxx.se/libcurl/) and [microhttpd](https://www.gnu.org/software/libmicrohttpd/) libraries.
 ```
 sudo apt-get install libcurl4-openssl-dev libmicrohttpd-dev
 ```
@@ -76,7 +75,7 @@ git clone https://github.com/alex-konshin/f007th-rpi.git
 
 ##### Building on MinnowBoard
 - Build [gpio-ts module](https://github.com/alex-konshin/gpio-ts) first.
-- Install [libcurl library](https://curl.haxx.se/libcurl/).
+- Install [libcurl](https://curl.haxx.se/libcurl/) and [microhttpd](https://www.gnu.org/software/libmicrohttpd/) libraries.
 ```
 sudo apt-get install libcurl4-openssl-dev libmicrohttpd-dev
 ```
