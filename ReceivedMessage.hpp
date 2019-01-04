@@ -35,6 +35,28 @@ private:
   ReceivedData* data;
   time_t data_time;
 
+#define T2D_BUFFER_SIZE 13
+  char* t2d(int t, char* buffer) {
+    char* p = buffer+T2D_BUFFER_SIZE-1;
+    p[0] = '\0';
+    bool negative = t<0;
+    if (negative) t = -t;
+    int d = t%10;
+    if (d!=0) {
+      *--p = ('0'+d);
+      *--p = '.';
+    }
+    t = t/10;
+    do {
+      d = t%10;
+      *--p = ('0'+d);
+      t = t/10;
+    } while (t > 0);
+    if (negative) *--p = '-';
+    return p;
+  }
+
+
 public:
   ReceivedMessage() {
     data_time = time(NULL);
@@ -232,7 +254,8 @@ public:
       fprintf(file, "  rolling code      = %02x\n", getRollingCode());
       if (hasTemperature()) {
         int temperature = (options&OPTION_CELSIUS) != 0 ? getTemperatureCx10() : getTemperatureFx10();
-        fprintf(file, "  temperature       = %d.%c%c\n", temperature/10, '0'+((temperature<0?-temperature:temperature)%10), (options&OPTION_CELSIUS) != 0 ? 'C' : 'F');
+        char t2d_buffer[T2D_BUFFER_SIZE];
+        fprintf(file, "  temperature       = %s%c\n", t2d(temperature, t2d_buffer), (options&OPTION_CELSIUS) != 0 ? 'C' : 'F');
       }
       if (hasHumidity()) {
         fprintf(file, "  humidity          = %d%%\n", getHumidity());
@@ -397,6 +420,7 @@ public:
       return -2;
     }
 
+    char t2d_buffer[T2D_BUFFER_SIZE];
     char id[60];
     int len = snprintf( id, sizeof(id),
       "type=%s,channel=%d,rolling_code=%d",
@@ -409,12 +433,7 @@ public:
     int remain = buflen;
     if ((changed&TEMPERATURE_IS_CHANGED) != 0) {
       int t = (options&OPTION_CELSIUS) != 0 ? getTemperatureCx10() : getTemperatureFx10();
-      int tF = t/10;
-      char dF = '0'+((t<0?-t:t)%10);
-      int len = snprintf( output, remain,
-        "temperature,%s value=%d.%c\n",
-        id, tF, dF
-      );
+      int len = snprintf( output, remain, "temperature,%s value=%s\n", id, t2d(t, t2d_buffer));
       remain -= len;
       output += len;
     }
