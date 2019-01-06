@@ -224,7 +224,7 @@ public:
         else if (data->sensorData.protocol == PROTOCOL_TX7U)
           fprintf(file, "  TX3/TX6/TX7 data  = %03x%08x\n", (data->sensorData.u32.hi&0xfff), data->sensorData.u32.low); //FIXME
         else if (data->sensorData.protocol == PROTOCOL_HG02832)
-          fprintf(file, "  HG02832 data  = %08x\n", data->sensorData.u32.low);
+          fprintf(file, "  HG02832 data  = %08x%02x\n", data->sensorData.u32.low, data->sensorData.u32.hi&255);
       } else {
         fputs(dt, file);
         fputc('\n', file);
@@ -271,7 +271,6 @@ public:
       for (int proto_index = 0; proto_index<NUMBER_OF_PROTOCOLS; proto_index++) {
         if (proto_index != 0) fputc(',', file);
         fprintf(file, "%04x", data->detailedDecodingStatus[proto_index] );
-
       }
       fprintf(file, ")\n  decoded bits = %d\n", data->decodedBits);
       if ( (decodingStatus & 7)==0 ) {

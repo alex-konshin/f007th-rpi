@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
   bool type_is_set = false;
 
 #ifdef TEST_DECODING
-  int options = VERBOSITY_PRINT_UNDECODED;
+  int options = VERBOSITY_PRINT_UNDECODED|VERBOSITY_PRINT_DETAILS;
   const char* input_log_file_path = NULL;
 #ifdef INCLUDE_HTTPD
   int httpd_port = 0;
