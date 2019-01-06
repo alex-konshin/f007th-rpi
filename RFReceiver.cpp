@@ -1268,6 +1268,10 @@ bool RFReceiver::decodeTX7U(ReceivedData* message) {
   message->sensorData.protocol = PROTOCOL_TX7U;
   message->decodedBits = (uint16_t)bits.getSize();
 
+  if ( (nTX7U&0x00fffff0L)==0 ) {
+    message->decodingStatus |= 0x0080;
+    return false;
+  }
   if ( (bits.getInt(20,8)&255)!=(bits.getInt(32,8)&255) ) {
     message->decodingStatus |= 0x0180;
     return false;
@@ -1375,13 +1379,19 @@ bool RFReceiver::decodeHG02832(ReceivedData* message) {
   }
 
   uint64_t data = bits.getInt64(0, 32);
+  uint8_t checksum = bits.getInt64(32, 8);
 
   message->sensorData.u64 = data;
+  message->sensorData.u32.hi = checksum;
   message->sensorData.protocol = PROTOCOL_HG02832;
   message->decodedBits = (uint16_t)bits.getSize();
 
+  if ( (data&0x0fffffL)==0 ) {
+    message->decodingStatus |= 0x0080;
+    return false;
+  }
+
 /* FIXME checksum calculation algorithm is unknown yet
-  unsigned checksum = 0;
   for (int i = 0; i < 40; i+=4) {
     checksum += bits.getInt(i, 4);
   }
