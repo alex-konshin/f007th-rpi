@@ -1268,7 +1268,8 @@ bool RFReceiver::decodeTX7U(ReceivedData* message) {
   message->sensorData.protocol = PROTOCOL_TX7U;
   message->decodedBits = (uint16_t)bits.getSize();
 
-  if ( (nTX7U&0x00fffff0L)==0 ) {
+  uint32_t n = bits.getInt(8, 32);
+  if ( n==0 ) {
     message->decodingStatus |= 0x0080;
     return false;
   }
@@ -1278,7 +1279,6 @@ bool RFReceiver::decodeTX7U(ReceivedData* message) {
   }
 
   // parity check (bit 19)
-  uint32_t n = bits.getInt(8, 32);
   uint32_t k = 0;
   for (int i=0; i<8; i++) {
     k ^= (n&15);
@@ -1386,7 +1386,7 @@ bool RFReceiver::decodeHG02832(ReceivedData* message) {
   message->sensorData.protocol = PROTOCOL_HG02832;
   message->decodedBits = (uint16_t)bits.getSize();
 
-  if ( (data&0x0fffffL)==0 ) {
+  if ( (data&0x00ff0fffL)==0 ) {
     message->decodingStatus |= 0x0080;
     return false;
   }
