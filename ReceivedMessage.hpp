@@ -31,10 +31,11 @@ typedef struct ReceivedData {
 
 
 class ReceivedMessage {
-private:
+public:
   ReceivedData* data;
   time_t data_time;
 
+private:
 #define T2D_BUFFER_SIZE 13
   char* t2d(int t, char* buffer) {
     char* p = buffer+T2D_BUFFER_SIZE-1;
@@ -242,7 +243,7 @@ public:
         fprintf(file, "  type              = AcuRite 00592TXR\n  channel           = %c\n", getChannel00592TXR());
 
       } else if (data->sensorData.protocol == PROTOCOL_F007TH) {
-        fprintf(file, "  type              = Ambient Weather F007TH\n  channel           = %d\n", getChannelF007TH());
+        fprintf(file, "  type              = Ambient Weather F007T%c\n  channel           = %d\n", data->sensorData.u32.hi==1?'P':'H', getChannelF007TH());
 
       } else if (data->sensorData.protocol == PROTOCOL_TX7U) {
         fprintf(file, "  type              = LaCrosse TX3/TX6/TX7(%s)\n", hasTemperature()?"temperature":hasHumidity()?"humidity":"unknown");
@@ -273,25 +274,19 @@ public:
         fprintf(file, "%04x", data->detailedDecodingStatus[proto_index] );
       }
       fprintf(file, ")\n  decoded bits = %d\n", data->decodedBits);
-      if ( (decodingStatus & 7)==0 ) {
-        // Manchester decoding was successful
-/*
-        Bits bits(data->iSequenceSize+1);
-        if (receiver.decodeManchester(data, bits)) {
-          printf("   ==> ");
-          int size = bits.getSize();
-          for (int index=0; index<size; index++ ) {
-            fputc(bits.getBit(index) ? '1' : '0', file);
-          }
-          fputc('\n', file);
-        }
-*/
-      }
     }
 
     return true;
   }
 
+  void printBits(FILE* file, Bits* bits) {
+    fputs("   ==> ", file);
+    int size = bits->getSize();
+    for (int index=0; index<size; index++ ) {
+      fputc(bits->getBit(index) ? '1' : '0', file);
+    }
+    fputc('\n', file);
+  }
 
   bool json(FILE* file, int options) {
     if (data == __null) return false;
@@ -319,7 +314,7 @@ public:
       if (data->sensorData.protocol == PROTOCOL_00592TXR) {
         fputs(",\"type\":\"AcuRite 00592TXR\"", file);
       } else if (data->sensorData.protocol == PROTOCOL_F007TH) {
-        fputs(",\"type\":\"Ambient Weather F007TH\"", file);
+        fprintf(file, ",\"type\":\"Ambient Weather F007T%c\"", data->sensorData.u32.hi==1?'P':'H');
       } else if (data->sensorData.protocol == PROTOCOL_TX7U) {
         fputs(",\"type\":\"LaCrosse TX3/TX6/TX7\"", file);
       } else if (data->sensorData.protocol == PROTOCOL_HG02832) {
@@ -373,7 +368,8 @@ public:
       "{\"time\":\"%s\",\"type\":\"%s\",\"valid\":%s",
       dt,
       data->sensorData.protocol == PROTOCOL_00592TXR ? "AcuRite 00592TXR" :
-      data->sensorData.protocol == PROTOCOL_F007TH ? "Ambient Weather F007TH" :
+      data->sensorData.protocol == PROTOCOL_F007TH ?
+          data->sensorData.u32.hi==1 ? "Ambient Weather F007TP" : "Ambient Weather F007TH" :
       data->sensorData.protocol == PROTOCOL_HG02832 ? "Auriol HG02832 (IAN 283582)" :
       data->sensorData.protocol == PROTOCOL_TX7U ? "LaCrosse TX3/TX6/TX7" : "unknown",
       decodingStatus == 0 ? "true" : "false"

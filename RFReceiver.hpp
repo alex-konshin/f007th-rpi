@@ -139,6 +139,7 @@ public:
 #ifdef TEST_DECODING
   void setInputLogFile(const char* inputLogFilePath);
 #endif
+  bool printManchesterBits(ReceivedMessage& message, FILE* file);
 
 private:
   static void initLib();

@@ -162,7 +162,7 @@ public:
   }
 
   const char* getSensorTypeName() {
-    if (protocol == PROTOCOL_F007TH) return "F007TH";
+    if (protocol == PROTOCOL_F007TH) return u32.hi==1 ? "F007TP" : "F007TH";
     if (protocol == PROTOCOL_00592TXR) return "00592TXR";
     if (protocol == PROTOCOL_TX7U) return "TX7";
     if (protocol == PROTOCOL_HG02832) return "HG02832";
@@ -265,7 +265,7 @@ public:
     if (protocol!=PROTOCOL_TX7U && (channel < 1 || channel > 8)) return __null;
     if (rolling_code > 255 || (rolling_code < 0 && rolling_code != -1)) return __null;
 
-    if (protocol == PROTOCOL_F007TH) {
+    if (protocol == PROTOCOL_F007TH) { //FIXME this method does not distinguish F007TH and F007TP
       uint32_t mask;
       uint32_t uid = ((uint32_t)channel-1L) << 20;
       if (rolling_code == -1) {
@@ -306,11 +306,12 @@ public:
     if (sensorData->protocol == PROTOCOL_F007TH) {
       uint32_t nF007TH = sensorData->nF007TH;
       uint32_t uid = nF007TH & SENSOR_UID_MASK;
+      uint32_t f007tp = sensorData->u32.hi;
       for (int index = 0; index<size; index++) {
         SensorData* p = &items[index];
         if (p->protocol != PROTOCOL_F007TH) continue;
         uint32_t item = p->nF007TH;
-        if ((item & SENSOR_UID_MASK) == uid) {
+        if ((item & SENSOR_UID_MASK) == uid  && p->u32.hi == f007tp) {
           uint32_t changed = (item ^ nF007TH)& SENSOR_DATA_MASK;
           if (changed == 0) return 0;
           p->u64 = sensorData->u64;

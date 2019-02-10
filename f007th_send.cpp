@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
   bool type_is_set = false;
 
 #ifdef TEST_DECODING
-  int options = VERBOSITY_PRINT_UNDECODED|VERBOSITY_PRINT_DETAILS;
+  int options = VERBOSITY_INFO|VERBOSITY_PRINT_UNDECODED|VERBOSITY_PRINT_DETAILS;
   const char* input_log_file_path = NULL;
 #ifdef INCLUDE_HTTPD
   int httpd_port = 0;
@@ -351,10 +351,14 @@ int main(int argc, char *argv[]) {
     if (receiver.waitForMessage(message)) {
       if (receiver.isStopped()) break;
 
-      if ((options&VERBOSITY_INFO) != 0) {
+      if ((options&VERBOSITY_DEBUG) != 0 || ((options&VERBOSITY_PRINT_UNDECODED) != 0 && message.isUndecoded())) {
         message.print(stdout, options);
-        if (message.print(log, options)) fflush(log);
-      } else if ((options&VERBOSITY_PRINT_UNDECODED) != 0 && message.isUndecoded()) {
+        receiver.printManchesterBits(message, stdout);
+        if (message.print(log, options)) {
+          receiver.printManchesterBits(message, log);
+          fflush(log);
+        }
+      } else if ((options&VERBOSITY_INFO) != 0) {
         message.print(stdout, options);
         if (message.print(log, options)) fflush(log);
       }

@@ -936,6 +936,17 @@ bool RFReceiver::decodeManchester(ReceivedData* message, int startIndex, int end
   return true;
 }
 
+bool RFReceiver::printManchesterBits(ReceivedMessage& message, FILE* file) {
+  if ( (message.data->detailedDecodingStatus[PROTOCOL_INDEX_F007TH] & 7)!=0 ) return false;
+  fprintf(file, "  Manchester decoding was successful\n");
+  // Manchester decoding was successful. Print bits...
+  uint16_t decodingStatus = message.data->decodingStatus;
+  Bits bits(message.data->iSequenceSize+1);
+  if (decodeManchester(message.data, bits)) message.printBits(file, &bits);
+  message.data->decodingStatus = decodingStatus;
+  return true;
+}
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-overflow"
 bool RFReceiver::decodeF007TH(ReceivedData* message, uint32_t& nF007TH) {
@@ -961,16 +972,18 @@ bool RFReceiver::decodeF007TH(ReceivedData* message, uint32_t& nF007TH) {
     return false;
   }
 
-  int index = bits.findBits( 0x0000fd45, 16 ); // 1111 1101 0100 0101 shortened preamble + fixed ID (0x45)
+  bool f007TP = false;
+  int dataIndex; // index of the first bit of data after preamble and fixed ID (0x45)
+  int index = bits.findBits( 0x00007d45, 15 ); // 1111 1101 0100 0101 shortened preamble + fixed ID (0x45)
   if (index<0) {
-    index = bits.findBits( 0x0000fd46, 16 ); // F007TP fixed ID = 0x46
+    index = bits.findBits( 0x00007d46, 15 ); // F007TP fixed ID = 0x46
     if (index<0) {
       message->decodingStatus |= 16; // could not find preamble
       return false;
     }
+    f007TP = true;
   }
-
-  int dataIndex; // index of the first bit of data after preamble and fixed ID (0x45)
+  index--;
 
   if (index+56<size) {
     dataIndex = index+16;
@@ -1021,6 +1034,7 @@ bool RFReceiver::decodeF007TH(ReceivedData* message, uint32_t& nF007TH) {
   uint32_t data = bits.getInt(dataIndex, 32);
   message->sensorData.nF007TH = data;
   message->sensorData.protocol = PROTOCOL_F007TH;
+  message->sensorData.u32.hi = f007TP ? 1 : 0;
   nF007TH = data;
   return true;
 }
