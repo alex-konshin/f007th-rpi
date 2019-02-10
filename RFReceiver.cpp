@@ -963,8 +963,11 @@ bool RFReceiver::decodeF007TH(ReceivedData* message, uint32_t& nF007TH) {
 
   int index = bits.findBits( 0x0000fd45, 16 ); // 1111 1101 0100 0101 shortened preamble + fixed ID (0x45)
   if (index<0) {
-    message->decodingStatus |= 16; // could not find preamble
-    return false;
+    index = bits.findBits( 0x0000fd46, 16 ); // F007TP fixed ID = 0x46
+    if (index<0) {
+      message->decodingStatus |= 16; // could not find preamble
+      return false;
+    }
   }
 
   int dataIndex; // index of the first bit of data after preamble and fixed ID (0x45)
@@ -989,6 +992,7 @@ bool RFReceiver::decodeF007TH(ReceivedData* message, uint32_t& nF007TH) {
     // See https://eclecticmusingsofachaoticmind.wordpress.com/2015/01/21/home-automation-temperature-sensors/
 
     int bit;
+    uint32_t t;
     bool good = false;
     int checking_data = dataIndex-8;
     do {
@@ -1008,7 +1012,7 @@ bool RFReceiver::decodeF007TH(ReceivedData* message, uint32_t& nF007TH) {
       }
       // Bad hash. But message is repeated up to 3 times. Try the next message.
       checking_data += 65;
-    } while(checking_data+48 < size && bits.getInt(checking_data-17, 25) == 0x1ffd45);
+    } while(checking_data+48 < size && ((t=bits.getInt(checking_data-17, 21) == 0x1ffd45) || t == 0x1ffd46));
     if (!good) {
       message->decodingStatus |= 128; // failed hash code check
     }
