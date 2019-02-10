@@ -148,13 +148,14 @@ public:
   }
 
   bool hasHumidity() {
-    if ((protocol&(PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_HG02832)) != 0) return true;
+    if ((protocol&PROTOCOL_F007TH) != 0) return (u32.hi&1) == 0;
+    if ((protocol&(PROTOCOL_00592TXR|PROTOCOL_HG02832)) != 0) return true;
     if (protocol == PROTOCOL_TX7U) return (u32.hi&15)==14 || (u32.hi&0x80000000)!=0;
     return false;
   }
   // Relative Humidity, 0..100%
   int getHumidity() {
-    if (protocol == PROTOCOL_F007TH) return nF007TH&255;
+    if (protocol == PROTOCOL_F007TH) return (u32.hi&1) == 0 ? nF007TH&255 : 0;
     if (protocol == PROTOCOL_00592TXR) return fields.rh & 127;
     if (protocol == PROTOCOL_TX7U) return hasHumidity() ? getTX7humidity() : 0;
     if (protocol == PROTOCOL_HG02832) return (u32.low>>16) & 255;
@@ -317,7 +318,7 @@ public:
           p->u64 = sensorData->u64;
           int result = 0;
           if ((changed&SENSOR_TEMPERATURE_MASK) != 0) result |= TEMPERATURE_IS_CHANGED;
-          if ((changed&SENSOR_HUMIDITY_MASK) != 0) result |= HUMIDITY_IS_CHANGED;
+          if ((f007tp&1) == 0 && (changed&SENSOR_HUMIDITY_MASK) != 0) result |= HUMIDITY_IS_CHANGED;
           if ((changed&BATTERY_STATUS_IS_CHANGED) != 0) result |= BATTERY_STATUS_IS_CHANGED;
           p->data_time = data_time;
           return result;
