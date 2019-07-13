@@ -25,7 +25,7 @@ Following platforms are supported and tested:
 
 ##### Raspberry Pi
 There are 2 executables on this platform:
-- **f007th-rpi_send** is more advanced program that sends received and decoded data to a remote InfluxDB or REST server. This executable requires pigpio library to be installed and should be run as root (via sudo).
+- **f007th-rpi_send** sends received and decoded data to a remote InfluxDB or REST server. This executable requires pigpio library to be installed and should be run as root (via sudo).
 - **f007th-send** is the same as above but uses [gpio-ts driver](https://github.com/alex-konshin/gpio-ts). This executable does not require root privileges but [gpio-ts module](https://github.com/alex-konshin/gpio-ts) must be already loaded.
 
 ##### Banana Pi M3, ODROID C2, MinnowBoard.
