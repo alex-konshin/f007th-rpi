@@ -41,6 +41,7 @@
 #define HUMIDITY_IS_CHANGED          2
 #define BATTERY_STATUS_IS_CHANGED    4
 #define NEW_UID                      8
+#define TIME_NOT_CHANGED            16
 
 #define JSON_SIZE_PER_ITEM  200
 
@@ -303,7 +304,7 @@ public:
     return __null;
   }
 
-  int update(SensorData* sensorData, time_t data_time) {
+  int update(SensorData* sensorData, time_t data_time, time_t max_unchanged_gap) {
     if (sensorData->protocol == PROTOCOL_F007TH) {
       uint32_t nF007TH = sensorData->nF007TH;
       uint32_t uid = nF007TH & SENSOR_UID_MASK;
@@ -313,14 +314,22 @@ public:
         if (p->protocol != PROTOCOL_F007TH) continue;
         uint32_t item = p->nF007TH;
         if ((item & SENSOR_UID_MASK) == uid  && p->u32.hi == f007tp) {
-          uint32_t changed = (item ^ nF007TH)& SENSOR_DATA_MASK;
-          if (changed == 0) return 0;
-          p->u64 = sensorData->u64;
+          time_t gap = data_time - p->data_time;
+          if (gap < 2L) return TIME_NOT_CHANGED;
           int result = 0;
-          if ((changed&SENSOR_TEMPERATURE_MASK) != 0) result |= TEMPERATURE_IS_CHANGED;
-          if ((f007tp&1) == 0 && (changed&SENSOR_HUMIDITY_MASK) != 0) result |= HUMIDITY_IS_CHANGED;
-          if ((changed&BATTERY_STATUS_IS_CHANGED) != 0) result |= BATTERY_STATUS_IS_CHANGED;
-          p->data_time = data_time;
+          if (max_unchanged_gap > 0L && gap > max_unchanged_gap) {
+            result = TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED;
+          } else {
+            uint32_t changed = (item ^ nF007TH)& SENSOR_DATA_MASK;
+            if (changed == 0) return 0;
+            if ((changed&SENSOR_TEMPERATURE_MASK) != 0) result |= TEMPERATURE_IS_CHANGED;
+            if ((f007tp&1) == 0 && (changed&SENSOR_HUMIDITY_MASK) != 0) result |= HUMIDITY_IS_CHANGED;
+            if ((changed&BATTERY_STATUS_IS_CHANGED) != 0) result |= BATTERY_STATUS_IS_CHANGED;
+          }
+          if (result != 0) {
+            p->u64 = sensorData->u64;
+            p->data_time = data_time;
+          }
           return result;
         }
       }
@@ -337,14 +346,20 @@ public:
         if (p->protocol != PROTOCOL_00592TXR) continue;
         if (p->fields.rolling_code != rolling_code) continue;
         if (p->fields.channel == channel) {
+          time_t gap = data_time - p->data_time;
+          if (gap < 2L) return TIME_NOT_CHANGED;
           int result = 0;
-          if (p->fields.t_low != sensorData->fields.t_low || p->fields.t_hi != sensorData->fields.t_hi)
-            result |= TEMPERATURE_IS_CHANGED;
-          if (p->fields.rh != sensorData->fields.rh) result |= HUMIDITY_IS_CHANGED;
-          if (p->fields.status != sensorData->fields.status) result |= BATTERY_STATUS_IS_CHANGED;
-
-          if (result != 0) p->u64 = sensorData->u64;
-          p->data_time = data_time;
+          if (max_unchanged_gap > 0L && gap > max_unchanged_gap) {
+            result = TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED;
+          } else {
+            if (p->fields.t_low != sensorData->fields.t_low || p->fields.t_hi != sensorData->fields.t_hi) result |= TEMPERATURE_IS_CHANGED;
+            if (p->fields.rh != sensorData->fields.rh) result |= HUMIDITY_IS_CHANGED;
+            if (p->fields.status != sensorData->fields.status) result |= BATTERY_STATUS_IS_CHANGED;
+          }
+          if (result != 0) {
+            p->u64 = sensorData->u64;
+            p->data_time = data_time;
+          }
           return result;
         }
       }
@@ -375,7 +390,11 @@ public:
       for (int index = 0; index<size; index++) {
         SensorData* p = &items[index];
         if ((p->protocol == PROTOCOL_TX7U) && (((p->u64>>25)&0x7f) == id)) {
-          if (((p->u32.hi)&mask) == new_value) return 0;
+          if (((p->u32.hi)&mask) == new_value) {
+            time_t gap = data_time - p->data_time;
+            if (gap < 2L) return TIME_NOT_CHANGED;
+            return (max_unchanged_gap > 0L && gap > max_unchanged_gap) ? result : 0;
+          }
           p->data_time = data_time;
           p->u32.low = sensorData->u32.low;
           p->u32.hi = (p->u32.hi & ~mask) | new_value;
@@ -397,11 +416,20 @@ public:
         w = p->u32.low;
         if (w == new_w) return 0; // nothing has changed
         if (((w^new_w)&0xff003000) == 0) { // compare rolling code and channel
+          time_t gap = data_time - p->data_time;
+          if (gap < 2L) return TIME_NOT_CHANGED;
           int result = 0;
-          if (((w^new_w)&0x00000fff) != 0) result |= TEMPERATURE_IS_CHANGED;
-          if (((w^new_w)&0x00ff0000) != 0) result |= HUMIDITY_IS_CHANGED;
-          if (((w^new_w)&0x00008000) != 0) result |= BATTERY_STATUS_IS_CHANGED;
-          if (result != 0) p->u64 = sensorData->u64;
+          if (max_unchanged_gap > 0L && gap > max_unchanged_gap) {
+            result = TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED;
+          } else {
+            if (((w^new_w)&0x00000fff) != 0) result |= TEMPERATURE_IS_CHANGED;
+            if (((w^new_w)&0x00ff0000) != 0) result |= HUMIDITY_IS_CHANGED;
+            if (((w^new_w)&0x00008000) != 0) result |= BATTERY_STATUS_IS_CHANGED;
+          }
+          if (result != 0) {
+            p->u64 = sensorData->u64;
+            p->data_time = data_time;
+          }
           return result;
         }
       }

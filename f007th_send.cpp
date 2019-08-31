@@ -61,6 +61,8 @@ static void help() {
     "--httpd, -H\n"\
     "    Run HTTPD server on the specified port.\n"
 #endif
+    "--max_gap, -G\n"\
+    "    Max gap between reported reading. Next reading will be sent to server or printed even it is the same as previous readings.\n"\
     "--verbose, -v\n"\
     "    Verbose output.\n"\
     "--more_verbose, -V\n"\
@@ -81,6 +83,7 @@ int main(int argc, char *argv[]) {
   int gpio = DEFAULT_PIN;
   ServerType server_type = REST;
   unsigned protocols = 0;
+  time_t max_unchanged_gap = 0L;
 
   bool changes_only = true;
   bool tz_set = false;
@@ -92,21 +95,21 @@ int main(int argc, char *argv[]) {
 #ifdef INCLUDE_HTTPD
   int httpd_port = 0;
 
-  const char* short_options = "g:s:Al:vVt:TCULd56780DI:H:";
+  const char* short_options = "g:s:Al:vVt:TCULd56780DI:H:G:";
 #else
-  const char* short_options = "g:s:Al:vVt:TCULd56780DI:";
+  const char* short_options = "g:s:Al:vVt:TCULd56780DI:G:";
 #endif
 
 #elif defined(INCLUDE_HTTPD)
   int options = 0;
   int httpd_port = 0;
 
-  const char* short_options = "g:s:Al:vVt:TCULd56780DH:";
+  const char* short_options = "g:s:Al:vVt:TCULd56780DH:G:";
 
 #else
   int options = 0;
 
-  const char* short_options = "g:s:Al:vVt:TCULd56780D";
+  const char* short_options = "g:s:Al:vVt:TCULd56780DG:";
 #endif
   const struct option long_options[] = {
       { "gpio", required_argument, NULL, 'g' },
@@ -133,6 +136,7 @@ int main(int argc, char *argv[]) {
 #ifdef INCLUDE_HTTPD
       { "httpd", required_argument, NULL, 'H' },
 #endif
+      { "max_gap", required_argument, NULL, 'G' },
       { NULL, 0, NULL, 0 }
   };
 
@@ -259,6 +263,15 @@ int main(int argc, char *argv[]) {
       changes_only = false;
       break;
 
+    case 'G':
+      long_value = strtol(optarg, NULL, 10);
+      if (long_value<=0 || long_value>1000) {
+        fprintf(stderr, "ERROR: Invalid value of argument --max_gap \"%s\".\n", optarg);
+        help();
+      }
+      max_unchanged_gap = long_value*60;
+      break;
+
     case '?':
       help();
       break;
@@ -351,8 +364,11 @@ int main(int argc, char *argv[]) {
     if (receiver.waitForMessage(message)) {
       if (receiver.isStopped()) break;
 
+      bool is_message_printed = false;
+
       if ((options&VERBOSITY_DEBUG) != 0 || ((options&VERBOSITY_PRINT_UNDECODED) != 0 && message.isUndecoded())) {
         message.print(stdout, options);
+        is_message_printed = true;
         receiver.printManchesterBits(message, stdout);
         if (message.print(log, options)) {
           receiver.printManchesterBits(message, log);
@@ -360,6 +376,7 @@ int main(int argc, char *argv[]) {
         }
       } else if ((options&VERBOSITY_INFO) != 0) {
         message.print(stdout, options);
+        is_message_printed = true;
         if (message.print(log, options)) fflush(log);
       }
 
@@ -370,29 +387,31 @@ int main(int argc, char *argv[]) {
           fprintf(stderr, "Could not decode the received data (error %04x).\n", message.getDecodingStatus());
       } else {
         bool isValid = message.isValid();
-        int changed = isValid ? sensorsData.update(message.getSensorData(), message.getTime()) : 0;
-        if (changed == 0 && !changes_only && (isValid || server_type!=InfluxDB))
-          changed = TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED;
-        if (changed != 0) {
-          if (server_type==STDOUT) {
-            if ((options&VERBOSITY_INFO) == 0) // already printed
-              message.print(stdout, options);
-          } else {
-            if (!send(message, server_url, server_type, changed, data_buffer, response_buffer, options, log) && (options&VERBOSITY_INFO) != 0)
-              Log->info("No data was sent to server.");
-          }
-        } else {
-          if ((options&VERBOSITY_INFO) != 0) {
+        int changed = isValid ? sensorsData.update(message.getSensorData(), message.getTime(), max_unchanged_gap) : 0;
+        if (changed != TIME_NOT_CHANGED) {
+          if (changed == 0 && !changes_only && (isValid || server_type!=InfluxDB))
+            changed = TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED;
+          if (changed != 0) {
             if (server_type==STDOUT) {
-              if (!isValid)
-                fputs("Data is corrupted.\n", stderr);
-              else
-                fputs("Data is not changed.\n", stderr);
+              if (!is_message_printed) // already printed
+                message.print(stdout, options);
             } else {
-              if (!isValid)
-                fputs("Data is corrupted and is not sent to server.\n", stderr);
-              else
-                fputs("Data is not changed and is not sent to server.\n", stderr);
+              if (!send(message, server_url, server_type, changed, data_buffer, response_buffer, options, log) && (options&VERBOSITY_INFO) != 0)
+                Log->info("No data was sent to server.");
+            }
+          } else {
+            if ((options&VERBOSITY_INFO) != 0) {
+              if (server_type==STDOUT) {
+                if (!isValid)
+                  fputs("Data is corrupted.\n", stderr);
+                else
+                  fputs("Data is not changed.\n", stderr);
+              } else {
+                if (!isValid)
+                  fputs("Data is corrupted and is not sent to server.\n", stderr);
+                else
+                  fputs("Data is not changed and is not sent to server.\n", stderr);
+              }
             }
           }
         }

@@ -37,7 +37,7 @@
 #include <pigpio.h>
 #endif
 
-#define RF_RECEIVER_VERSION "3.0"
+#define RF_RECEIVER_VERSION "3.1"
 
 #include "Logger.hpp"
 #include "Bits.hpp"
