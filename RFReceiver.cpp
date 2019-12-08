@@ -364,7 +364,7 @@ static int16_t readInt(const char*& p) {
   char ch;
   while ((ch=*p)==' ') p++;
 
-  if (ch=='\0' || ch=='\n') return -1;
+  if (ch=='\0' || ch=='\n' || ch=='\r') return -1;
 
   do {
     n = n*10+(ch-'0');
