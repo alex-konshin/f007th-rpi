@@ -36,9 +36,9 @@ static void help() {
     "(c) 2017-2018 Alex Konshin\n"\
     "Receive data from thermometers then print it to stdout or send it to remote server via REST API.\n"
 #endif
-    "Version "RF_RECEIVER_VERSION"\n\n"\
+    "Version " RF_RECEIVER_VERSION "\n\n"\
     "--gpio, -g\n"\
-    "    Value is GPIO pin number (default is "DEFAULT_PIN_STR") as defined on page http://abyz.co.uk/rpi/pigpio/index.html\n"\
+    "    Value is GPIO pin number (default is " DEFAULT_PIN_STR ") as defined on page http://abyz.co.uk/rpi/pigpio/index.html\n"\
     "--celsius, -C\n"\
     "    Output temperature in degrees Celsius.\n"\
     "--utc, -U\n"\
@@ -603,7 +603,7 @@ static int ahc_echo(
   if (data_size == 0)
     response = MHD_create_response_from_buffer(2, (void*)"[]", MHD_RESPMEM_PERSISTENT);
   else
-    response = MHD_create_response_from_data(data_size, buffer, 1, 1);
+    response = MHD_create_response_from_buffer(data_size, buffer, MHD_RESPMEM_MUST_FREE);
   MHD_add_response_header(response, "Content-Type", "application/json");
 
   ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
