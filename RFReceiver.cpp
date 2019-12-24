@@ -577,7 +577,7 @@ int RFReceiver::readSequences() {
       int nextSequenceIndex = (iSequenceWrite + 1)&(MAX_CHAINS-1);
 
       if (iSequenceReady == nextSequenceIndex) {
-        DBG("readSequences() => sequence_pool_overflow %d", sequence_pool_overflow);
+        //DBG("readSequences() => sequence_pool_overflow %d", sequence_pool_overflow);
         // overflow
         sequence_pool_overflow++;
         return 1;
@@ -1497,7 +1497,7 @@ bool RFReceiver::decodeWH2(ReceivedData* message) {
   uint8_t checksum = bits.getInt64(32, 8);
   uint8_t calculated_checksum = crc8(bits, 0, 32, 0x31, 0);
   if (checksum != calculated_checksum) {
-    DBG("decodeWH2() bad checksum: checksum=0x%02x calculated_checksum=0x%02x",checksum,calculated_checksum);
+    //DBG("decodeWH2() bad checksum: checksum=0x%02x calculated_checksum=0x%02x",checksum,calculated_checksum);
     message->decodingStatus |= 0x0080; // bad checksum
     return false;
   }
@@ -1525,7 +1525,7 @@ bool RFReceiver::decodePWM(ReceivedData* message, int startIndex, int size, int 
   for ( int index=startIndex; index<end; index+=2 ) {
     int duration = pSequence[index];
     if ( duration>maxHi || duration<minHi ) {
-      DBG("decodePWM() pSequence[%d]=%d hi (expected %d..%d)",index,duration,minHi,maxHi);
+      //DBG("decodePWM() pSequence[%d]=%d hi (expected %d..%d)",index,duration,minHi,maxHi);
       message->decodingStatus |= 4;
       return false;
     }
@@ -1535,7 +1535,7 @@ bool RFReceiver::decodePWM(ReceivedData* message, int startIndex, int size, int 
     if ( index+1<end ) {
       duration = pSequence[index+1];
       if ( duration>maxLo || duration<minLo ) {
-        DBG("decodePWM() pSequence[%d]=%d lo (expected %d..%d)",index,duration,minLo,maxLo);
+        //DBG("decodePWM() pSequence[%d]=%d lo (expected %d..%d)",index,duration,minLo,maxLo);
         message->decodingStatus |= 4;
         return false;
       }
