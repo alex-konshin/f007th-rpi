@@ -43,7 +43,9 @@ The following GPIO numbers are supported on BPI-M3:
   32, 33, 34, 35, 202, 203, 204, 205, 226, 227, 228, 229, 234, 360, 361, 362.
 */
 
+#ifndef TEST_DECODING
 #define MAX_GPIO 362
 #define DEFAULT_PIN 35
+#endif
 
 #endif /* ARCH_BPI_M3_H_ */

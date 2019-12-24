@@ -39,7 +39,9 @@ gpio readall
  +------+-----+----------+------+---+----++----+---+------+----------+-----+------+
  */
 
+#ifndef TEST_DECODING
 #define MAX_GPIO 249
 #define DEFAULT_PIN 239
+#endif
 
 #endif /* ARCH_ODROID_C2_H_ */

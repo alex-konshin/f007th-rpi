@@ -38,7 +38,9 @@ gpio readall
  +-----+-----+---------+------+---+---Pi 3---+---+------+---------+-----+-----+
 */
 
+#ifndef TEST_DECODING
 #define MAX_GPIO 53
 #define DEFAULT_PIN 27
+#endif
 
 #endif /* MACH_RPI3_H_ */

@@ -10,7 +10,9 @@
 
 // For MinnowBoard see https://www.minnowboard.org/board-viewer
 
+#ifndef TEST_DECODING
 #define MAX_GPIO 1024 // 509 on MinnowBoard
 #define DEFAULT_PIN 338
+#endif
 
 #endif /* MACH_X86_64_H_ */

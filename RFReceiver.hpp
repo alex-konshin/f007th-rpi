@@ -69,6 +69,14 @@
 #define MAX_DURATION_HG02832 1000
 #define MIN_SEQUENCE_HG02832 87
 
+// Fine Offset Electronics WH2
+#define MIN_LO_DURATION_WH2 810
+#define MAX_LO_DURATION_WH2 1020
+#define MIN_HI_DURATION_WH2 450
+#define MAX_HI_DURATION_WH2 1550
+#define PWM_MEDIAN_WH2 1000
+#define MIN_SEQUENCE_WH2 95
+
 // Noise filter
 #define IGNORABLE_SKIP 60
 #define MAX_IGNORD_SKIPS 2
@@ -132,12 +140,14 @@ public:
   bool decode00592TXR(ReceivedData* message);
   bool decodeTX7U(ReceivedData* message);
   bool decodeHG02832(ReceivedData* message);
+  bool decodeWH2(ReceivedData* message);
 
   void setProtocols(unsigned protocols);
 
   void setLogger(Logger logger);
 #ifdef TEST_DECODING
   void setInputLogFile(const char* inputLogFilePath);
+  void setWaitAfterReading(bool waitAfterReading);
 #endif
   bool printManchesterBits(ReceivedMessage& message, FILE* file);
 
@@ -174,6 +184,8 @@ private:
 
   bool decodeManchester(ReceivedData* message, Bits& bitSet);
   bool decodeManchester(ReceivedData* message, int startIndex, int endIndex, Bits& bitSet);
+  bool decodePWM(ReceivedData* message, int startIndex, int size, int minLo, int maxLo, int minHi, int maxHi, int median, Bits& bits);
+  uint8_t crc8( Bits& bits, int from, int size, int polynomial, int init );
 
   void addBit(bool bit);
 
@@ -255,6 +267,9 @@ private:
   bool stopDecoder;
   bool stopMessageReader;
   bool stopped;
+#ifdef TEST_DECODING
+  bool waitAfterReading;
+#endif
   int timerEvent;
 };
 

@@ -187,6 +187,28 @@ public:
     return true;
   }
 
+  static void printBits(FILE* file, Bits* bits) {
+    fputs("   ==> ", file);
+    int size = bits->getSize();
+    for (int index=0; index<size; index++ ) {
+      fputc(bits->getBit(index) ? '1' : '0', file);
+    }
+    fputc('\n', file);
+  }
+
+  static void printBits(Bits& bits) {
+    char buffer[512];
+    int size = bits.getSize();
+    if (size>500) size = 500;
+    int out = 0;
+    for (int index=0; index<size; index++ ) {
+      if (index!=0 && (index&3)==0) buffer[out++] = ' ';
+      buffer[out++] = bits.getBit(index) ? '1' : '0';
+    }
+    buffer[out++] = '\0';
+    Log->info( "   ==> %s", &buffer );
+  }
+
   bool print(FILE* file, int options) {
     bool print_details = (options&VERBOSITY_PRINT_DETAILS) != 0;
     bool print_undecoded = (options&VERBOSITY_PRINT_UNDECODED) != 0;
@@ -226,6 +248,8 @@ public:
           fprintf(file, "  TX3/TX6/TX7 data  = %03x%08x\n", (data->sensorData.u32.hi&0xfff), data->sensorData.u32.low); //FIXME
         else if (data->sensorData.protocol == PROTOCOL_HG02832)
           fprintf(file, "  HG02832 data  = %08x%02x\n", data->sensorData.u32.low, data->sensorData.u32.hi&255);
+        else if (data->sensorData.protocol == PROTOCOL_WH2)
+          fprintf(file, "  WH2/FT007TH data  = %08x%02x\n", data->sensorData.u32.low, data->sensorData.u32.hi&255);
       } else {
         fputs(dt, file);
         fputc('\n', file);
@@ -250,6 +274,9 @@ public:
 
       } else if (data->sensorData.protocol == PROTOCOL_HG02832) {
         fprintf(file, "  type              = Auriol HG02832 (IAN 283582)\n  channel           = %d\n", getChannelHG02832());
+
+      } else if (data->sensorData.protocol == PROTOCOL_WH2) {
+        fprintf(file, "  type              = %s\n", data->sensorData.getSensorTypeLongName());
       }
 
       fprintf(file, "  rolling code      = %02x\n", getRollingCode());
@@ -279,15 +306,6 @@ public:
     return true;
   }
 
-  void printBits(FILE* file, Bits* bits) {
-    fputs("   ==> ", file);
-    int size = bits->getSize();
-    for (int index=0; index<size; index++ ) {
-      fputc(bits->getBit(index) ? '1' : '0', file);
-    }
-    fputc('\n', file);
-  }
-
   bool json(FILE* file, int options) {
     if (data == __null) return false;
 
@@ -311,15 +329,7 @@ public:
         fputs(",\"valid\":false,", file);
       }
 
-      if (data->sensorData.protocol == PROTOCOL_00592TXR) {
-        fputs(",\"type\":\"AcuRite 00592TXR\"", file);
-      } else if (data->sensorData.protocol == PROTOCOL_F007TH) {
-        fprintf(file, ",\"type\":\"Ambient Weather F007T%c\"", data->sensorData.u32.hi==1?'P':'H');
-      } else if (data->sensorData.protocol == PROTOCOL_TX7U) {
-        fputs(",\"type\":\"LaCrosse TX3/TX6/TX7\"", file);
-      } else if (data->sensorData.protocol == PROTOCOL_HG02832) {
-        fputs(",\"type\":\"Auriol HG02832 (IAN 283582)\"", file);
-      }
+      fprintf(file, ",\"type\":\"%s\"", data->sensorData.getSensorTypeLongName());
 
       int channel = getChannelNumber();
       if (channel >= 0) fprintf(file, ",\"channel\":%d", channel);
@@ -366,13 +376,7 @@ public:
 
     int len = snprintf( buffer, buflen,
       "{\"time\":\"%s\",\"type\":\"%s\",\"valid\":%s",
-      dt,
-      data->sensorData.protocol == PROTOCOL_00592TXR ? "AcuRite 00592TXR" :
-      data->sensorData.protocol == PROTOCOL_F007TH ?
-          data->sensorData.u32.hi==1 ? "Ambient Weather F007TP" : "Ambient Weather F007TH" :
-      data->sensorData.protocol == PROTOCOL_HG02832 ? "Auriol HG02832 (IAN 283582)" :
-      data->sensorData.protocol == PROTOCOL_TX7U ? "LaCrosse TX3/TX6/TX7" : "unknown",
-      decodingStatus == 0 ? "true" : "false"
+      dt, data->sensorData.getSensorTypeLongName(), decodingStatus == 0 ? "true" : "false"
     );
 
     int channel = getChannelNumber();

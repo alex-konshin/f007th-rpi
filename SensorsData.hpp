@@ -12,13 +12,15 @@
 #define PROTOCOL_00592TXR  2
 #define PROTOCOL_TX7U      4
 #define PROTOCOL_HG02832   8
-#define PROTOCOL_ALL       (unsigned)(-1)
+#define PROTOCOL_WH2      16
+#define PROTOCOL_ALL      (unsigned)(-1)
 
 #define PROTOCOL_INDEX_F007TH    0
 #define PROTOCOL_INDEX_00592TXR  1
 #define PROTOCOL_INDEX_TX7U      2
 #define PROTOCOL_INDEX_HG02832   3
-#define NUMBER_OF_PROTOCOLS      4
+#define PROTOCOL_INDEX_WH2       4
+#define NUMBER_OF_PROTOCOLS      5
 
 #define VERBOSITY_DEBUG            1
 #define VERBOSITY_INFO             2
@@ -102,7 +104,7 @@ public:
 
 
   bool hasTemperature() {
-    if ((protocol&(PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_HG02832)) != 0) return true;
+    if ((protocol&(PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_HG02832|PROTOCOL_WH2)) != 0) return true;
     if (protocol == PROTOCOL_TX7U) return (u32.hi&15)==0 || (u32.hi&0x00800000)!=0;
     return false;
   }
@@ -126,6 +128,12 @@ public:
       if (hasTemperature()) return getTX7temperature()-500;
       //return -2732;
     }
+
+    if (protocol == PROTOCOL_WH2) {
+      int t = (int)((u32.low>>8)&1023);
+      if ( (t&0x0800)!=0 ) t = -(t&0x07ff);
+      return t;
+    }
     return -2732;
   }
 
@@ -145,6 +153,11 @@ public:
       if (hasTemperature()) return ((getTX7temperature()-500)*9/5)+320;
       //return -4597;
     }
+    if (protocol == PROTOCOL_WH2) {
+      int t = (int)((u32.low>>8)&1023);
+      if ( (t&0x0800)!=0 ) t = -(t&0x07ff);
+      return t*9/5+32;
+    }
     return -4597;
   }
 
@@ -152,6 +165,7 @@ public:
     if ((protocol&PROTOCOL_F007TH) != 0) return (u32.hi&1) == 0;
     if ((protocol&(PROTOCOL_00592TXR|PROTOCOL_HG02832)) != 0) return true;
     if (protocol == PROTOCOL_TX7U) return (u32.hi&15)==14 || (u32.hi&0x80000000)!=0;
+    if (protocol == PROTOCOL_WH2) return true;
     return false;
   }
   // Relative Humidity, 0..100%
@@ -160,6 +174,7 @@ public:
     if (protocol == PROTOCOL_00592TXR) return fields.rh & 127;
     if (protocol == PROTOCOL_TX7U) return hasHumidity() ? getTX7humidity() : 0;
     if (protocol == PROTOCOL_HG02832) return (u32.low>>16) & 255;
+    if (protocol == PROTOCOL_WH2) return u32.low & 127;
     return 0;
   }
 
@@ -168,6 +183,23 @@ public:
     if (protocol == PROTOCOL_00592TXR) return "00592TXR";
     if (protocol == PROTOCOL_TX7U) return "TX7";
     if (protocol == PROTOCOL_HG02832) return "HG02832";
+    if (protocol == PROTOCOL_WH2) {
+      if ((u32.hi&0x80000000) != 0) return "FT007TH";
+      return "WH2";
+    }
+    return "UNKNOWN";
+  }
+
+  const char* getSensorTypeLongName() {
+    if (protocol == PROTOCOL_F007TH)
+      return u32.hi==1 ? "Ambient Weather F007TP" : "Ambient Weather F007TH";
+    if (protocol == PROTOCOL_00592TXR) return "AcuRite 00592TXR";
+    if (protocol == PROTOCOL_TX7U) return "LaCrosse TX3/TX6/TX7";
+    if (protocol == PROTOCOL_HG02832) return "Auriol HG02832 (IAN 283582)";
+    if (protocol == PROTOCOL_WH2) {
+      if ((u32.hi&0x80000000) != 0) return "Telldus FT007TH";
+      return "Fine Offset Electronics WH2";
+    }
     return "UNKNOWN";
   }
 
@@ -177,6 +209,7 @@ public:
     if (protocol == PROTOCOL_00592TXR) return fields.rolling_code;
     if (protocol == PROTOCOL_TX7U) return (u32.low >> 25);
     if (protocol == PROTOCOL_HG02832) return (u32.low >> 24);
+    if (protocol == PROTOCOL_WH2) return (u32.low >> 20);
     return 0;
   }
 
@@ -263,7 +296,7 @@ public:
   }
 
   SensorData* getData(uint8_t protocol, int channel, uint8_t rolling_code = -1) {
-    if ((protocol&(PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_HG02832|PROTOCOL_TX7U)) == 0) return __null;
+    if ((protocol&(PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_HG02832|PROTOCOL_TX7U|PROTOCOL_WH2)) == 0) return __null;
     if (protocol!=PROTOCOL_TX7U && (channel < 1 || channel > 8)) return __null;
     if (rolling_code > 255 || (rolling_code < 0 && rolling_code != -1)) return __null;
 
@@ -299,6 +332,12 @@ public:
         SensorData* p = &items[index];
         if (p->protocol != PROTOCOL_TX7U) continue;
         if (rolling_code == -1 || ((p->u32.low >> 25)&0x7f) == rolling_code) return p;
+      }
+    } else if (protocol == PROTOCOL_WH2) {
+      for (int index = 0; index<size; index++) {
+        SensorData* p = &items[index];
+        if (p->protocol != PROTOCOL_WH2) continue;
+        if (rolling_code == -1 || ((p->u32.low >> 20)&255) == rolling_code) return p;
       }
     }
     return __null;
@@ -435,6 +474,37 @@ public:
       }
       add(sensorData, data_time);
       return TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED | NEW_UID;
+    }
+
+    if (sensorData->protocol == PROTOCOL_WH2) {
+      uint32_t new_w = sensorData->u32.low;
+
+      for (int index = 0; index<size; index++) {
+        SensorData* p = &items[index];
+        uint32_t w;
+        if (p->protocol != PROTOCOL_WH2) continue;
+        w = p->u32.low;
+        if (w == new_w) return 0; // nothing has changed
+        if (((w^new_w)&0x0ff00000) == 0) { // compare rolling code
+          time_t gap = data_time - p->data_time;
+          if (gap < 2L) return TIME_NOT_CHANGED;
+          int result = 0;
+          if (max_unchanged_gap > 0L && gap > max_unchanged_gap) {
+            result = TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED;
+          } else {
+            if (((w^new_w)&0x0003ff00) != 0) result |= TEMPERATURE_IS_CHANGED;
+            if (((w^new_w)&0x000000ff) != 0) result |= HUMIDITY_IS_CHANGED;
+            //if (((w^new_w)&0x00080000) != 0) result |= BATTERY_STATUS_IS_CHANGED; TODO
+          }
+          if (result != 0) {
+            p->u64 = sensorData->u64;
+            p->data_time = data_time;
+          }
+          return result;
+        }
+      }
+      add(sensorData, data_time);
+      return TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | NEW_UID;
     }
 
     return 0;

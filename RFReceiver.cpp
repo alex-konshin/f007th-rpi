@@ -11,7 +11,7 @@ RFReceiver* RFReceiver::first = NULL;
 
 RFReceiver::RFReceiver(int gpio) {
   this->gpio = gpio;
-  protocols = PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_TX7U|PROTOCOL_HG02832;
+  protocols = PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_TX7U|PROTOCOL_HG02832|PROTOCOL_WH2;
   isEnabled = false;
   isDecoderStarted = false;
   stopDecoder = false;
@@ -20,6 +20,7 @@ RFReceiver::RFReceiver(int gpio) {
 #ifdef TEST_DECODING
   inputLogFilePath = NULL;
   inputLogFileStream = NULL;
+  waitAfterReading = false;
 #elif defined(USE_GPIO_TS)
   fd = -1;
 #else
@@ -227,8 +228,13 @@ bool RFReceiver::enableReceive() {
         if ( max_duration==0 || max_duration<MAX_DURATION_HG02832 ) max_duration = MAX_DURATION_HG02832;
         if ( min_sequence_length==0 || min_sequence_length>MIN_SEQUENCE_HG02832 ) min_sequence_length = MIN_SEQUENCE_HG02832;
       }
+      if ((protocols & PROTOCOL_WH2) != 0) {
+        if ( min_duration==0 || min_duration>150 ) min_duration = 150;
+        if ( max_duration==0 || max_duration<MAX_HI_DURATION_WH2 ) max_duration = MAX_HI_DURATION_WH2;
+        if ( min_sequence_length==0 || min_sequence_length>MIN_SEQUENCE_WH2 ) min_sequence_length = MIN_SEQUENCE_WH2;
+      }
       if ( min_duration==0 ) min_duration = MIN_DURATION_00592TXR;
-      if ( max_duration==0 ) max_duration = MAX_DURATION_TX7U;
+      if ( max_duration==0 ) max_duration = MAX_HI_DURATION_WH2;
     }
     if ( min_sequence_length==0 ) min_sequence_length = MIN_SEQUENCE_LENGTH;
 #pragma GCC diagnostic pop
@@ -307,17 +313,18 @@ void RFReceiver::disableReceive() {
 }
 
 void RFReceiver::stop() {
+  if (stopped) return;
+  Log->info("Stopping...");
   stopped = true;
   if (isLibInitialized && isEnabled) {
     pause();
     stopTimer();
     stopMessageReader = true;
     if (isDecoderStarted) {
-/* FIXME
+      isDecoderStarted = false;
       pthread_mutex_lock(&messageQueueLock);
       pthread_cond_broadcast(&messageReady);
       pthread_mutex_unlock(&messageQueueLock);
-*/
     }
     close();
   }
@@ -344,6 +351,9 @@ void RFReceiver::resetReceiverBuffer() {
 }
 
 #ifdef TEST_DECODING
+void RFReceiver::setWaitAfterReading(bool waitAfterReading) {
+  this->waitAfterReading = waitAfterReading;
+}
 
 void RFReceiver::setInputLogFile(const char* inputLogFilePath) {
   if (inputLogFilePath == NULL) {
@@ -462,6 +472,7 @@ int RFReceiver::readSequences() {
         inputLogFileStream = NULL;
       }
       Log->info("Finished reading input log file.");
+      if (!waitAfterReading) return -1;
       break;
     }
 
@@ -812,6 +823,11 @@ void RFReceiver::decoder() {
       message->detailedDecodingStatus[PROTOCOL_INDEX_TX7U] = message->decodingStatus;
       message->detailedDecodedBits[PROTOCOL_INDEX_TX7U] = message->decodedBits;
     }
+    if (!decoded && (protocols&PROTOCOL_WH2) != 0) {
+      decoded = decodeWH2(message);
+      message->detailedDecodingStatus[PROTOCOL_INDEX_WH2] = message->decodingStatus;
+      message->detailedDecodedBits[PROTOCOL_INDEX_WH2] = message->decodedBits;
+    }
     if (!decoded && (protocols&PROTOCOL_HG02832) != 0) {
       decoded = decodeHG02832(message);
       message->detailedDecodingStatus[PROTOCOL_INDEX_HG02832] = message->decodingStatus;
@@ -942,7 +958,7 @@ bool RFReceiver::printManchesterBits(ReceivedMessage& message, FILE* file) {
   // Manchester decoding was successful. Print bits...
   uint16_t decodingStatus = message.data->decodingStatus;
   Bits bits(message.data->iSequenceSize+1);
-  if (decodeManchester(message.data, bits)) message.printBits(file, &bits);
+  if (decodeManchester(message.data, bits)) ReceivedMessage::printBits(file, &bits);
   message.data->decodingStatus = decodingStatus;
   return true;
 }
@@ -1372,7 +1388,7 @@ bool RFReceiver::decodeHG02832(ReceivedData* message) {
 
   int n;
   Bits bits(40);
-  for ( int index = dataStartIndex; index<87; index+=2 ) {
+  for ( int index = dataStartIndex; index<dataStartIndex+79; index+=2 ) {
     item = pSequence[index];
     if ( item<MIN_DURATION_HG02832 || item>700 ) {
       //DBG("decodeHG02832() pSequence[%d]=%d => (n<%d || n>700)",index,item,MIN_DURATION_HG02832);
@@ -1405,22 +1421,143 @@ bool RFReceiver::decodeHG02832(ReceivedData* message) {
   message->decodedBits = (uint16_t)bits.getSize();
 
   if ( (data&0x00ff0fffL)==0 ) {
+    message->decodingStatus |= 0x0180;
+    return false;
+  }
+
+  uint8_t calculated_sum = 0x53 ^ data ^ (data>>8) ^ (data>>16) ^ (data>>24);
+  for ( int bit = 0; bit<8; ++bit ) {
+    if ( (calculated_sum&0x80)!=0 ) {
+      calculated_sum = (calculated_sum<<1)^0x31;
+    } else {
+      calculated_sum = (calculated_sum<<1);
+    }
+  }
+  if ( ((checksum^calculated_sum)&255) != 0) {
     message->decodingStatus |= 0x0080;
     return false;
   }
-
-/* FIXME checksum calculation algorithm is unknown yet
-  for (int i = 0; i < 40; i+=4) {
-    checksum += bits.getInt(i, 4);
-  }
-  if (((bits.getInt(40,4)^checksum)&15) != 0) {
-    message->decodingStatus |= 0x0380;
-    return false;
-  }
-*/
   return true;
 }
 
+
+/*
+ * Decoding Fine Offset Electronics WH2/Telldus FT007TH
+ */
+bool RFReceiver::decodeWH2(ReceivedData* message) {
+  message->decodingStatus = 0;
+  message->decodedBits = 0;
+  message->sensorData.protocol = 0;
+
+  int iSequenceSize = message->iSequenceSize;
+  if (iSequenceSize < MIN_SEQUENCE_WH2) {
+    message->decodingStatus |= 8;
+    return false;
+  }
+
+  int16_t* pSequence = message->pSequence;
+  int16_t item;
+
+  // skip and check preamble
+  bool ft007th = false;
+  int dataStartIndex = -1;
+  for ( int preambleIndex = 0; preambleIndex<=(iSequenceSize-MIN_SEQUENCE_WH2); preambleIndex+=2 ) {
+    ft007th = false;
+    int preambleStart = preambleIndex;
+    for (int index = 0; index<16; index +=2) {
+      item = pSequence[preambleStart+index];
+      if (index==0 && (iSequenceSize-preambleIndex>=97) && item>=180 && item<=220) {
+        item = pSequence[preambleIndex+1];
+        if (item<=MIN_LO_DURATION_WH2 || item>=MAX_LO_DURATION_WH2) break;
+        ft007th = true;
+        preambleStart += 2;
+        item = pSequence[preambleStart+index];
+      }
+      if (item<=MIN_HI_DURATION_WH2 || item>=MAX_HI_DURATION_WH2) continue;
+      item = pSequence[preambleStart+index+1];
+      if (item<=MIN_LO_DURATION_WH2 || item>=MAX_LO_DURATION_WH2) continue;
+      if (index == 14) dataStartIndex = preambleStart+16;
+    }
+    if ( dataStartIndex!=-1 ) break;
+  }
+  if ( dataStartIndex==-1 ) {
+    message->decodingStatus |= 16;
+    return false;
+  }
+
+  // Decoding bits
+
+  Bits bits(40);
+  if ( !decodePWM(message, dataStartIndex, iSequenceSize-dataStartIndex, MIN_LO_DURATION_WH2, MAX_LO_DURATION_WH2, MIN_HI_DURATION_WH2, MAX_HI_DURATION_WH2, PWM_MEDIAN_WH2, bits) ) return false;
+#ifndef NDEBUG
+  ReceivedMessage::printBits(bits);
+#endif
+
+  uint64_t data = bits.getInt64(0, 32);
+  uint8_t checksum = bits.getInt64(32, 8);
+  uint8_t calculated_checksum = crc8(bits, 0, 32, 0x31, 0);
+  if (checksum != calculated_checksum) {
+    DBG("decodeWH2() bad checksum: checksum=0x%02x calculated_checksum=0x%02x",checksum,calculated_checksum);
+    message->decodingStatus |= 0x0080; // bad checksum
+    return false;
+  }
+
+  int type = bits.getInt(0, 4);
+  if (type != 4) {
+    message->decodingStatus |= 0x0180; // unknown type
+    return false;
+  }
+
+  message->sensorData.u64 = data;
+  uint32_t hi = 255&checksum;
+  if ( ft007th ) hi |= 0x80000000; // Telldus
+  message->sensorData.u32.hi = hi;
+  message->sensorData.protocol = PROTOCOL_WH2;
+  message->decodedBits = (uint16_t)bits.getSize();
+
+  return true;
+}
+
+
+bool RFReceiver::decodePWM(ReceivedData* message, int startIndex, int size, int minLo, int maxLo, int minHi, int maxHi, int median, Bits& bits) {
+  int16_t* pSequence = message->pSequence;
+  int end = startIndex+size;
+  for ( int index=startIndex; index<end; index+=2 ) {
+    int duration = pSequence[index];
+    if ( duration>maxHi || duration<minHi ) {
+      DBG("decodePWM() pSequence[%d]=%d hi (expected %d..%d)",index,duration,minHi,maxHi);
+      message->decodingStatus |= 4;
+      return false;
+    }
+
+    bits.addBit( duration<median );
+
+    if ( index+1<end ) {
+      duration = pSequence[index+1];
+      if ( duration>maxLo || duration<minLo ) {
+        DBG("decodePWM() pSequence[%d]=%d lo (expected %d..%d)",index,duration,minLo,maxLo);
+        message->decodingStatus |= 4;
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+uint8_t RFReceiver::crc8( Bits& bits, int from, int size, int polynomial, int init ) {
+  int result = init;
+  for ( int index = from; index<from+size; index += 8 ) {
+    result ^= bits.getInt( index, 8 );
+    for ( int bit = 0; bit<8; ++bit ) {
+      if ( (result&0x80)!=0 ) {
+        result = (result<<1)^polynomial;
+      } else {
+        result = (result<<1);
+      }
+    }
+  }
+  return (uint8_t)(result & 255);
+}
 
 ReceivedData* RFReceiver::createNewMessage() {
   if (iSequenceReady == iSequenceWrite) return NULL;

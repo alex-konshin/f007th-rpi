@@ -15,7 +15,9 @@
 #define SERVER_TYPE_REST 0
 
 #define to_str(x) #x
+#ifndef TEST_DECODING
 #define DEFAULT_PIN_STR to_str(DEFAULT_PIN)
+#endif
 
 
 enum ServerType {STDOUT, REST, InfluxDB};
@@ -36,9 +38,11 @@ static void help() {
     "(c) 2017-2018 Alex Konshin\n"\
     "Receive data from thermometers then print it to stdout or send it to remote server via REST API.\n"
 #endif
-    "Version " RF_RECEIVER_VERSION "\n\n"\
+    "Version " RF_RECEIVER_VERSION "\n\n"
+#ifndef TEST_DECODING
     "--gpio, -g\n"\
-    "    Value is GPIO pin number (default is " DEFAULT_PIN_STR ") as defined on page http://abyz.co.uk/rpi/pigpio/index.html\n"\
+    "    Value is GPIO pin number (default is " DEFAULT_PIN_STR ") as defined on page http://abyz.co.uk/rpi/pigpio/index.html\n"
+#endif
     "--celsius, -C\n"\
     "    Output temperature in degrees Celsius.\n"\
     "--utc, -U\n"\
@@ -90,26 +94,27 @@ int main(int argc, char *argv[]) {
   bool type_is_set = false;
 
 #ifdef TEST_DECODING
+  bool wait_after_reading = false;
   int options = VERBOSITY_INFO|VERBOSITY_PRINT_UNDECODED|VERBOSITY_PRINT_DETAILS;
   const char* input_log_file_path = NULL;
 #ifdef INCLUDE_HTTPD
   int httpd_port = 0;
 
-  const char* short_options = "g:s:Al:vVt:TCULd56780DI:H:G:";
+  const char* short_options = "g:s:Al:vVt:TCULd256780DI:WH:G:";
 #else
-  const char* short_options = "g:s:Al:vVt:TCULd56780DI:G:";
+  const char* short_options = "g:s:Al:vVt:TCULd256780DI:WG:";
 #endif
 
 #elif defined(INCLUDE_HTTPD)
   int options = 0;
   int httpd_port = 0;
 
-  const char* short_options = "g:s:Al:vVt:TCULd56780DH:G:";
+  const char* short_options = "g:s:Al:vVt:TCULd256780DH:G:";
 
 #else
   int options = 0;
 
-  const char* short_options = "g:s:Al:vVt:TCULd56780DG:";
+  const char* short_options = "g:s:Al:vVt:TCULd256780DG:";
 #endif
   const struct option long_options[] = {
       { "gpio", required_argument, NULL, 'g' },
@@ -129,9 +134,11 @@ int main(int argc, char *argv[]) {
       { "00592txr", no_argument, NULL, '5' },
       { "tx6", no_argument, NULL, '6' },
       { "hg02832", no_argument, NULL, '8' },
+      { "wh2", no_argument, NULL, '2' },
       { "DEBUG", no_argument, NULL, 'D' },
 #ifdef TEST_DECODING
       { "input-log", required_argument, NULL, 'I' },
+      { "wait", no_argument, NULL, 'W' },
 #endif
 #ifdef INCLUDE_HTTPD
       { "httpd", required_argument, NULL, 'H' },
@@ -171,6 +178,10 @@ int main(int argc, char *argv[]) {
 #ifdef TEST_DECODING
     case 'I':
       input_log_file_path = optarg;
+      break;
+
+    case 'W':
+      wait_after_reading = true;
       break;
 #endif
 
@@ -243,6 +254,9 @@ int main(int argc, char *argv[]) {
       options |= VERBOSITY_INFO | VERBOSITY_PRINT_JSON | VERBOSITY_PRINT_CURL | VERBOSITY_PRINT_UNDECODED | VERBOSITY_PRINT_DETAILS;
       break;
 
+    case '2': // WH2
+      protocols |= PROTOCOL_WH2;
+      break;
     case '5': // AcuRite 00592TXR
       protocols |= PROTOCOL_00592TXR;
       break;
@@ -332,6 +346,7 @@ int main(int argc, char *argv[]) {
   Log->setLogFile(log);
 #ifdef TEST_DECODING
   receiver.setInputLogFile(input_log_file_path);
+  receiver.setWaitAfterReading(wait_after_reading);
 #endif
 
   if (protocols != 0) receiver.setProtocols(protocols);
