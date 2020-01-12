@@ -11,345 +11,86 @@
 #include <curl/curl.h>
 
 #include "SensorsData.hpp"
+#include "Config.hpp"
 
-#define SERVER_TYPE_REST 0
-
-#define to_str(x) #x
-#ifndef TEST_DECODING
-#define DEFAULT_PIN_STR to_str(DEFAULT_PIN)
-#endif
-
-
-enum ServerType {STDOUT, REST, InfluxDB};
-
-static bool send(ReceivedMessage& message, const char* url, ServerType server_type, int changed, char* data_buffer, char* response_buffer, int options, FILE* log);
+static bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer, char* response_buffer, FILE* log);
 
 #ifdef INCLUDE_HTTPD
 static struct MHD_Daemon* start_httpd(int port, SensorsData* sensorsData);
 static void stop_httpd(struct MHD_Daemon* httpd);
 #endif
 
-static void help() {
-  fputs(
-#ifdef TEST_DECODING
-    "(c) 2018 Alex Konshin\n"\
-    "Test decoding of received data for f007th* utilities.\n"
-#else
-    "(c) 2017-2018 Alex Konshin\n"\
-    "Receive data from thermometers then print it to stdout or send it to remote server via REST API.\n"
-#endif
-    "Version " RF_RECEIVER_VERSION "\n\n"
-#ifndef TEST_DECODING
-    "--gpio, -g\n"\
-    "    Value is GPIO pin number (default is " DEFAULT_PIN_STR ") as defined on page http://abyz.co.uk/rpi/pigpio/index.html\n"
-#endif
-    "--celsius, -C\n"\
-    "    Output temperature in degrees Celsius.\n"\
-    "--utc, -U\n"\
-    "    Timestamps are printed/sent in ISO 8601 format.\n"\
-    "--local-time, -L\n"\
-    "    Timestamps are printed/sent in format \"YYYY-mm-dd HH:MM:SS TZ\".\n"\
-    "--send-to, -s\n"\
-    "    Parameter value is server URL.\n"\
-    "--server-type, -t\n"\
-    "    Parameter value is server type. Possible values are REST (default) or InfluxDB.\n"\
-    "--all, -A\n"\
-    "    Send all data. Only changed and valid data is sent by default.\n"\
-    "--log-file, -l\n"\
-    "    Parameter is a path to log file.\n"
-#ifdef TEST_DECODING
-    "--input-log, -I\n"\
-    "    Parameter is a path to input log file to be processed.\n"
-#endif
-#ifdef INCLUDE_HTTPD
-    "--httpd, -H\n"\
-    "    Run HTTPD server on the specified port.\n"
-#endif
-    "--max_gap, -G\n"\
-    "    Max gap between reported reading. Next reading will be sent to server or printed even it is the same as previous readings.\n"\
-    "--verbose, -v\n"\
-    "    Verbose output.\n"\
-    "--more_verbose, -V\n"\
-    "    More verbose output.\n",
-    stderr
-  );
-  fflush(stderr);
-  fclose(stderr);
-  exit(1);
-}
-
 int main(int argc, char *argv[]) {
 
-  if ( argc==1 ) help();
+  if ( argc==1 ) Config::help();
 
-  const char* log_file_path = NULL; // TODO real logging is not implemented yet
-  const char* server_url = NULL;
-  int gpio = DEFAULT_PIN;
-  ServerType server_type = REST;
-  unsigned protocols = 0;
-  time_t max_unchanged_gap = 0L;
+  Config cfg(DEFAULT_OPTIONS);
 
-  bool changes_only = true;
-  bool tz_set = false;
-  bool type_is_set = false;
-
-#ifdef TEST_DECODING
-  bool wait_after_reading = false;
-  int options = VERBOSITY_INFO|VERBOSITY_PRINT_UNDECODED|VERBOSITY_PRINT_DETAILS;
-  const char* input_log_file_path = NULL;
-#ifdef INCLUDE_HTTPD
-  int httpd_port = 0;
-
-  const char* short_options = "g:s:Al:vVt:TCULd256780DI:WH:G:";
-#else
-  const char* short_options = "g:s:Al:vVt:TCULd256780DI:WG:";
-#endif
-
-#elif defined(INCLUDE_HTTPD)
-  int options = 0;
-  int httpd_port = 0;
-
-  const char* short_options = "g:s:Al:vVt:TCULd256780DH:G:";
-
-#else
-  int options = 0;
-
-  const char* short_options = "g:s:Al:vVt:TCULd256780DG:";
-#endif
-  const struct option long_options[] = {
-      { "gpio", required_argument, NULL, 'g' },
-      { "send-to", required_argument, NULL, 's' },
-      { "server-type", required_argument, NULL, 't' },
-      { "celsius", no_argument, NULL, 'C' },
-      { "utc", no_argument, NULL, 'U' },
-      { "local-time", no_argument, NULL, 'L' },
-      { "all", no_argument, NULL, 'A' },
-      { "log-file", required_argument, NULL, 'l' },
-      { "verbose", no_argument, NULL, 'v' },
-      { "more_verbose", no_argument, NULL, 'V' },
-      { "statistics", no_argument, NULL, 'T' },
-      { "debug", no_argument, NULL, 'd' },
-      { "any", no_argument, NULL, '0' },
-      { "f007th", no_argument, NULL, '7' },
-      { "00592txr", no_argument, NULL, '5' },
-      { "tx6", no_argument, NULL, '6' },
-      { "hg02832", no_argument, NULL, '8' },
-      { "wh2", no_argument, NULL, '2' },
-      { "DEBUG", no_argument, NULL, 'D' },
-#ifdef TEST_DECODING
-      { "input-log", required_argument, NULL, 'I' },
-      { "wait", no_argument, NULL, 'W' },
-#endif
-#ifdef INCLUDE_HTTPD
-      { "httpd", required_argument, NULL, 'H' },
-#endif
-      { "max_gap", required_argument, NULL, 'G' },
-      { NULL, 0, NULL, 0 }
-  };
-
-  long long_value;
   while (1) {
     int c = getopt_long(argc, argv, short_options, long_options, NULL);
     if (c == -1) break;
 
-    switch (c) {
-
-    case 'g':
-      long_value = strtol(optarg, NULL, 10);
-      if (long_value<=0 || long_value>MAX_GPIO) {
-        fprintf(stderr, "ERROR: Invalid GPIO pin number \"%s\".\n", optarg);
-        help();
-      }
-      gpio = (int)long_value;
-      break;
-
-    case 'A':
-      changes_only = false;
-      break;
-
-    case 'v':
-      options |= VERBOSITY_INFO;
-      break;
-
-    case 'l':
-      log_file_path = optarg;
-      break;
-
-#ifdef TEST_DECODING
-    case 'I':
-      input_log_file_path = optarg;
-      break;
-
-    case 'W':
-      wait_after_reading = true;
-      break;
-#endif
-
-#ifdef INCLUDE_HTTPD
-    case 'H':
-      long_value = strtol(optarg, NULL, 10);
-
-      if (long_value<MIN_HTTPD_PORT || long_value>65535) {
-        fprintf(stderr, "ERROR: Invalid HTTPD port number \"%s\".\n", optarg);
-        help();
-      }
-      httpd_port = (int)long_value;
-      break;
-#endif
-
-    case 's':
-      server_url = optarg;
-      break;
-
-    case 't':
-      if (strcasecmp(optarg, "REST") == 0) {
-        if (type_is_set && server_type!=REST) {
-          fputs("ERROR: Server type is specified twice.\n", stderr);
-          help();
-        }
-        server_type = REST;
-      } else if (strcasecmp(optarg, "InfluxDB") == 0) {
-        if (type_is_set && server_type!=InfluxDB) {
-          fputs("ERROR: Server type is specified twice.\n", stderr);
-          help();
-        }
-        server_type = InfluxDB;
-      } else {
-        fprintf(stderr, "ERROR: Unknown server type \"%s\".\n", optarg);
-        help();
-      }
-      type_is_set = true;
-      break;
-
-    case 'T':
-      options |= VERBOSITY_PRINT_STATISTICS;
-      break;
-
-    case 'd':
-      options |= VERBOSITY_DEBUG;
-      break;
-
-    case 'C':
-      options |= OPTION_CELSIUS;
-      break;
-
-    case 'U':
-      if (tz_set && (options&OPTION_UTC)==0) {
-        fputs("ERROR: Options -L/--local_time and -U/--utc are mutually exclusive\n", stderr);
-        help();
-      }
-      options |= OPTION_UTC;
-      tz_set = true;
-      break;
-
-    case 'L':
-      if (tz_set && (options&OPTION_UTC)!=0) {
-        fputs("ERROR: Options -L/--local_time and -U/--utc are mutually exclusive\n", stderr);
-        help();
-      }
-      tz_set = true;
-      break;
-
-    case 'V':
-      options |= VERBOSITY_INFO | VERBOSITY_PRINT_JSON | VERBOSITY_PRINT_CURL | VERBOSITY_PRINT_UNDECODED | VERBOSITY_PRINT_DETAILS;
-      break;
-
-    case '2': // WH2
-      protocols |= PROTOCOL_WH2;
-      break;
-    case '5': // AcuRite 00592TXR
-      protocols |= PROTOCOL_00592TXR;
-      break;
-    case '6': // LaCrosse TX3/TX6/TX7
-      protocols |= PROTOCOL_TX7U;
-      break;
-    case '7': // Ambient Weather F007TH
-      protocols |= PROTOCOL_F007TH;
-      break;
-    case '8': // Auriol HG02832
-      protocols |= PROTOCOL_HG02832;
-      break;
-    case '0': // any protocol
-      protocols |= PROTOCOL_ALL;
-      break;
-    case 'D': // print undecoded messages
-      options |= VERBOSITY_PRINT_UNDECODED;
-      changes_only = false;
-      break;
-
-    case 'G':
-      long_value = strtol(optarg, NULL, 10);
-      if (long_value<=0 || long_value>1000) {
-        fprintf(stderr, "ERROR: Invalid value of argument --max_gap \"%s\".\n", optarg);
-        help();
-      }
-      max_unchanged_gap = long_value*60;
-      break;
-
-    case '?':
-      help();
-      break;
-
-    default:
-      fprintf(stderr, "ERROR: Unknown option \"%s\".\n", argv[optind]);
-      help();
+    const char* option = argv[optind];
+    if (!cfg.process_cmdline_option(c, option, optarg)) {
+      fprintf(stderr, "ERROR: Unknown option \"%s\".\n", option);
+      Config::help();
     }
   }
 
   if (optind < argc) {
-    if (optind != argc-1) help();
-    server_url = argv[optind];
+    if (optind != argc-1) Config::help();
+    cfg.server_url = argv[optind];
   }
 
-  if (server_url == NULL || server_url[0] == '\0') {
-    if (type_is_set && server_type != STDOUT) {
+  if (cfg.server_url == NULL || cfg.server_url[0] == '\0') {
+    if (cfg.type_is_set && cfg.server_type != STDOUT) {
       fputs("ERROR: Server URL must be specified (options --send-to or -s).\n", stderr);
-      help();
+      Config::help();
     }
-    server_type = STDOUT;
+    cfg.server_type = STDOUT;
   } else {
     //TODO support UNIX sockets for InfluxDB
-    if (strncmp(server_url, "http://", 7) != 0 && strncmp(server_url, "https://", 8)) {
+    if (strncmp(cfg.server_url, "http://", 7) != 0 && strncmp(cfg.server_url, "https://", 8)) {
       fputs("ERROR: Server URL must be HTTP or HTTPS.\n", stderr);
-      help();
+      Config::help();
     }
   }
 #ifdef TEST_DECODING
-  if (input_log_file_path == NULL) {
+  if (cfg.input_log_file_path == NULL) {
     fputs("ERROR: Input log file must be specified (option --input-log or -I).\n", stderr);
     exit(1);
   }
 #endif
 
-  if (log_file_path == NULL || log_file_path[0]=='\0') {
+  if (cfg.log_file_path == NULL || cfg.log_file_path[0]=='\0') {
 #ifdef TEST_DECODING
-    log_file_path = "f007th-test-decoding.log";
+    cfg.log_file_path = "f007th-test-decoding.log";
 #else
-    log_file_path = "f007th-send.log";
+    cfg.log_file_path = "f007th-send.log";
 #endif
   }
 
-  FILE* log = fopen(log_file_path, "w+");
+  FILE* log = fopen(cfg.log_file_path, "w+");
 
 
   char* response_buffer = NULL;
   char* data_buffer = (char*)malloc(SEND_DATA_BUFFER_SIZE*sizeof(char));
 
-  if (server_type!=STDOUT) {
+  if (cfg.server_type!=STDOUT) {
     curl_global_init(CURL_GLOBAL_ALL);
     response_buffer = (char*)malloc(SERVER_RESPONSE_BUFFER_SIZE*sizeof(char));
   }
 
-  SensorsData sensorsData(options);
+  SensorsData sensorsData(cfg.options);
 
-  RFReceiver receiver(gpio);
+  RFReceiver receiver(cfg.gpio);
   Log->setLogFile(log);
 #ifdef TEST_DECODING
-  receiver.setInputLogFile(input_log_file_path);
-  receiver.setWaitAfterReading(wait_after_reading);
+  receiver.setInputLogFile(cfg.input_log_file_path);
+  receiver.setWaitAfterReading(cfg.wait_after_reading);
 #endif
 
-  if (protocols != 0) receiver.setProtocols(protocols);
+  if (cfg.protocols != 0) receiver.setProtocols(cfg.protocols);
 
   ReceivedMessage message;
 
@@ -358,22 +99,22 @@ int main(int argc, char *argv[]) {
 #ifdef INCLUDE_HTTPD
   struct MHD_Daemon* httpd = NULL;
 
-  if (httpd_port >= MIN_HTTPD_PORT && httpd_port<65535) {
+  if (cfg.httpd_port >= MIN_HTTPD_PORT && cfg.httpd_port<65535) {
     // start HTTPD server
-    Log->log("Starting HTTPD server on port %d...", httpd_port);
-    httpd = start_httpd(httpd_port, &sensorsData);
+    Log->log("Starting HTTPD server on port %d...", cfg.httpd_port);
+    httpd = start_httpd(cfg.httpd_port, &sensorsData);
     if (httpd == NULL) {
-      Log->error("Could not start HTTPD server on port %d.\n", httpd_port);
+      Log->error("Could not start HTTPD server on port %d.\n", cfg.httpd_port);
       fclose(log);
       exit(1);
     }
   }
 #endif
 
-  if ((options&VERBOSITY_PRINT_STATISTICS) != 0)
+  if ((cfg.options&VERBOSITY_PRINT_STATISTICS) != 0)
     receiver.printStatisticsPeriodically(1000); // print statistics every second
 
-  if ((options&VERBOSITY_INFO) != 0) fputs("Receiving data...\n", stderr);
+  if ((cfg.options&VERBOSITY_INFO) != 0) fputs("Receiving data...\n", stderr);
   while(!receiver.isStopped()) {
 
     if (receiver.waitForMessage(message)) {
@@ -381,42 +122,42 @@ int main(int argc, char *argv[]) {
 
       bool is_message_printed = false;
 
-      if ((options&VERBOSITY_DEBUG) != 0 || ((options&VERBOSITY_PRINT_UNDECODED) != 0 && message.isUndecoded())) {
-        message.print(stdout, options);
+      if ((cfg.options&VERBOSITY_DEBUG) != 0 || ((cfg.options&VERBOSITY_PRINT_UNDECODED) != 0 && message.isUndecoded())) {
+        message.print(stdout, cfg.options);
         is_message_printed = true;
         receiver.printManchesterBits(message, stdout);
-        if (message.print(log, options)) {
+        if (message.print(log, cfg.options)) {
           receiver.printManchesterBits(message, log);
           fflush(log);
         }
-      } else if ((options&VERBOSITY_INFO) != 0) {
-        message.print(stdout, options);
+      } else if ((cfg.options&VERBOSITY_INFO) != 0) {
+        message.print(stdout, cfg.options);
         is_message_printed = true;
-        if (message.print(log, options)) fflush(log);
+        if (message.print(log, cfg.options)) fflush(log);
       }
 
       if (message.isEmpty()) {
         fputs("ERROR: Missing data.\n", stderr);
       } else if (message.isUndecoded()) {
-        if ((options&VERBOSITY_INFO) != 0)
+        if ((cfg.options&VERBOSITY_INFO) != 0)
           fprintf(stderr, "Could not decode the received data (error %04x).\n", message.getDecodingStatus());
       } else {
         bool isValid = message.isValid();
-        int changed = isValid ? sensorsData.update(message.getSensorData(), message.getTime(), max_unchanged_gap) : 0;
+        int changed = isValid ? sensorsData.update(message.getSensorData(), message.getTime(), cfg.max_unchanged_gap) : 0;
         if (changed != TIME_NOT_CHANGED) {
-          if (changed == 0 && !changes_only && (isValid || server_type!=InfluxDB))
+          if (changed == 0 && !cfg.changes_only && (isValid || cfg.server_type!=InfluxDB))
             changed = TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED;
           if (changed != 0) {
-            if (server_type==STDOUT) {
+            if (cfg.server_type==STDOUT) {
               if (!is_message_printed) // already printed
-                message.print(stdout, options);
+                message.print(stdout, cfg.options);
             } else {
-              if (!send(message, server_url, server_type, changed, data_buffer, response_buffer, options, log) && (options&VERBOSITY_INFO) != 0)
+              if (!send(message, cfg, changed, data_buffer, response_buffer, log) && (cfg.options&VERBOSITY_INFO) != 0)
                 Log->info("No data was sent to server.");
             }
           } else {
-            if ((options&VERBOSITY_INFO) != 0) {
-              if (server_type==STDOUT) {
+            if ((cfg.options&VERBOSITY_INFO) != 0) {
+              if (cfg.server_type==STDOUT) {
                 if (!isValid)
                   fputs("Data is corrupted.\n", stderr);
                 else
@@ -440,18 +181,18 @@ int main(int argc, char *argv[]) {
   }
 
 #ifdef INCLUDE_HTTPD
-  if ((options&VERBOSITY_INFO) != 0) Log->log("Stopping HTTPD server...");
+  if ((cfg.options&VERBOSITY_INFO) != 0) Log->log("Stopping HTTPD server...");
   stop_httpd(httpd);
 #endif
 
-  if ((options&VERBOSITY_INFO) != 0) fputs("\nExiting...\n", stderr);
+  if ((cfg.options&VERBOSITY_INFO) != 0) fputs("\nExiting...\n", stderr);
 
   // finally
   free(data_buffer);
   if (response_buffer != NULL) free(response_buffer);
   Log->log("Exiting...");
   fclose(log);
-  if (server_type!=STDOUT) curl_global_cleanup();
+  if (cfg.server_type!=STDOUT) curl_global_cleanup();
 
   exit(0);
 }
@@ -487,16 +228,16 @@ static size_t write_callback(void *ptr, size_t size, size_t nmemb, struct PutDat
   return size;
 }
 
-bool send(ReceivedMessage& message, const char* url, ServerType server_type, int changed, char* data_buffer, char* response_buffer, int options, FILE* log) {
-  bool verbose = (options&VERBOSITY_PRINT_DETAILS) != 0;
+bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer, char* response_buffer, FILE* log) {
+  bool verbose = (cfg.options&VERBOSITY_PRINT_DETAILS) != 0;
   if (verbose) fputs("===> called send()\n", stderr);
 
   data_buffer[0] = '\0';
   int data_size;
-  if (server_type == InfluxDB) {
-    data_size = message.influxDB(data_buffer, SEND_DATA_BUFFER_SIZE, changed, options);
+  if (cfg.server_type == InfluxDB) {
+    data_size = message.influxDB(data_buffer, SEND_DATA_BUFFER_SIZE, changed, cfg.options);
   } else {
-    data_size = message.json(data_buffer, SEND_DATA_BUFFER_SIZE, options);
+    data_size = message.json(data_buffer, SEND_DATA_BUFFER_SIZE, cfg.options);
   }
   if (data_size <= 0) {
     if (verbose) fputs("===> return from send() without sending because output data was not generated\n", stderr);
@@ -517,24 +258,24 @@ bool send(ReceivedMessage& message, const char* url, ServerType server_type, int
     if (verbose) fputs("===> return from send() without sending because failed to initialize curl\n", stderr);
     return false;
   }
-  if ((options&VERBOSITY_PRINT_CURL) != 0) curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+  if ((cfg.options&VERBOSITY_PRINT_CURL) != 0) curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 
   struct curl_slist *headers = NULL;
-  if (server_type == REST) {
+  if (cfg.server_type == REST) {
     headers = curl_slist_append(headers, "Content-Type: application/json");
     headers = curl_slist_append(headers, "Accept: application/json");
     headers = curl_slist_append(headers, "charsets: utf-8");
     headers = curl_slist_append(headers, "Connection: close");
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-  } if (server_type == InfluxDB) {
+  } if (cfg.server_type == InfluxDB) {
     headers = curl_slist_append(headers, "Content-Type:"); // do not set content type
     headers = curl_slist_append(headers, "Accept:");
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
   }
 
-  curl_easy_setopt(curl, CURLOPT_URL, url);
+  curl_easy_setopt(curl, CURLOPT_URL, cfg.server_url);
 //  curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
-  if (server_type == InfluxDB)
+  if (cfg.server_type == InfluxDB)
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "POST");
   else
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
@@ -549,7 +290,7 @@ bool send(ReceivedMessage& message, const char* url, ServerType server_type, int
 
   CURLcode rc = curl_easy_perform(curl);
   if (rc != CURLE_OK)
-    Log->error("Sending data to %s failed: %s", url, curl_easy_strerror(rc));
+    Log->error("Sending data to %s failed: %s", cfg.server_url, curl_easy_strerror(rc));
 
   if (verbose && response_buffer[0] != '\0') {
     if (data.response_len <= 0) data.response_len = data.response_len-1;
@@ -560,10 +301,10 @@ bool send(ReceivedMessage& message, const char* url, ServerType server_type, int
   bool success = rc == CURLE_OK;
   long http_code = 0;
   curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &http_code);
-  if (http_code != (server_type == InfluxDB ? 204 : 200)) {
+  if (http_code != (cfg.server_type == InfluxDB ? 204 : 200)) {
     success = false;
     if (http_code == 0)
-      Log->error("Failed to connect to server %s", url);
+      Log->error("Failed to connect to server %s", cfg.server_url);
     else
       Log->error("Got HTTP status code %ld.", http_code);
     if (verbose) {
