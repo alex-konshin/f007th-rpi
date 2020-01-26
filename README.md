@@ -153,7 +153,10 @@ or
 You can specify configuration file with command line option -c|--config. Each line of configuration file may contain a single command line option (long form only!) or command. Symbol '#' starts a comment at any line of configuration file. 
 
 #### Configuration file commands:
-##### sensor <type> [<channel>] <rolling_code> <name>
+##### sensor
+```
+sensor <type> [<channel>] <rolling_code> <name>
+```
 Defines a sensor and gives a name to it. This name is printed or sent to server with sensor's data. An argument `<name>` can be any word without blanks or quoted string.
 Argument `<type>` could be one of (case insensitive): `f007th`, `f007tp`, `00592txr`, `hg02832`, `tx6`, `wh2`, `ft007th`.
 Argument `<rolling_code>` may be decimal number or hex number started with `0x`. 
