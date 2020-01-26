@@ -36,7 +36,11 @@ public:
   time_t data_time;
 
 private:
+  bool is_sensor_def_set = false;
+
 #define T2D_BUFFER_SIZE 13
+#define ID_BUFFER_SIZE 512
+
   char* t2d(int t, char* buffer) {
     char* p = buffer+T2D_BUFFER_SIZE-1;
     p[0] = '\0';
@@ -84,6 +88,7 @@ public:
     }
     this->data = data;
     data_time = time(NULL);
+    is_sensor_def_set = false;
   }
 
   SensorData* getSensorData() {
@@ -136,9 +141,6 @@ public:
       }
     }
     return '?';
-  }
-  int getChannelHG02832() {
-    return data == __null ? -1 : ((data->sensorData.u32.low>>12)&3)+1;
   }
   int getChannel() {
     return data == __null ? -1 : data->sensorData.getChannel();
@@ -209,6 +211,15 @@ public:
     Log->info( "   ==> %s", &buffer );
   }
 
+  SensorDef* getSensorDef() {
+    if (data == NULL) return NULL;
+    if (!is_sensor_def_set) {
+      is_sensor_def_set = true;
+      return data->sensorData.def = SensorDef::find(data->sensorData.getId());
+    }
+    return data->sensorData.def;
+  }
+
   bool print(FILE* file, int options) {
     bool print_details = (options&VERBOSITY_PRINT_DETAILS) != 0;
     bool print_undecoded = (options&VERBOSITY_PRINT_UNDECODED) != 0;
@@ -262,6 +273,11 @@ public:
           fprintf(file, "  *** no checksum (error %04x) ***\n", decodingStatus);
       }
 
+      SensorDef* sensor_def = getSensorDef();
+      if (sensor_def != NULL && sensor_def->name != NULL) {
+        fprintf(file, "  name              = %s\n", sensor_def->name);
+      }
+      //fprintf(file, "  id                = %08x\n", data->sensorData.getId());
 
       if (data->sensorData.protocol == PROTOCOL_00592TXR) {
         fprintf(file, "  type              = AcuRite 00592TXR\n  channel           = %c\n", getChannel00592TXR());
@@ -273,7 +289,7 @@ public:
         fprintf(file, "  type              = LaCrosse TX3/TX6/TX7(%s)\n", hasTemperature()?"temperature":hasHumidity()?"humidity":"unknown");
 
       } else if (data->sensorData.protocol == PROTOCOL_HG02832) {
-        fprintf(file, "  type              = Auriol HG02832 (IAN 283582)\n  channel           = %d\n", getChannelHG02832());
+        fprintf(file, "  type              = Auriol HG02832 (IAN 283582)\n  channel           = %d\n", getChannelNumber());
 
       } else if (data->sensorData.protocol == PROTOCOL_WH2) {
         fprintf(file, "  type              = %s\n", data->sensorData.getSensorTypeLongName());
@@ -329,6 +345,11 @@ public:
         fputs(",\"valid\":false,", file);
       }
 
+      SensorDef* sensor_def = getSensorDef();
+      if (sensor_def != NULL && sensor_def->name != NULL) {
+        fprintf(file, ",\"name\":%s", sensor_def->quoted);
+      }
+
       fprintf(file, ",\"type\":\"%s\"", data->sensorData.getSensorTypeLongName());
 
       int channel = getChannelNumber();
@@ -378,6 +399,10 @@ public:
       "{\"time\":\"%s\",\"type\":\"%s\",\"valid\":%s",
       dt, data->sensorData.getSensorTypeLongName(), decodingStatus == 0 ? "true" : "false"
     );
+    SensorDef* sensor_def = getSensorDef();
+    if (sensor_def != NULL && sensor_def->name != NULL) {
+      len += snprintf(buffer+len, buflen-len, ",\"name\":%s", sensor_def->quoted);
+    }
 
     int channel = getChannelNumber();
     if (channel >= 0) len += snprintf(buffer+len, buflen-len, ",\"channel\":%d", channel);
@@ -419,17 +444,33 @@ public:
       return -2;
     }
 
-    char t2d_buffer[T2D_BUFFER_SIZE];
-    char id[60];
-    int len = snprintf( id, sizeof(id),
-      "type=%s,channel=%d,rolling_code=%d",
-      getSensorTypeName(),
-      getChannelNumber(),
-      getRollingCode()
-    );
+    char* output;
+    int remain;
 
-    char* output = buffer;
-    int remain = buflen;
+    char t2d_buffer[T2D_BUFFER_SIZE];
+    char id[ID_BUFFER_SIZE];
+    int len;
+
+    SensorDef* sensor_def = getSensorDef();
+    if (sensor_def != NULL && sensor_def->name != NULL) {
+      len = snprintf( id, sizeof(id),
+        "name=%s,type=%s,channel=%d,rolling_code=%d",
+        sensor_def->influxdb_quoted,
+        getSensorTypeName(),
+        getChannelNumber(),
+        getRollingCode()
+      );
+    } else {
+      len = snprintf( id, sizeof(id),
+        "type=%s,channel=%d,rolling_code=%d",
+        getSensorTypeName(),
+        getChannelNumber(),
+        getRollingCode()
+      );
+    }
+
+    output = buffer;
+    remain = buflen;
     if ((changed&TEMPERATURE_IS_CHANGED) != 0) {
       int t = (options&OPTION_CELSIUS) != 0 ? getTemperatureCx10() : getTemperatureFx10();
       int len = snprintf( output, remain, "temperature,%s value=%s\n", id, t2d(t, t2d_buffer));
@@ -463,6 +504,10 @@ public:
     return len*sizeof(unsigned char);
   }
 
+  int update(SensorsData& sensorsData, time_t max_unchanged_gap) {
+    is_sensor_def_set = true;
+    return sensorsData.update(&data->sensorData, data_time, max_unchanged_gap);
+  }
 };
 
 #endif /* RECEIVEDMESSAGE_HPP_ */

@@ -9,6 +9,8 @@
 bool RFReceiver::isLibInitialized = false;
 RFReceiver* RFReceiver::first = NULL;
 
+SensorDef* SensorDef::sensorDefs = NULL;
+
 RFReceiver::RFReceiver(int gpio) {
   this->gpio = gpio;
   protocols = PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_TX7U|PROTOCOL_HG02832|PROTOCOL_WH2;
@@ -1590,6 +1592,7 @@ ReceivedData* RFReceiver::createNewMessage() {
 
   message->sensorData.u64 = 0LL;
   message->sensorData.protocol = 0;
+  message->sensorData.def = NULL;
   message->decodingStatus = 0;
   message->decodedBits = 0;
 

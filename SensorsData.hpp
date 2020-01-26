@@ -50,7 +50,107 @@
 #include <time.h>
 #include <stdio.h>
 
+typedef struct SensorDef {
+private:
+  static SensorDef* sensorDefs;
+
+  SensorDef* next;
+
+public:
+  uint32_t id;
+  const char* name;
+  const char* quoted;
+  const char* influxdb_quoted;
+
+  static SensorDef* find(uint32_t id) {
+    for (SensorDef* p = sensorDefs; p != NULL; p = p->next) {
+      if (p->id == id) return p;
+    }
+    return NULL;
+  }
+
+#define SENSOR_NAME_MAX_LEN 64
+
+#define SENSOR_DEF_WAS_ADDED 0
+#define SENSOR_DEF_DUP 1
+#define SENSOR_NAME_MISSING 2
+#define SENSOR_NAME_TOO_LONG 3
+#define SENSOR_NAME_INVALID 4
+
+
+  static int add(uint32_t id, const char* name, size_t name_len, SensorDef*& result) {
+    result = NULL;
+    if (name_len <= 0 || name == NULL) return SENSOR_NAME_MISSING;
+    if (name_len > SENSOR_NAME_MAX_LEN) return SENSOR_NAME_TOO_LONG;
+
+    SensorDef** pdef = &sensorDefs;
+    SensorDef* def = sensorDefs;
+    while (def != NULL) {
+      if (def->id == id) {
+        result = def;
+        return SENSOR_DEF_DUP;
+      }
+      pdef = &(def->next);
+      def = def->next;
+    }
+
+    char quoted[SENSOR_NAME_MAX_LEN*2+3];
+    char influxdb_quoted[SENSOR_NAME_MAX_LEN*2+3];
+    char* pq = quoted;
+    char* pi = influxdb_quoted;
+    *pi++ = '"';
+    *pq++ = '"';
+    for (size_t i = 0; i<name_len; i++) {
+      const char ch = name[i];
+
+      if (ch=='"' || ch=='\\') {
+        *pi++ = '\\';
+      }
+      *pi++ = ch;
+
+      switch (ch) {
+      case '\n': case '\r': case '\0':
+        return SENSOR_NAME_INVALID;
+      case '"': case '\\':
+        *pq++ = '\\';
+        *pq++ = ch;
+        break;
+      default:
+        *pq++ = ch;
+      }
+    }
+    *pi++ = '"';
+    *pi++ = '\0';
+    *pq++ = '"';
+    *pq++ = '\0';
+
+    size_t quoted_len = pq-quoted;
+    size_t influxdb_quoted_len = pi-influxdb_quoted;
+
+    char* sensor_name = (char*)malloc((name_len+1+quoted_len+influxdb_quoted_len)*sizeof(char));
+    memcpy(sensor_name, name, name_len*sizeof(char));
+    sensor_name[name_len] = '\0';
+    pq = sensor_name+name_len+1;
+    memcpy(pq, quoted, quoted_len*sizeof(char));
+    pi = pq+quoted_len;
+    memcpy(pi, influxdb_quoted, influxdb_quoted_len*sizeof(char));
+
+    def = (SensorDef*)malloc(sizeof(SensorDef));
+    def->id = id;
+    def->name = sensor_name;
+    def->quoted = pq;
+    def->influxdb_quoted = pi;
+    def->next = NULL;
+    *pdef = def;
+    result = def;
+    return SENSOR_DEF_WAS_ADDED;
+  }
+
+} SensorDef;
+
+
 typedef struct SensorData {
+  SensorDef* def;
   time_t data_time;
   uint8_t protocol;
   union {
@@ -72,6 +172,58 @@ typedef struct SensorData {
     } fields;
   };
 public:
+
+  uint32_t getId() {
+    uint32_t variant = 0;
+    uint32_t channel_bits = 0;
+    uint32_t rolling_code;
+    switch (protocol) {
+    case PROTOCOL_F007TH:
+      variant = u32.hi==1 ? 1 : 0; // 0 = F007TH, 1 = F007TP
+      channel_bits = (nF007TH>>20)&7;
+      rolling_code = (nF007TH >> 24) & 255;
+      break;
+    case PROTOCOL_00592TXR:
+      channel_bits = (fields.channel>>6)&3;
+      rolling_code = fields.rolling_code;
+      break;
+    case PROTOCOL_TX7U:
+      rolling_code = u32.low >> 25;
+      break;
+    case PROTOCOL_HG02832:
+      channel_bits = (u32.low>>12)&3;
+      rolling_code = u32.low >> 24;
+      break;
+    case PROTOCOL_WH2:
+      variant = ((u32.hi&0x80000000) != 0 ? 1 : 0) | ((u32.low>>24)&0x00f0); // 0x41 = FT007TH
+      rolling_code = (u32.low>>20)&255;
+      break;
+    default:
+      return 0;
+    }
+    return (protocol<<24) | (variant<<16) | (channel_bits<<8) | rolling_code;
+  }
+
+  static uint32_t getId(uint8_t protocol, uint8_t variant, uint8_t channel, uint8_t rolling_code) {
+    uint32_t channel_bits = 0;
+    switch (protocol) {
+    case PROTOCOL_F007TH:
+      channel_bits = (channel-1)&255;
+      break;
+    case PROTOCOL_00592TXR:
+      switch (channel) {
+      case 1: channel_bits = 3; break;
+      case 2: channel_bits = 2; break;
+      case 3: channel_bits = 0; break;
+      }
+      break;
+    case PROTOCOL_HG02832:
+      channel_bits = (channel-1)&255;
+      break;
+    }
+    return (protocol<<24) | ((variant&255)<<16) | (channel_bits<<8) | (rolling_code&255);
+  }
+
   int getChannel() {
     if (protocol == PROTOCOL_F007TH) return ((nF007TH>>20)&7)+1;
     if (protocol == PROTOCOL_00592TXR) return ((fields.channel>>6)&3)^3;
@@ -86,8 +238,9 @@ public:
         case 2: return 2;
         case 0: return 3;
         }
+      } else if (protocol == PROTOCOL_HG02832) {
+        return ((u32.low>>12)&3)+1;
       }
-      if (protocol == PROTOCOL_HG02832) return ((u32.low>>12)&3)+1;
     return -1;
   }
   bool hasBatteryStatus() {
@@ -209,7 +362,7 @@ public:
     if (protocol == PROTOCOL_00592TXR) return fields.rolling_code;
     if (protocol == PROTOCOL_TX7U) return (u32.low >> 25);
     if (protocol == PROTOCOL_HG02832) return (u32.low >> 24);
-    if (protocol == PROTOCOL_WH2) return (u32.low >> 20);
+    if (protocol == PROTOCOL_WH2) return (u32.low >> 20) & 255;
     return 0;
   }
 
@@ -231,6 +384,8 @@ public:
     int channel = getChannelNumber();
     if (channel >= 0) len += snprintf(ptr+len, buffer_size-len, ",\"channel\":%d", channel);
     len += snprintf(ptr+len, buffer_size-len, ",\"rolling_code\":%d", getRollingCode());
+    if (def != NULL && def->quoted != NULL)
+      len += snprintf(ptr+len, buffer_size-len, ",\"name\":%s", def->quoted);
     if (hasTemperature())
       len += snprintf(ptr+len, buffer_size-len, ",\"temperature\":%d", getTemperature10((options&OPTION_CELSIUS) != 0));
     if (hasHumidity())
@@ -353,6 +508,7 @@ public:
         if (p->protocol != PROTOCOL_F007TH) continue;
         uint32_t item = p->nF007TH;
         if ((item & SENSOR_UID_MASK) == uid  && p->u32.hi == f007tp) {
+          sensorData->def = p->def;
           time_t gap = data_time - p->data_time;
           if (gap < 2L) return TIME_NOT_CHANGED;
           int result = 0;
@@ -385,6 +541,7 @@ public:
         if (p->protocol != PROTOCOL_00592TXR) continue;
         if (p->fields.rolling_code != rolling_code) continue;
         if (p->fields.channel == channel) {
+          sensorData->def = p->def;
           time_t gap = data_time - p->data_time;
           if (gap < 2L) return TIME_NOT_CHANGED;
           int result = 0;
@@ -429,6 +586,7 @@ public:
       for (int index = 0; index<size; index++) {
         SensorData* p = &items[index];
         if ((p->protocol == PROTOCOL_TX7U) && (((p->u64>>25)&0x7f) == id)) {
+          sensorData->def = p->def;
           if (((p->u32.hi)&mask) == new_value) {
             time_t gap = data_time - p->data_time;
             if (gap < 2L) return TIME_NOT_CHANGED;
@@ -453,8 +611,12 @@ public:
         uint32_t w;
         if (p->protocol != PROTOCOL_HG02832) continue;
         w = p->u32.low;
-        if (w == new_w) return 0; // nothing has changed
+        if (w == new_w) {
+          sensorData->def = p->def;
+          return 0; // nothing has changed
+        }
         if (((w^new_w)&0xff003000) == 0) { // compare rolling code and channel
+          sensorData->def = p->def;
           time_t gap = data_time - p->data_time;
           if (gap < 2L) return TIME_NOT_CHANGED;
           int result = 0;
@@ -484,8 +646,12 @@ public:
         uint32_t w;
         if (p->protocol != PROTOCOL_WH2) continue;
         w = p->u32.low;
-        if (w == new_w) return 0; // nothing has changed
+        if (w == new_w) {
+          sensorData->def = p->def;
+          return 0; // nothing has changed
+        }
         if (((w^new_w)&0x0ff00000) == 0) { // compare rolling code
+          sensorData->def = p->def;
           time_t gap = data_time - p->data_time;
           if (gap < 2L) return TIME_NOT_CHANGED;
           int result = 0;
@@ -573,6 +739,7 @@ public:
   }
 
 private:
+
   void add(SensorData* item, time_t& data_time) {
     int index = size;
     int new_size = size+1;
@@ -597,6 +764,7 @@ private:
         new_item->u32.hi |= 0x80000000 | (raw_h << 24);
       }
     }
+    new_item->def = SensorDef::find(item->getId());
   }
 
 };

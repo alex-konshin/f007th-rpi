@@ -102,6 +102,8 @@ The value of field `temperature` is integer number of dF ("deciFahrenheit" = 1/1
 Instructions for InfluxDB can be found on site [https://docs.influxdata.com/influxdb/v1.2/introduction/installation/](https://docs.influxdata.com/influxdb/v1.2/introduction/installation/). The command sends 3 types of metrics: "temperature", "humidity" and "sensor_battery_status" with tags "type" (one of "F007TH", "00592TXR", "TX7", "HG02832", "WH2", "FT007TH"), "channel" and "rolling_code". The value of "temperature" is in Fahrenheit. Note that rolling code is changed when you replace batteries.
 
 #### Command line arguments of utility f007th-rpi_send:
+##### --config, -c
+Argument of this option specifies configuration file. 
 ##### --gpio, -g
 Value is GPIO pin number (default is 27) as defined on page [http://abyz.co.uk/rpi/pigpio/index.html](http://abyz.co.uk/rpi/pigpio/index.html)
 ##### --celsius, -C
@@ -114,8 +116,11 @@ Timestamps are printed/sent in format "YYYY-mm-dd HH:MM:SS TZ".
 Parameter value is server URL.
 ##### --server-type, -t
 Parameter value is server type. Possible values are REST (default) or InfluxDB.
-##### --all, -A
+##### --all-changes, -A
 Send all data. Only changed and valid data is sent by default.
+##### --max-gap, -G
+Argument of this option specifies the max time in minutes when the utility does not send data if it is not changed.
+If option --all-changes|-A is not specified then by default the utility does not send repeating values to the server. You can specify this option to prevent big gaps in server's data when values are changed very slowly.    
 ##### --log-file, -l
 Parameter is a path to log file.
 ##### --httpd, -H
@@ -143,6 +148,47 @@ Send data to Loopback (REST server) on server `qnap.dom`:
 `f007th-send http://qnap.dom:3000/api/roomtemps`  
 or  
 `f007th-send -t REST -s http://qnap.dom:3000/api/roomtemps`  
+
+### Configuration file
+You can specify configuration file with command line option -c|--config. Each line of configuration file may contain a single command line option (long form only!) or command. Symbol '#' starts a comment at any line of configuration file. 
+
+#### Configuration file commands:
+##### sensor <type> [<channel>] <rolling_code> <name>
+Defines a sensor and gives a name to it. This name is printed or sent to server with sensor's data. An argument `<name>` can be any word without blanks or quoted string.
+Argument `<type>` could be one of (case insensitive): `f007th`, `f007tp`, `00592txr`, `hg02832`, `tx6`, `wh2`, `ft007th`.
+Argument `<rolling_code>` may be decimal number or hex number started with `0x`. 
+Warning: Argument `<channel>` is not optional: You must specify it if this particular sensor type has channels. For sensors of type 00592txr the value of channel is A, B or C. For sensors f007th and f007tp it should be a number 1..8. For sensor hg02832 it should be number 1..3.
+
+#### Example of configuration file:
+```
+# Any comments are started with hash. Empty lines are ignored.
+
+gpio 27
+all-changes
+verbose
+httpd 8888
+
+server-type InfluxDB
+send-to http://m700.dom:8086/write?db=smarthome
+max-gap 5
+
+log-file "f007th-send.log"
+
+sensor f007th   1  13 "Server room"
+sensor f007th   2  19 "Main bedroom"
+sensor f007th   4 120 "Alex office"
+sensor f007th   5 174 "Kitchen"
+sensor f007th   6  48 "TV room"
+sensor f007th   7  88 "Garage"
+
+sensor f007th   1  191 "Neighbor 2"
+sensor 00592txr A 0x5c "Neighbor 1"
+sensor 00592txr A  146 "Backyard"
+
+sensor tx6  104 "LaCrosse TX7U 1" # note that channel is missing
+sensor tx6   92 "LaCrosse TX7U 2"
+``` 
+
 
 #### Example of wiring RXB6 to Raspberry Pi 3 ####
 

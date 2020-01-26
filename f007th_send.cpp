@@ -71,7 +71,12 @@ int main(int argc, char *argv[]) {
   }
 
   FILE* log = fopen(cfg.log_file_path, "w+");
-
+  if (log == NULL) {
+    fprintf(stderr, "Failed to open log file \"%s\".\n", cfg.log_file_path);
+    exit(1);
+  }
+  const char* real_log_path = realpath(cfg.log_file_path, NULL);
+  fprintf(stderr, "Log file is \"%s\".\n", real_log_path);
 
   char* response_buffer = NULL;
   char* data_buffer = (char*)malloc(SEND_DATA_BUFFER_SIZE*sizeof(char));
@@ -143,7 +148,7 @@ int main(int argc, char *argv[]) {
           fprintf(stderr, "Could not decode the received data (error %04x).\n", message.getDecodingStatus());
       } else {
         bool isValid = message.isValid();
-        int changed = isValid ? sensorsData.update(message.getSensorData(), message.getTime(), cfg.max_unchanged_gap) : 0;
+        int changed = isValid ? message.update(sensorsData, cfg.max_unchanged_gap) : 0;
         if (changed != TIME_NOT_CHANGED) {
           if (changed == 0 && !cfg.changes_only && (isValid || cfg.server_type!=InfluxDB))
             changed = TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED;

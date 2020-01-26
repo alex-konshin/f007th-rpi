@@ -40,24 +40,27 @@
 #define DEFAULT_PIN_STR to_str(DEFAULT_PIN)
 #endif
 
+#define is_cmd(cmd,opt,opt_len) (opt_len == (sizeof(cmd)-1) && strncmp(cmd, opt, opt_len) == 0)
+
 
 enum ServerType {STDOUT, REST, InfluxDB};
 
-
+// Command line options
 static const struct option long_options[] = {
+    { "config", required_argument, NULL, 'c' },
     { "gpio", required_argument, NULL, 'g' },
     { "send-to", required_argument, NULL, 's' },
     { "server-type", required_argument, NULL, 't' },
     { "celsius", no_argument, NULL, 'C' },
     { "utc", no_argument, NULL, 'U' },
     { "local-time", no_argument, NULL, 'L' },
-    { "all", no_argument, NULL, 'A' },
+    { "all-changes", no_argument, NULL, 'A' },
     { "log-file", required_argument, NULL, 'l' },
     { "verbose", no_argument, NULL, 'v' },
     { "more_verbose", no_argument, NULL, 'V' },
     { "statistics", no_argument, NULL, 'T' },
     { "debug", no_argument, NULL, 'd' },
-    { "any", no_argument, NULL, '0' },
+    { "any-protocol", no_argument, NULL, '0' },
     { "f007th", no_argument, NULL, '7' },
     { "00592txr", no_argument, NULL, '5' },
     { "tx6", no_argument, NULL, '6' },
@@ -71,25 +74,48 @@ static const struct option long_options[] = {
 #ifdef INCLUDE_HTTPD
     { "httpd", required_argument, NULL, 'H' },
 #endif
-    { "max_gap", required_argument, NULL, 'G' },
+    { "max-gap", required_argument, NULL, 'G' },
     { NULL, 0, NULL, 0 }
 };
 
 #ifdef TEST_DECODING
-  const int DEFAULT_OPTIONS = VERBOSITY_INFO|VERBOSITY_PRINT_UNDECODED|VERBOSITY_PRINT_DETAILS;
+static const int DEFAULT_OPTIONS = VERBOSITY_INFO|VERBOSITY_PRINT_UNDECODED|VERBOSITY_PRINT_DETAILS;
 #ifdef INCLUDE_HTTPD
-  const char* short_options = "c:g:s:Al:vVt:TCULd256780DI:WH:G:";
+static const char* short_options = "c:g:s:Al:vVt:TCULd256780DI:WH:G:";
 #else
-  const char* short_options = "c:g:s:Al:vVt:TCULd256780DI:WG:";
+static const char* short_options = "c:g:s:Al:vVt:TCULd256780DI:WG:";
 #endif
 #elif defined(INCLUDE_HTTPD)
-  const int DEFAULT_OPTIONS = 0;
-  const char* short_options = "c:g:s:Al:vVt:TCULd256780DH:G:";
+static const int DEFAULT_OPTIONS = 0;
+static const char* short_options = "c:g:s:Al:vVt:TCULd256780DH:G:";
 #else
-  const int DEFAULT_OPTIONS = 0;
-  const char* short_options = "c:g:s:Al:vVt:TCULd256780DG:";
+static const int DEFAULT_OPTIONS = 0;
+static const char* short_options = "c:g:s:Al:vVt:TCULd256780DG:";
 #endif
 
+
+struct ProtocolDef {
+  const char *name;
+  uint8_t protocol;
+  uint8_t variant;
+  uint8_t rolling_code_size;
+  uint8_t number_of_channels;
+  uint8_t channels_numbering_type; // 0 => numbers, 1 => letters
+};
+
+static const struct ProtocolDef protocol_defs[] = {
+  {"f007th",   PROTOCOL_F007TH,   0, 8, 8, 0},
+  {"f007tp",   PROTOCOL_F007TH,   1, 8, 8, 0},
+  {"00592txr", PROTOCOL_00592TXR, 0, 8, 3, 1},
+  {"hg02832",  PROTOCOL_HG02832,  0, 8, 3, 0},
+  {"tx6",      PROTOCOL_TX7U,     0, 7, 0, 0},
+  {"wh2",      PROTOCOL_WH2,   0x40, 8, 0, 0},
+  {"ft007th",  PROTOCOL_WH2,   0x41, 8, 0, 0},
+  {NULL,       0,                 0, 0, 0, 0}
+};
+
+
+static const char* EMPTY_STRING = "";
 
 class Config {
 private:
@@ -127,12 +153,11 @@ public:
 
   static void help() {
     fputs(
-#ifdef TEST_DECODING
       "(c) 2017-2020 Alex Konshin\n"
+#ifdef TEST_DECODING
       "Test decoding of received data for f007th* utilities.\n"
 #else
-      "(c) 2017-2020 Alex Konshin\n"
-      "Receive data from thermometers then print it to stdout or send it to remote server via REST API.\n"
+      "Receive data from thermometers then print it to stdout or send it to a remote server.\n"
 #endif
       "Version " RF_RECEIVER_VERSION "\n\n"
 #ifndef TEST_DECODING
@@ -149,8 +174,8 @@ public:
       "    Parameter value is server URL.\n"
       "--server-type, -t\n"
       "    Parameter value is server type. Possible values are REST (default) or InfluxDB.\n"
-      "--all, -A\n"
-      "    Send all data. Only changed and valid data is sent by default.\n"
+      "--all-changes, -A\n"
+      "    Send/print all data. Only changed and valid data is sent by default.\n"
       "--log-file, -l\n"
       "    Parameter is a path to log file.\n"
 #ifdef TEST_DECODING
@@ -201,12 +226,12 @@ public:
       break;
 
     case 'l':
-      log_file_path = optarg;
+      log_file_path = clone(optarg);
       break;
 
   #ifdef TEST_DECODING
     case 'I':
-      input_log_file_path = optarg;
+      input_log_file_path = clone(optarg);
       break;
 
     case 'W':
@@ -227,7 +252,7 @@ public:
   #endif
 
     case 's':
-      server_url = optarg;
+      server_url = clone(optarg);
       break;
 
     case 't':
@@ -347,12 +372,18 @@ private:
   }
 
 
-  void readConfig(const char* configFilePath) {
+  void readConfig(const char* configFileRelativePath) {
+    const char* configFilePath = realpath(configFileRelativePath, NULL);
+    if (configFilePath == NULL) {
+      fprintf(stderr, "Configuration file \"%s\" does not exist.\n", configFileRelativePath);
+      exit(1);
+    }
+
     FILE* configFileStream;
 
     configFileStream = fopen(configFilePath, "r");
     if (configFileStream == NULL) {
-      fprintf(stderr, "Cannot open configuration file \"%s\".", configFilePath);
+      fprintf(stderr, "Cannot open configuration file \"%s\".\n", configFilePath);
       exit(1);
     }
 
@@ -376,8 +407,7 @@ private:
 
       const struct option *struct_opt;
       for (struct_opt = long_options; struct_opt->name != NULL; struct_opt++) {
-        size_t struct_opt_len = strlen(struct_opt->name);
-        if (opt_len == struct_opt_len && strncmp(struct_opt->name, opt, opt_len) == 0) break;
+        if (strlen(struct_opt->name) == opt_len && strncmp(struct_opt->name, opt, opt_len) == 0) break;
       }
       if ( struct_opt->name != NULL ) { // found command line option
 
@@ -396,7 +426,7 @@ private:
           }
         }
 
-        //fprintf(stderr, ">>> option \"%s\": val='%c' optarg=%s\n", struct_opt->name, struct_opt->val, optarg );
+        //fprintf(stderr, ">>> option \"%s\": val='%c' optarg=\"%s\"\n", struct_opt->name, struct_opt->val, optarg );
 
         if (!process_cmdline_option(struct_opt->val, struct_opt->name, optarg)) {
           fprintf(stderr, "ERROR: Unexpected error when processing option \"%s\"('%c') in line #%d of file \"%s\"\n", struct_opt->name, struct_opt->val, linenum, configFilePath);
@@ -407,7 +437,96 @@ private:
 
       // unknown command-line option
 
-      //TODO implement commands
+      // Configuration commands
+
+      if (is_cmd("sensor", opt, opt_len)) { // sensor <type+variant> [<channel>] <rolling_code> <name>
+
+        size_t proto_len = 0;
+        const char* protocol_name = getWord(p, proto_len);
+        const struct ProtocolDef *protocol_def;
+        for (protocol_def = protocol_defs; protocol_def->name != NULL; protocol_def++) {
+          if (strlen(protocol_def->name) == proto_len && strncasecmp(protocol_def->name, protocol_name, proto_len) == 0) break;
+        }
+        if ( protocol_def->name == NULL ) {
+          fprintf(stderr, "ERROR: Unrecognized sensor protocol in line #%d of file \"%s\"\n", linenum, configFilePath);
+          exit(1);
+        }
+
+        protocol_name = protocol_def->name;
+        uint8_t channel_number = 0;
+        if (protocol_def->number_of_channels != 0) {
+          const char* channel_str = skipBlanks(p);
+          if (channel_str == NULL) {
+            fprintf(stderr, "ERROR: Missed channel in the descriptor of sensor in line #%d of file \"%s\"\n", linenum, configFilePath);
+            exit(1);
+          }
+          char ch = *channel_str;
+          channel_number = 255;
+          switch (protocol_def->channels_numbering_type) {
+          case 0:
+            if (ch>='0' && ch<='9') channel_number = ch-'0';
+            p++;
+            break;
+          case 1:
+            if (ch>='a' && ch<='c') channel_number = ch-'a'+1;
+            else if (ch>='A' && ch<='C') channel_number = ch-'A'+1;
+            p++;
+            break;
+          default:
+            fprintf(stderr, "ERROR: Invalid value %d of channels_numbering_type\n", protocol_def->channels_numbering_type);
+            exit(1);
+          }
+          if (channel_number<=0 || channel_number>protocol_def->number_of_channels) {
+            fprintf(stderr, "ERROR: Invalid channel '%c' in the descriptor of sensor in line #%d of file \"%s\"\n", ch, linenum, configFilePath);
+            exit(1);
+          }
+        }
+
+        uint32_t rolling_code = getUnsigned(p, linenum, configFilePath);
+        if (rolling_code >= (1U<<protocol_def->rolling_code_size)) {
+          fprintf(stderr, "ERROR: Invalid value %d for rolling code in the descriptor of sensor in line #%d of file \"%s\"\n", rolling_code, linenum, configFilePath);
+          exit(1);
+        }
+        uint32_t sensor_id = SensorData::getId(protocol_def->protocol, protocol_def->variant, channel_number, rolling_code);
+        if (sensor_id == 0) {
+          fprintf(stderr, "ERROR: Invalid descriptor of sensor in line #%d of file \"%s\"\n", linenum, configFilePath);
+          exit(1);
+        }
+
+        size_t name_len = 0;
+        SensorDef* def = NULL;
+        const char* str = getString(p, optarg_buffer, optarg_bufsize, name_len, linenum, configFilePath);
+        switch (SensorDef::add(sensor_id, str, name_len, def)) {
+        case SENSOR_DEF_WAS_ADDED:
+          break;
+        case SENSOR_DEF_DUP:
+          fprintf(stderr, "ERROR: Duplicate descriptor of sensor in line #%d of file \"%s\"\n", linenum, configFilePath);
+          exit(1);
+          break;
+        case SENSOR_NAME_MISSING:
+          fprintf(stderr, "ERROR: Sensor name/id must be specified in the descriptor of sensor in line #%d of file \"%s\"\n", linenum, configFilePath);
+          exit(1);
+          break;
+        case SENSOR_NAME_TOO_LONG:
+          fprintf(stderr, "ERROR: Sensor name is too long in the descriptor of sensor in line #%d of file \"%s\"\n", linenum, configFilePath);
+          exit(1);
+          break;
+        case SENSOR_NAME_INVALID:
+          fprintf(stderr, "ERROR: Invalid sensor name in the descriptor of sensor in line #%d of file \"%s\"\n", linenum, configFilePath);
+          exit(1);
+          break;
+        default:
+          fprintf(stderr, "ERROR: Programming error - unrecognized error code from SensorDef::add() while processing line #%d of file \"%s\"\n", linenum, configFilePath);
+          exit(1);
+        }
+#ifndef NDEBUG
+        fprintf(stderr, "command \"sensor\" in line #%d of file \"%s\": channel=%d rolling_code=%d id=%08x name=%s ixdb_name=%s\n",
+            linenum, configFilePath, channel_number, rolling_code, sensor_id, def->quoted, def->influxdb_quoted);
+#endif
+        continue;
+      }
+
+      // TODO add other commands here
 
       fprintf(stderr, "ERROR: Unrecognized option in line #%d of file \"%s\".\n", linenum, configFilePath);
       help();
@@ -418,7 +537,8 @@ private:
     fclose(configFileStream);
   }
 
-  const char* skipBlanks(const char*& p) {
+
+  static const char* skipBlanks(const char*& p) {
     if (p == NULL) return NULL;
     char ch;
     while ((ch=*p) ==' ' || ch == '\t') p++;
@@ -426,7 +546,7 @@ private:
     return p;
   }
 
-  const char* getWord(const char*& p, size_t& length) {
+  static const char* getWord(const char*& p, size_t& length) {
     length = 0;
     const char* start = skipBlanks(p);
     if (start == NULL) return p = NULL;
@@ -445,7 +565,7 @@ private:
     return start;
   }
 
-  const char* getString(const char*& p, char*& buffer, size_t& bufsize, size_t& length, int linenum, const char* configFilePath) {
+  static const char* getString(const char*& p, char*& buffer, size_t& bufsize, size_t& length, int linenum, const char* configFilePath) {
     length = 0;
     const char* start = skipBlanks(p);
     if (start == NULL) return p = NULL;
@@ -540,8 +660,8 @@ private:
       return buffer;
     }
 
-    while ((ch=*p) !=' ' && ch != '\t') {
-      if (ch == '\0' || ch == '\n' || ch == '\r') {
+    while ((ch=*p) !=' ' && ch != '\t' && ch != '\n' && ch != '\r') {
+      if (ch == '\0') {
         length = p-start;
         p = NULL;
         return start;
@@ -549,6 +669,7 @@ private:
       p++;
     }
     int value_len = p-start;
+    if (ch == '\n' || ch == '\r') p = NULL;
     size_t new_size = sizeof(char)*(value_len+1);
     if (buffer == NULL) {
       buffer = (char*)malloc(new_size);
@@ -562,6 +683,7 @@ private:
       exit(1);
     }
     strncpy(buffer, start, value_len);
+    buffer[value_len] = '\0';
 
     length = value_len;
     return buffer;
@@ -586,6 +708,67 @@ private:
     n <<= 4;
     n |= getHex(*p++, linenum, configFilePath);
     return (char)n;
+  }
+
+  static uint32_t getUnsigned(const char*& p, int linenum, const char* configFilePath) {
+    if (skipBlanks(p) == NULL) {
+      fprintf(stderr, "ERROR: Missed unsigned integer argument in line #%d of file \"%s\".\n", linenum, configFilePath);
+      exit(1);
+    }
+
+    uint32_t result = 0;
+
+    char ch = *p;
+    if (ch>='0' && ch<='9') {
+      result = (ch-'0');
+    } else {
+      fprintf(stderr, "ERROR: Unsigned integer argument was expected in line #%d of file \"%s\".\n", linenum, configFilePath);
+      exit(1);
+    }
+
+    if ( result == 0 && *(p+1) == 'x') { // hex number
+      p += 2;
+      result = getHex(*p, linenum, configFilePath); // must be at least one hex digit
+      for ( int i=0; i<7; i++) {
+        ch = *++p;
+        if (ch == ' ' || ch == '\t' ) return result;
+        if (ch == '\0' || ch == '#' || ch == '\r' || ch == '\n' ) {
+          p = NULL;
+          return result;
+        }
+        result <<= 4;
+        result |= getHex(ch, linenum, configFilePath);
+      }
+      ch = *++p;
+      if (ch == ' ' || ch == '\t' ) return result;
+      if (ch != '\0' && ch != '#' && ch != '\r' && ch != '\n' ) {
+        fprintf(stderr, "ERROR: Invalid hex number in line #%d of file \"%s\".\n", linenum, configFilePath);
+        exit(1);
+      }
+      p = NULL;
+      return result;
+    }
+
+    while ( (ch=*++p)!='\0' && ch != '#' && ch != '\r' && ch != '\n') {
+      if (ch == ' ' || ch == '\t' ) return result;
+      if (ch>='0' && ch<='9') {
+        result = result*10 + (ch-'0');
+      } else {
+        fprintf(stderr, "ERROR: Unsigned integer argument was expected in line #%d of file \"%s\".\n", linenum, configFilePath);
+        exit(1);
+      }
+    }
+    p = NULL;
+    return result;
+  }
+
+  static const char* clone(const char* str) {
+    if (str == NULL) return NULL;
+    int length = strlen(str);
+    if (length == 0) return EMPTY_STRING;
+    char* result = (char*)malloc((length+1)*sizeof(char));
+    strcpy(result, str);
+    return result;
   }
 
 };
