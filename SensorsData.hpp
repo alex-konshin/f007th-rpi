@@ -95,15 +95,14 @@ public:
     }
 
     char quoted[SENSOR_NAME_MAX_LEN*2+3];
-    char influxdb_quoted[SENSOR_NAME_MAX_LEN*2+3];
+    char influxdb_quoted[SENSOR_NAME_MAX_LEN*2+1];
     char* pq = quoted;
     char* pi = influxdb_quoted;
-    *pi++ = '"';
     *pq++ = '"';
     for (size_t i = 0; i<name_len; i++) {
       const char ch = name[i];
 
-      if (ch=='"' || ch=='\\') {
+      if (ch=='"' || ch=='\\' || ch=='=' || ch==' ' || ch==',') {
         *pi++ = '\\';
       }
       *pi++ = ch;
@@ -119,7 +118,6 @@ public:
         *pq++ = ch;
       }
     }
-    *pi++ = '"';
     *pi++ = '\0';
     *pq++ = '"';
     *pq++ = '\0';
