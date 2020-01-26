@@ -167,8 +167,8 @@ Warning: Argument `<channel>` is not optional: You must specify it if this parti
 # Any comments are started with hash. Empty lines are ignored.
 
 gpio 27
-all-changes
-verbose
+#all-changes
+#verbose
 httpd 8888
 
 server-type InfluxDB
