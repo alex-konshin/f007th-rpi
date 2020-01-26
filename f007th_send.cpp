@@ -205,7 +205,7 @@ int main(int argc, char *argv[]) {
 typedef struct PutData {
   uint8_t* data;
   size_t len;
-  uint8_t* response_data;
+  uint8_t* response_write;
   size_t response_remain;
   bool verbose;
 } PutData;
@@ -225,9 +225,9 @@ static size_t write_callback(void *ptr, size_t size, size_t nmemb, struct PutDat
   size_t to_copy = (data->response_remain < curl_size) ? data->response_remain : curl_size;
   if (data->verbose) fprintf(stderr, "receiving %d bytes...\n", (int)to_copy);
   if (to_copy > 0) {
-    memcpy(data->response_data, ptr, to_copy);
+    memcpy(data->response_write, ptr, to_copy);
     data->response_remain -= to_copy;
-    data->response_data += to_copy;
+    data->response_write += to_copy;
     return to_copy;
   }
   return size;
@@ -252,7 +252,7 @@ bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer,
   struct PutData data;
   data.data = (uint8_t*)data_buffer;
   data.len = data_size;
-  data.response_data = (uint8_t*)response_buffer;
+  data.response_write = (uint8_t*)response_buffer;
   data.response_remain = SERVER_RESPONSE_BUFFER_SIZE;
   data.verbose = verbose;
   response_buffer[0] = '\0';
@@ -312,12 +312,11 @@ bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer,
       Log->error("Failed to connect to server %s", cfg.server_url);
     else
       Log->error("Got HTTP status code %ld.", http_code);
-//    if (verbose) {
-      if (data.response_remain <= 0) data.response_remain = 1;
-      response_buffer[SERVER_RESPONSE_BUFFER_SIZE-data.response_remain] = '\0';
-      fputs(response_buffer, log);
-      fputc('\n', log);
-//    }
+    if (data.response_remain <= 0) data.response_remain = 1;
+    response_buffer[SERVER_RESPONSE_BUFFER_SIZE-data.response_remain] = '\0';
+    fputs(response_buffer, log);
+    fputc('\n', log);
+    fflush(log);
   } else if (rc == CURLE_ABORTED_BY_CALLBACK) {
     Log->error("HTTP request was aborted.");
   }
