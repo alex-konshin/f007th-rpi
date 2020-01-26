@@ -10,7 +10,7 @@
 
 #include "SensorsData.hpp"
 
-#define SEND_DATA_BUFFER_SIZE 1024
+#define SEND_DATA_BUFFER_SIZE 2048
 #define SERVER_RESPONSE_BUFFER_SIZE 8192
 
 typedef struct ReceivedData {

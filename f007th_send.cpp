@@ -206,7 +206,7 @@ typedef struct PutData {
   uint8_t* data;
   size_t len;
   uint8_t* response_data;
-  size_t response_len;
+  size_t response_remain;
   bool verbose;
 } PutData;
 /*
@@ -222,11 +222,11 @@ static size_t read_callback(void *ptr, size_t size, size_t nmemb, struct PutData
 */
 static size_t write_callback(void *ptr, size_t size, size_t nmemb, struct PutData* data) {
   size_t curl_size = nmemb * size;
-  size_t to_copy = (data->response_len < curl_size) ? data->response_len : curl_size;
+  size_t to_copy = (data->response_remain < curl_size) ? data->response_remain : curl_size;
   if (data->verbose) fprintf(stderr, "receiving %d bytes...\n", (int)to_copy);
   if (to_copy > 0) {
     memcpy(data->response_data, ptr, to_copy);
-    data->response_len -= to_copy;
+    data->response_remain -= to_copy;
     data->response_data += to_copy;
     return to_copy;
   }
@@ -253,7 +253,7 @@ bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer,
   data.data = (uint8_t*)data_buffer;
   data.len = data_size;
   data.response_data = (uint8_t*)response_buffer;
-  data.response_len = SERVER_RESPONSE_BUFFER_SIZE;
+  data.response_remain = SERVER_RESPONSE_BUFFER_SIZE;
   data.verbose = verbose;
   response_buffer[0] = '\0';
 
@@ -298,8 +298,8 @@ bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer,
     Log->error("Sending data to %s failed: %s", cfg.server_url, curl_easy_strerror(rc));
 
   if (verbose && response_buffer[0] != '\0') {
-    if (data.response_len <= 0) data.response_len = data.response_len-1;
-    response_buffer[SERVER_RESPONSE_BUFFER_SIZE-data.response_len] = '\0';
+    if (data.response_remain <= 0) data.response_remain = 1;
+    response_buffer[SERVER_RESPONSE_BUFFER_SIZE-data.response_remain] = '\0';
     fputs(response_buffer, stderr);
     fputc('\n', stderr);
   }
