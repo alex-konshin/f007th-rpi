@@ -312,13 +312,12 @@ bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer,
       Log->error("Failed to connect to server %s", cfg.server_url);
     else
       Log->error("Got HTTP status code %ld.", http_code);
-    if (verbose) {
+//    if (verbose) {
+      if (data.response_remain <= 0) data.response_remain = 1;
+      response_buffer[SERVER_RESPONSE_BUFFER_SIZE-data.response_remain] = '\0';
       fputs(response_buffer, log);
       fputc('\n', log);
-    }
-    fprintf(log, "ERROR: Got HTTP status code %ld.\n", http_code);
-    fputs(response_buffer, log);
-    fputc('\n', log);
+//    }
   } else if (rc == CURLE_ABORTED_BY_CALLBACK) {
     Log->error("HTTP request was aborted.");
   }

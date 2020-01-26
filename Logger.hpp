@@ -13,7 +13,7 @@
 #include <string.h>
 #include <time.h>
 
-#define BUFFER_SIZE 1024
+#define BUFFER_SIZE 2048
 
 #define LOGGER_FLAG_STDERR   1
 #define LOGGER_FLAG_TIME     2
