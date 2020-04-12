@@ -7,6 +7,8 @@ Alex Konshin <akonshin@gmail.com>
 
 ### Overview
 The main goal of this project is to intercept and decode radio signals from temperature/humidity sensors and show on console or send this received data to REST/[InfluxDB](https://www.influxdata.com/products/influxdb-overview/) servers and/or [MQTT](http://mqtt.org/) broker.
+It is also possible to retrieve the current values via HTTP. 
+Support for MQTT is currently experimental and instructions are under development. If you want to help to test this new feature then please contact the developer.
 
 The data is received with cheap RF 433.92MHz receivers like [RXB6](http://www.jmrth.com/en/images/proimages/RXB6_en_v3.pdf), [SeeedStudio RF-R-ASK](https://www.seeedstudio.com/433MHz-ASK%26amp%3BOOK-Super-heterodyne-Receiver-module-p-2205.html), RX-RM-5V, etc. It is tested with RXB6 and SeeedStudio RF-R-ASK.
 
@@ -168,7 +170,7 @@ Argument `<type>` could be one of (case insensitive): `f007th`, `f007tp`, `00592
 Argument `<rolling_code>` may be decimal number or hex number started with `0x`. 
 Warning: Argument `<channel>` is not optional: You must specify it if this particular sensor type has channels. For sensors of type 00592txr the value of channel is A, B or C. For sensors f007th and f007tp it should be a number 1..8. For sensor hg02832 it should be number 1..3.
 
-#### Example of configuration file:
+#### Example of configuration file without MQTT:
 ```
 # Any comments are started with hash. Empty lines are ignored.
 
@@ -198,6 +200,42 @@ sensor tx6  104 "LaCrosse TX7U 1" # note that channel is missing
 sensor tx6   92 "LaCrosse TX7U 2"
 ``` 
 
+#### Example of configuration file with MQTT:
+```
+# Any comments are started with hash. Empty lines are ignored.
+
+gpio 27
+#all-changes
+#verbose
+httpd 8888
+
+server-type InfluxDB
+send-to http://m700.dom:8086/write?db=smarthome
+max-gap 5
+
+log-file "f007th-send.log"
+
+sensor f007th   1  13 "Server room"
+sensor f007th   2  19 "Main bedroom"
+sensor f007th   3  85 "Roman room"
+sensor f007th   4 120 "Alex office"
+sensor f007th   5 174 "Kitchen"
+sensor f007th   6  48 "TV room"
+sensor f007th   7  88 "Garage"
+sensor f007th   8  83 "Dirty room"
+
+sensor f007th   1 191 "Neighbor 2"
+sensor 00592txr A  92 "Neighbor 1"
+sensor 00592txr A 146 "Backyard"
+
+sensor tx6        104 "LaCrosse TX7U 1"
+sensor tx6         92 "LaCrosse TX7U 2"
+
+mqtt_broker host=m700.dom port=1883 client_id=RPi4 user=pi password=censored
+
+mqtt_bounds_rule id=cool sensor="Alex office" metric=F topic=hvac/cooling msg_hi=on msg_lo=off bounds=72..77[24:00]70..77[8:00]
+mqtt_bounds_rule id=heat sensor="Kitchen" metric=F topic=hvac/heating msg_hi=off msg_lo=on bounds=72..77[24:00]70..77[8:00]
+``` 
 
 #### Example of wiring RXB6 to Raspberry Pi 3 ####
 
