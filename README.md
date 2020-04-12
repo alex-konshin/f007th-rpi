@@ -62,7 +62,7 @@ sudo apt-get update
 sudo apt-get install libcurl4-openssl-dev libmicrohttpd-dev
 ```
 - If you want to use [pigpio library](http://abyz.co.uk/rpi/pigpio/index.html) then you need to install it.
-Note: It is recommended do not use pigpio but use [gpio-ts driver](https://github.com/alex-konshin/gpio-ts). The driver works better and create less load to Raspberry Pi CPU.   
+Note: It is recommended do not use pigpio but use [gpio-ts driver](https://github.com/alex-konshin/gpio-ts). The driver works better and creates less load to Raspberry Pi CPU.   
 ```
 sudo apt-get install pigpio
 ```

@@ -17,6 +17,3 @@ if [ "$status" = 0 ]; then cp f007th-send ${BUILD_HOME}/bin/; fi
 cd ${BUILD_HOME}/bin
 
 exit $status
-
-
-
