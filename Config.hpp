@@ -380,7 +380,9 @@ public:
       }
     }
 
+#ifdef INCLUDE_MQTT
     resolveReferencesToMqttRules();
+#endif
 
     if (optind < argc) {
       if (optind != argc-1) Config::help();

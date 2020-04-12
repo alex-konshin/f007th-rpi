@@ -6,7 +6,7 @@
 Alex Konshin <akonshin@gmail.com>
 
 ### Overview
-The main goal of this project is to intercept and decode radio signals from temperature/humidity sensors and show on console or send to REST/InfluxDB servers this received data.
+The main goal of this project is to intercept and decode radio signals from temperature/humidity sensors and show on console or send this received data to REST/[InfluxDB](https://www.influxdata.com/products/influxdb-overview/) servers and/or [MQTT](http://mqtt.org/) broker.
 
 The data is received with cheap RF 433.92MHz receivers like [RXB6](http://www.jmrth.com/en/images/proimages/RXB6_en_v3.pdf), [SeeedStudio RF-R-ASK](https://www.seeedstudio.com/433MHz-ASK%26amp%3BOOK-Super-heterodyne-Receiver-module-p-2205.html), RX-RM-5V, etc. It is tested with RXB6 and SeeedStudio RF-R-ASK.
 
@@ -58,12 +58,18 @@ You can look at [this good instruction about setting up Eclipse for cross-compil
 ##### Building on Raspberry Pi
 - You need to install [libcurl](https://curl.haxx.se/libcurl/) and [microhttpd](https://www.gnu.org/software/libmicrohttpd/) libraries.
 ```
+sudo apt-get update
 sudo apt-get install libcurl4-openssl-dev libmicrohttpd-dev
 ```
 - If you want to use [pigpio library](http://abyz.co.uk/rpi/pigpio/index.html) then you need to install it.
+Note: It is recommended do not use pigpio but use [gpio-ts driver](https://github.com/alex-konshin/gpio-ts). The driver works better and create less load to Raspberry Pi CPU.   
 ```
 sudo apt-get install pigpio
 ```
+- If you want to use [MQTT](http://mqtt.org/) (this is not usual) then you need to install [Mosquitto](https://github.com/eclipse/mosquitto) libraries:
+```
+sudo apt-get install libmosquitto-dev libmosquittopp-dev libssl-dev
+```  
 - Clone sources from GitHub. The following command will create new sub-directory f007th-rpi in the current directory and download sources
 ```
 git clone https://github.com/alex-konshin/f007th-rpi.git

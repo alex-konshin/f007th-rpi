@@ -136,7 +136,9 @@ int main(int argc, char *argv[]) {
         bool isValid = message.isValid();
         int changed = isValid ? message.update(sensorsData, cfg.max_unchanged_gap) : 0;
         if (changed != TIME_NOT_CHANGED) {
+#ifdef INCLUDE_MQTT
           int really_changed = changed;
+#endif
           if (changed == 0 && !cfg.changes_only && (isValid || cfg.server_type!=InfluxDB))
             changed = TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED;
           if (changed != 0) {
