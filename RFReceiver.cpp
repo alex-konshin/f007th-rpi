@@ -5,11 +5,15 @@
 */
 
 #include "RFReceiver.hpp"
+#include <mutex>
 
 bool RFReceiver::isLibInitialized = false;
 RFReceiver* RFReceiver::first = NULL;
+std::mutex receivers_chain_mutex;
 
 SensorDef* SensorDef::sensorDefs = NULL;
+pthread_mutex_t receiversLock;
+
 
 RFReceiver::RFReceiver(int gpio) {
   this->gpio = gpio;
@@ -42,13 +46,15 @@ RFReceiver::RFReceiver(int gpio) {
 
   resetReceiverBuffer();
 
-  //TODO use atomic CAS
+  // Link this new receiver to the chain
+  receivers_chain_mutex.lock();
   if (first == NULL) {
     next = NULL;
   } else {
     next = first;
   }
   first = this;
+  receivers_chain_mutex.unlock();
 }
 RFReceiver::~RFReceiver() {
   stop();
@@ -105,26 +111,35 @@ void RFReceiver::closeLib() {
 }
 
 void RFReceiver::closeAll() {
-  // TODO use atomic CAS?
-  RFReceiver* p = first;
-  first = NULL;
-  while ( p!=NULL ) {
+  do {
+    receivers_chain_mutex.lock();
+    RFReceiver* p = RFReceiver::first;
+    if (p != NULL) {
+      RFReceiver* next = p->next;
+      p->next = NULL;
+      RFReceiver::first = next;
+    }
+    receivers_chain_mutex.unlock();
+    if (p == NULL) break;
     p->stop();
-    p = p->next;
-  }
+  } while (true);
+
   closeLib();
 }
+
 
 #if defined(USE_GPIO_TS)||defined(TEST_DECODING)
 void RFReceiver::signalHandler(int signum) {
 
   switch(signum) {
   case SIGUSR1: {
+    receivers_chain_mutex.lock();
     RFReceiver* p = first;
     while (p != NULL) {
-        p->printDebugStatistics();
-        p = p->next;
+      p->printDebugStatistics();
+      p = p->next;
     }
+    receivers_chain_mutex.unlock();
     break;
   }
 
@@ -144,14 +159,14 @@ void RFReceiver::signalHandler(int signum) {
     printf("\nGot Ctrl-C. Terminating...\n");
     Log->log("Got Ctrl-C. Terminating...");
     RFReceiver::closeAll();
-    exit(0);
+    //exit(0);
     break;
 
   case SIGTERM:
     printf("\nTerminating...\n");
     Log->log("Terminating...");
     RFReceiver::closeAll();
-    exit(0);
+    //exit(0);
     break;
 
   default:
@@ -182,18 +197,21 @@ void RFReceiver::close() {
   }
 #endif
 
-  // TODO use atomic CAS
   RFReceiver** pp = &first;
+  receivers_chain_mutex.lock();
   RFReceiver* p = first;
   while (p != NULL && p != this) {
-      pp = &(p->next);
-      p = p->next;
+    pp = &(p->next);
+    p = p->next;
   }
   if (p == this) {
     *pp = next;
     next = NULL;
+    receivers_chain_mutex.unlock();
     stop();
     if (first == NULL) closeLib();
+  } else {
+    receivers_chain_mutex.unlock();
   }
 }
 
@@ -322,13 +340,13 @@ void RFReceiver::stop() {
     pause();
     stopTimer();
     stopMessageReader = true;
+    close();
     if (isDecoderStarted) {
       isDecoderStarted = false;
       pthread_mutex_lock(&messageQueueLock);
       pthread_cond_broadcast(&messageReady);
       pthread_mutex_unlock(&messageQueueLock);
     }
-    close();
   }
 }
 

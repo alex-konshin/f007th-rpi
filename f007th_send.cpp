@@ -13,6 +13,10 @@
 #include "SensorsData.hpp"
 #include "Config.hpp"
 
+#ifdef INCLUDE_MQTT
+#include "MQTT.hpp"
+#endif
+
 static bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer, char* response_buffer, FILE* log);
 
 #ifdef INCLUDE_HTTPD
@@ -20,47 +24,13 @@ static struct MHD_Daemon* start_httpd(int port, SensorsData* sensorsData);
 static void stop_httpd(struct MHD_Daemon* httpd);
 #endif
 
+
 int main(int argc, char *argv[]) {
 
   if ( argc==1 ) Config::help();
 
   Config cfg(DEFAULT_OPTIONS);
-
-  while (1) {
-    int c = getopt_long(argc, argv, short_options, long_options, NULL);
-    if (c == -1) break;
-
-    const char* option = argv[optind];
-    if (!cfg.process_cmdline_option(c, option, optarg)) {
-      fprintf(stderr, "ERROR: Unknown option \"%s\".\n", option);
-      Config::help();
-    }
-  }
-
-  if (optind < argc) {
-    if (optind != argc-1) Config::help();
-    cfg.server_url = argv[optind];
-  }
-
-  if (cfg.server_url == NULL || cfg.server_url[0] == '\0') {
-    if (cfg.type_is_set && cfg.server_type != STDOUT) {
-      fputs("ERROR: Server URL must be specified (options --send-to or -s).\n", stderr);
-      Config::help();
-    }
-    cfg.server_type = STDOUT;
-  } else {
-    //TODO support UNIX sockets for InfluxDB
-    if (strncmp(cfg.server_url, "http://", 7) != 0 && strncmp(cfg.server_url, "https://", 8)) {
-      fputs("ERROR: Server URL must be HTTP or HTTPS.\n", stderr);
-      Config::help();
-    }
-  }
-#ifdef TEST_DECODING
-  if (cfg.input_log_file_path == NULL) {
-    fputs("ERROR: Input log file must be specified (option --input-log or -I).\n", stderr);
-    exit(1);
-  }
-#endif
+  cfg.process_args(argc, argv);
 
   if (cfg.log_file_path == NULL || cfg.log_file_path[0]=='\0') {
 #ifdef TEST_DECODING
@@ -109,7 +79,23 @@ int main(int argc, char *argv[]) {
     Log->log("Starting HTTPD server on port %d...", cfg.httpd_port);
     httpd = start_httpd(cfg.httpd_port, &sensorsData);
     if (httpd == NULL) {
-      Log->error("Could not start HTTPD server on port %d.\n", cfg.httpd_port);
+      Log->error("Could not start HTTPD server on port %d.", cfg.httpd_port);
+      fclose(log);
+      exit(1);
+    }
+  }
+#endif
+
+#ifdef INCLUDE_MQTT
+#define MQTT_MESSAGE_MAX_SIZE 512
+  MqttPublisher* mqtt_publisher = NULL;
+  char mqtt_message_buffer[MQTT_MESSAGE_MAX_SIZE];
+
+  if (cfg.mqtt_enable) {
+    Log->log("Starting MQTT publisher to broker %s:%d...", cfg.mqtt_broker_host, cfg.mqtt_broker_port);
+    mqtt_publisher = new MqttPublisher(cfg.mqtt_client_id, cfg.mqtt_broker_host, cfg.mqtt_broker_port);
+    if (!mqtt_publisher->start()) {
+      Log->error("Could not connect to MQTT broker.");
       fclose(log);
       exit(1);
     }
@@ -121,9 +107,9 @@ int main(int argc, char *argv[]) {
 
   if ((cfg.options&VERBOSITY_INFO) != 0) fputs("Receiving data...\n", stderr);
   while(!receiver.isStopped()) {
-
-    if (receiver.waitForMessage(message)) {
-      if (receiver.isStopped()) break;
+    bool got_data = receiver.waitForMessage(message);
+    if (receiver.isStopped()) break;
+    if (got_data) {
 
       bool is_message_printed = false;
 
@@ -150,6 +136,7 @@ int main(int argc, char *argv[]) {
         bool isValid = message.isValid();
         int changed = isValid ? message.update(sensorsData, cfg.max_unchanged_gap) : 0;
         if (changed != TIME_NOT_CHANGED) {
+          int really_changed = changed;
           if (changed == 0 && !cfg.changes_only && (isValid || cfg.server_type!=InfluxDB))
             changed = TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED;
           if (changed != 0) {
@@ -175,6 +162,31 @@ int main(int argc, char *argv[]) {
               }
             }
           }
+
+#ifdef INCLUDE_MQTT
+          if (isValid && mqtt_publisher != NULL) {
+            SensorData* sensorData = &message.data->sensorData;
+            SensorDef* sensorDef = sensorData->def;
+            if (sensorDef != NULL) {
+              MqttRule* mqtt_rule = sensorDef->getMqttRules();
+              while (mqtt_rule != NULL) {
+                BoundCheckResult checkResult = sensorData->checkMqqtRule(mqtt_rule, really_changed);
+                if (checkResult != BoundCheckResult::Locked && checkResult != BoundCheckResult::NotApplicable) {
+                  //TODO
+                  if ((cfg.options&VERBOSITY_DEBUG) != 0) Log->info("MQTT rule \"%s\" => MATCHED.", mqtt_rule->id);
+                  uint32_t size = mqtt_rule->formatMessage(mqtt_message_buffer, MQTT_MESSAGE_MAX_SIZE, checkResult, sensorData);
+                  if (size > 0) {
+                    if ((cfg.options&VERBOSITY_DEBUG) != 0) Log->info("MQTT rule \"%s\" => topic=\"%s\" message=\"%s\".\n", mqtt_rule->id, mqtt_rule->mqttTopic, mqtt_message_buffer);
+                    mqtt_publisher->publish_message(mqtt_rule->mqttTopic, mqtt_message_buffer);
+                  }
+                  mqtt_rule->applyLocks(checkResult);
+                }
+                mqtt_rule = mqtt_rule->next;
+              }
+            }
+          }
+#endif
+
         }
       }
 
@@ -184,6 +196,19 @@ int main(int argc, char *argv[]) {
       receiver.printStatistics();
     }
   }
+
+#ifdef INCLUDE_MQTT
+  if (mqtt_publisher != NULL) {
+    if (mqtt_publisher->is_connected()) {
+      Log->log("Stopping MQTT publisher...");
+      mqtt_publisher->stop(true);
+      Log->log("MQTT publisher has been stopped.");
+    }
+    Log->log("Destroying MQTT publisher...");
+    delete mqtt_publisher;
+    mqtt_publisher = NULL;
+  }
+#endif
 
 #ifdef INCLUDE_HTTPD
   if ((cfg.options&VERBOSITY_INFO) != 0) Log->log("Stopping HTTPD server...");

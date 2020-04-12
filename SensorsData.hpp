@@ -1,7 +1,7 @@
 /*
- * Channels.hpp
+ * SensorsData.hpp
  *
- *  Created on: Feb 5, 2017
+ *  Created on: February 5, 2017
  *      Author: Alex Konshin
  */
 
@@ -49,12 +49,259 @@
 
 #include <time.h>
 #include <stdio.h>
+#include "Logger.hpp"
+
+//-------------------------------------------------------------
+#ifdef INCLUDE_MQTT
+
+//-------------------------------------------------------------
+// Compiled message format
+
+enum class MessageInsertType{ Constant, ReferenceId, SensorName, TemperatureF, TemperatureC };
+
+typedef struct MessageInsert {
+  MessageInsertType type;
+  const char* stringArg;
+private:
+  char* t2d(int t, char* buffer, uint32_t& length);
+  void append(char*& output, uint32_t& remain, const char* str, uint32_t len);
+  void append(char*& output, uint32_t& remain, const char* str);
+
+  void append(char*& output, uint32_t& remain, struct SensorData* data, const char* referenceId);
+
+public:
+  uint32_t formatMessage(char* buffer, uint32_t buffer_size, const char* messageFormat, struct SensorData* data, const char* referenceId);
+
+} MessageInsert;
+
+
+//-------------------------------------------------------------
+enum class BoundCheckResult : int { Lower=0, Inside=1, Higher=2, NotApplicable=-2, Locked=-1 };
+
+//-------------------------------------------------------------
+#define NO_BOUND 0x00008000
+typedef struct MqttRuleBounds {
+  union {
+    uint32_t both;
+    struct {
+      int16_t low, high;
+    } bound;
+  };
+  static struct MqttRuleBounds make(int low, int high) {
+    MqttRuleBounds result;
+    result.bound.low = (int16_t)low;
+    result.bound.high = (int16_t)high;
+    return result;
+  }
+  int32_t getHi() {
+    return adjust(bound.high);
+  }
+  int32_t getLo() {
+    return adjust(bound.low);
+  }
+private:
+  static int32_t adjust(int16_t value) {
+    if ( (0x0000ffff & (int32_t)value) == NO_BOUND) return NO_BOUND;
+    return value;
+  }
+} MqttRuleBounds;
+
+typedef struct MqttRuleBoundsSheduleItem {
+  struct MqttRuleBoundsSheduleItem* prev;
+  struct MqttRuleBoundsSheduleItem* next;
+  MqttRuleBounds bounds;
+  uint32_t time_offset;
+} MqttRuleBoundsSheduleItem;
+
+//-------------------------------------------------------------
+class AbstractMqttRuleBoundSchedule {
+public:
+  virtual ~AbstractMqttRuleBoundSchedule() {}
+  virtual BoundCheckResult checkBounds(int value, uint32_t day_time_offset, uint32_t week_time_offset) = 0;
+
+  static BoundCheckResult checkBounds(MqttRuleBounds bounds, int value) {
+    int32_t lo = bounds.getLo();
+    if (lo != NO_BOUND && value < lo) return BoundCheckResult::Lower;
+    int32_t hi = bounds.getHi();
+    return hi == NO_BOUND || value <= hi ? BoundCheckResult::Inside : BoundCheckResult::Higher;
+  }
+};
+
+//-------------------------------------------------------------
+class MqttRuleBoundFixed : public AbstractMqttRuleBoundSchedule {
+protected:
+  MqttRuleBounds _bounds;
+public:
+  MqttRuleBoundFixed(MqttRuleBounds bounds) {
+    _bounds = bounds;
+  }
+  MqttRuleBoundFixed(int low, int high) {
+    _bounds = MqttRuleBounds::make(low, high);
+  }
+
+  ~MqttRuleBoundFixed() {}
+
+  MqttRuleBounds getBounds() { return _bounds; }
+
+  BoundCheckResult checkBounds(int value, uint32_t day_time_offset, uint32_t week_time_offset) {
+    return AbstractMqttRuleBoundSchedule::checkBounds(_bounds, value);
+  }
+};
+
+//-------------------------------------------------------------
+class MqttRuleBoundSchedule : public AbstractMqttRuleBoundSchedule {
+protected:
+  MqttRuleBoundsSheduleItem* firstScheduleItem;
+public:
+  MqttRuleBoundSchedule(MqttRuleBoundsSheduleItem* schedule) {
+    firstScheduleItem = schedule;
+  }
+
+  ~MqttRuleBoundSchedule() {}
+
+  BoundCheckResult checkBounds(int value, uint32_t day_time_offset, uint32_t week_time_offset) {
+    uint32_t time_offset = day_time_offset;
+    MqttRuleBoundsSheduleItem* first = firstScheduleItem;
+    MqttRuleBoundsSheduleItem* current = first;
+    if (current == NULL) return BoundCheckResult::NotApplicable; // it should not happen
+    if (current->time_offset > time_offset)  {
+      MqttRuleBoundsSheduleItem* prev = current;
+      while ((prev = prev->prev) != first && prev->time_offset > time_offset) current = prev;
+    } else {
+      MqttRuleBoundsSheduleItem* next = current;
+      while ((next = next->next) != first && next->time_offset <= time_offset) current = next;
+    }
+    return AbstractMqttRuleBoundSchedule::checkBounds(current->bounds, value);
+  }
+
+};
+
+
+//-------------------------------------------------------------
+enum class Metric : int { TemperatureF, TemperatureC, Humidity, BatteryStatus };
+enum class BoundType { None, Low, High };
+
+// Reference to another MQTT rule that will be locked/unlocked when the current rule is applied.
+typedef struct MqttRuleLock {
+  struct MqttRuleLock* next;
+  class MqttRule* rule;
+  bool lock; // lock vs unlock
+} MqttRuleLock;
+
+
+//-------------------------------------------------------------
+// MQTT rule definition
+
+class MqttRule {
+private:
+  // the list of rules to be locked/unlocked when this rule is applied
+  MqttRuleLock* locks[3] = {NULL,NULL,NULL};
+
+  void freeLocks(MqttRuleLock* locks) {
+    while (locks != NULL) {
+      MqttRuleLock* lock = locks;
+      locks = lock ->next;
+      free(lock);
+    }
+  }
+
+public:
+  MqttRule* next = NULL;
+  struct SensorDef* sensor_def;
+  const char* id = NULL;
+  const char* mqttTopic;
+  const char* mqttMessageFormat[3] = {NULL, NULL, NULL};
+  struct MessageInsert* compiledMessageFormat[3] = {NULL, NULL, NULL};
+  Metric metric;
+  AbstractMqttRuleBoundSchedule* boundSchedule = NULL;
+  bool isLocked = false;
+  uint8_t selfLocks;
+
+  MqttRule(SensorDef* sensor_def, Metric metric, const char* mqttTopic) {
+    this->sensor_def = sensor_def;
+    this->metric = metric;
+    this->mqttTopic = mqttTopic;
+    selfLocks = 0;
+  }
+  ~MqttRule() {
+    if (locks[0] != NULL) freeLocks(locks[0]);
+    if (locks[1] != NULL) freeLocks(locks[1]);
+    if (locks[2] != NULL) freeLocks(locks[2]);
+    // TODO free messages, topic, bounds ?
+  }
+
+  void setBound(AbstractMqttRuleBoundSchedule* boundSchedule) {
+    this->boundSchedule = boundSchedule;
+  }
+  void setBound(int low, int high) {
+    this->boundSchedule = new MqttRuleBoundFixed(MqttRuleBounds::make(low, high));
+  }
+
+  void setLocks(MqttRuleLock* list, BoundCheckResult bound) {
+    int index = (int)bound;
+    if (index >= 0 && index < 3) this->locks[index] = list;
+  }
+
+  void linkTo(MqttRule*& rules) {
+    next = NULL;
+    MqttRule** link = &rules;
+    MqttRule* rule;
+    while ((rule = *link) != NULL) link = &rule->next;
+    *link = this;
+  }
+
+  void setLock(bool lock) {
+    isLocked = lock;
+  }
+
+  void setMessage(BoundCheckResult boundCheckResult, const char* mqttMessageFormat, struct MessageInsert* compiledMessageFormat) {
+    int index = (int)boundCheckResult;
+    if (index >= 0 && index < 3) {
+      this->mqttMessageFormat[index] = mqttMessageFormat;
+      this->compiledMessageFormat[index] = compiledMessageFormat;
+    }
+  }
+
+  uint32_t formatMessage(char* buffer, uint32_t buffer_size, BoundCheckResult boundCheckResult, struct SensorData* data) {
+    int index = (int)boundCheckResult;
+    if (index < 0 || index >= 3) return 0;
+    MessageInsert* compiledMessageFormat = this->compiledMessageFormat[index];
+    if (compiledMessageFormat == NULL) return 0;
+    const char* messageFormat = this->mqttMessageFormat[index];
+    return compiledMessageFormat->formatMessage(buffer, buffer_size, messageFormat, data, id);
+  }
+
+  void applyLocks(BoundCheckResult boundCheckResult) {
+    int index = (int)boundCheckResult;
+    if (index >= 0 && index < 3) {
+      selfLocks = 1<<index;
+      MqttRuleLock* lock = locks[index];
+      while (lock != NULL) {
+        lock->rule->isLocked = lock->lock;
+        lock = lock->next;
+      }
+    }
+  }
+
+  bool isSelfLocked(BoundCheckResult boundCheckResult) {
+    int index = (int)boundCheckResult;
+    return index >= 0 && index < 3 && (selfLocks & (1<<index)) != 0;
+  }
+
+};
+#endif
+
+//-------------------------------------------------------------
 
 typedef struct SensorDef {
 private:
   static SensorDef* sensorDefs;
 
   SensorDef* next;
+
+#ifdef INCLUDE_MQTT
+  MqttRule* mqtt_rules;
+#endif
 
 public:
   uint32_t id;
@@ -69,14 +316,23 @@ public:
     return NULL;
   }
 
+  static SensorDef* find(const char* name) {
+    if (name != NULL) {
+      for (SensorDef* p = sensorDefs; p != NULL; p = p->next) {
+        if (strcmp(p->name, name) == 0) return p;
+      }
+    }
+    return NULL;
+  }
+
 #define SENSOR_NAME_MAX_LEN 64
 
 #define SENSOR_DEF_WAS_ADDED 0
-#define SENSOR_DEF_DUP 1
-#define SENSOR_NAME_MISSING 2
-#define SENSOR_NAME_TOO_LONG 3
-#define SENSOR_NAME_INVALID 4
-
+#define SENSOR_DEF_DUP       1
+#define SENSOR_DEF_DUP_NAME  2
+#define SENSOR_NAME_MISSING  3
+#define SENSOR_NAME_TOO_LONG 4
+#define SENSOR_NAME_INVALID  5
 
   static int add(uint32_t id, const char* name, size_t name_len, SensorDef*& result) {
     result = NULL;
@@ -89,6 +345,10 @@ public:
       if (def->id == id) {
         result = def;
         return SENSOR_DEF_DUP;
+      }
+      if (def->name != NULL && strcmp(def->name, name)==0 ) {
+        result = def;
+        return SENSOR_DEF_DUP_NAME;
       }
       pdef = &(def->next);
       def = def->next;
@@ -139,13 +399,26 @@ public:
     def->quoted = pq;
     def->influxdb_quoted = pi;
     def->next = NULL;
+#ifdef INCLUDE_MQTT
+    def->mqtt_rules = NULL;
+#endif
     *pdef = def;
     result = def;
     return SENSOR_DEF_WAS_ADDED;
   }
 
+#ifdef INCLUDE_MQTT
+  void addMqttRule(MqttRule* rule) {
+    if (rule != NULL) rule->linkTo(mqtt_rules);
+  }
+  MqttRule* getMqttRules() {
+    return mqtt_rules;
+  }
+#endif
+
 } SensorDef;
 
+//-------------------------------------------------------------
 
 typedef struct SensorData {
   SensorDef* def;
@@ -395,6 +668,49 @@ public:
     return (size_t)(len*sizeof(unsigned char));
   }
 
+#ifdef INCLUDE_MQTT
+  BoundCheckResult checkMqqtRule(MqttRule* rule, int changed_fields) {
+    if (rule == NULL || changed_fields == 0) return BoundCheckResult::NotApplicable;
+    if (rule->isLocked) return BoundCheckResult::Locked;
+
+    time_t tm = time(NULL);
+    struct tm* ltm = localtime(&tm);
+    uint32_t day_time_offset = ltm->tm_hour*60 + ltm->tm_min;
+    uint32_t week_time_offset = ltm->tm_wday*24*60 + day_time_offset;
+
+    BoundCheckResult result = BoundCheckResult::NotApplicable;
+
+    switch(rule->metric) {
+    case Metric::TemperatureC:
+    case Metric::TemperatureF:
+      if ((changed_fields&TEMPERATURE_IS_CHANGED) != 0) {
+        if (rule->boundSchedule == NULL) return BoundCheckResult::Inside;
+        int n = rule->metric==Metric::TemperatureC ? getTemperatureCx10() : getTemperatureFx10();
+        result = rule->boundSchedule->checkBounds(n, day_time_offset, week_time_offset);
+      }
+      break;
+
+    case Metric::Humidity:
+      if (!hasHumidity()) return BoundCheckResult::NotApplicable;
+      if ((changed_fields&HUMIDITY_IS_CHANGED) != 0) {
+        if (rule->boundSchedule == NULL) return BoundCheckResult::Inside;
+        result = rule->boundSchedule->checkBounds(getHumidity(), day_time_offset, week_time_offset);
+      }
+      break;
+
+    case Metric::BatteryStatus:
+      if (!hasBatteryStatus()) return BoundCheckResult::NotApplicable;
+      if ((changed_fields&BATTERY_STATUS_IS_CHANGED) != 0) {
+        if (rule->boundSchedule == NULL) return BoundCheckResult::Inside;
+        result = rule->boundSchedule->checkBounds((int)getBatteryStatus(), day_time_offset, week_time_offset);
+      }
+      break;
+    }
+
+    return result != BoundCheckResult::NotApplicable && rule->isSelfLocked(result) ? BoundCheckResult::Locked : result;
+  }
+#endif
+
 protected:
   inline int getTX7temperature() {
     return
@@ -411,7 +727,7 @@ protected:
 
 } SensorData;
 
-
+//-------------------------------------------------------------
 
 class SensorsData {
 private:
@@ -766,6 +1082,5 @@ private:
   }
 
 };
-
 
 #endif /* SENSORSDATA_HPP_ */

@@ -37,7 +37,7 @@
 #include <pigpio.h>
 #endif
 
-#define RF_RECEIVER_VERSION "4.0"
+#define RF_RECEIVER_VERSION "4.1"
 
 #include "Logger.hpp"
 #include "Bits.hpp"
@@ -110,7 +110,7 @@
 #define ASSERT(expr)     ((void)0)
 #define DBG(format, arg...)     ((void)0)
 #else
-#define PRINT_ASSERT(expr,file,line)  fputs("ASSERTION: ("#expr") in "#file" : "#line"\n", stderr)
+#define PRINT_ASSERT(expr,file,line)  fputs("ASSERTION: ("#expr") in "#file" : " #line "\n", stderr)
 #define ASSERT(expr)  if(!(expr)) { PRINT_ASSERT(expr,__FILE__,__LINE__); /*assert(expr);*/ }
 #define DBG(format, arg...)  Log->info(format, ## arg)
 #endif // NDEBUG
@@ -266,7 +266,7 @@ private:
   bool isDecoderStarted;
   bool stopDecoder;
   bool stopMessageReader;
-  bool stopped;
+  volatile bool stopped;
 #ifdef TEST_DECODING
   bool waitAfterReading;
 #endif
