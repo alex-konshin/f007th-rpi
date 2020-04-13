@@ -235,7 +235,7 @@ sensor tx6         92 "LaCrosse TX7U 2"
 mqtt_broker host=m700.dom port=1883 client_id=RPi4 user=pi password=censored
 
 # A rule that always sends temperature in Celcius to broker
-mqtt_rule id=auriol      sensor="Alex office" metric=C topic=sensors/temperature/auriol msg=%C
+mqtt_rule id=alex_office      sensor="Alex office" metric=F topic=sensors/temperature/auriol msg=%F
 
 # Rules that potentially may controls HVAC unit
 mqtt_bounds_rule id=cool sensor="Alex office" metric=F topic=hvac/cooling msg_hi=on msg_lo=off bounds=72..77[24:00]70..77[8:00]
