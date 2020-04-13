@@ -124,6 +124,10 @@ Timestamps are printed/sent in format "YYYY-mm-dd HH:MM:SS TZ".
 Parameter value is server URL.
 ##### --server-type, -t
 Parameter value is server type. Possible values are REST (default) or InfluxDB.
+##### --stdout, -o
+Print data to stdout. This option is not compatible with --server-type and --no-server.
+##### --no-server, -n
+Do not print data on console or send it to servers. This option is not compatible with --server-type and --stdout.
 ##### --all-changes, -A
 Send all data. Only changed and valid data is sent by default.
 ##### --max-gap, -G
