@@ -45,7 +45,7 @@
 
 static const char* EMPTY_STRING = "";
 
-enum ServerType {STDOUT, REST, InfluxDB};
+enum class ServerType : int {NONE, STDOUT, REST, InfluxDB};
 
 // Command line options
 static const struct option long_options[] = {
@@ -53,6 +53,8 @@ static const struct option long_options[] = {
     { "gpio", required_argument, NULL, 'g' },
     { "send-to", required_argument, NULL, 's' },
     { "server-type", required_argument, NULL, 't' },
+    { "no-server", no_argument, NULL, 'n' },
+    { "stdout", no_argument, NULL, 'o' },
     { "celsius", no_argument, NULL, 'C' },
     { "utc", no_argument, NULL, 'U' },
     { "local-time", no_argument, NULL, 'L' },
@@ -83,16 +85,16 @@ static const struct option long_options[] = {
 #ifdef TEST_DECODING
 static const int DEFAULT_OPTIONS = VERBOSITY_INFO|VERBOSITY_PRINT_UNDECODED|VERBOSITY_PRINT_DETAILS;
 #ifdef INCLUDE_HTTPD
-static const char* short_options = "c:g:s:Al:vVt:TCULd256780DI:WH:G:";
+static const char* short_options = "c:g:s:Al:vVt:TCULd256780DI:WH:G:no";
 #else
-static const char* short_options = "c:g:s:Al:vVt:TCULd256780DI:WG:";
+static const char* short_options = "c:g:s:Al:vVt:TCULd256780DI:WG:no";
 #endif
 #elif defined(INCLUDE_HTTPD)
 static const int DEFAULT_OPTIONS = 0;
-static const char* short_options = "c:g:s:Al:vVt:TCULd256780DH:G:";
+static const char* short_options = "c:g:s:Al:vVt:TCULd256780DH:G:no";
 #else
 static const int DEFAULT_OPTIONS = 0;
-static const char* short_options = "c:g:s:Al:vVt:TCULd256780DG:";
+static const char* short_options = "c:g:s:Al:vVt:TCULd256780DG:no";
 #endif
 
 
@@ -279,7 +281,7 @@ public:
   const char* log_file_path = NULL;
   const char* server_url = NULL;
   int gpio = DEFAULT_PIN;
-  ServerType server_type = REST;
+  ServerType server_type = ServerType::NONE;
   unsigned protocols = 0;
   time_t max_unchanged_gap = 0L;
 
@@ -390,17 +392,27 @@ public:
     }
 
     if (server_url == NULL || server_url[0] == '\0') {
-      if (type_is_set && server_type != STDOUT) {
-        fputs("ERROR: Server URL must be specified (options --send-to or -s).\n", stderr);
-        Config::help();
+      if (type_is_set) {
+        if (server_type != ServerType::STDOUT && server_type != ServerType::NONE) {
+          fputs("ERROR: Server URL must be specified (options --send-to or -s).\n", stderr);
+          Config::help();
+        }
+      } else {
+        server_type = ServerType::NONE;
+#ifdef INCLUDE_MQTT
+        // if server type and URL are not specified then
+        // if any MQTT rule is specified then server type is set to NONE (no output on cosole)
+        // otherwise data will be printed on console.
+        if (mqtt_rules.empty()) server_type = ServerType::STDOUT;
+#endif
       }
-      server_type = STDOUT;
     } else {
       //TODO support UNIX sockets for InfluxDB
       if (strncmp(server_url, "http://", 7) != 0 && strncmp(server_url, "https://", 8)) {
         fputs("ERROR: Server URL must be HTTP or HTTPS.\n", stderr);
         Config::help();
       }
+      if (!type_is_set) server_type = ServerType::REST;
     }
   #ifdef TEST_DECODING
     if (input_log_file_path == NULL) {
@@ -470,21 +482,39 @@ public:
 
     case 't':
       if (strcasecmp(optarg, "REST") == 0) {
-        if (type_is_set && server_type!=REST) {
+        if (type_is_set && server_type!=ServerType::REST) {
           fputs("ERROR: Server type is specified twice.\n", stderr);
           help();
         }
-        server_type = REST;
+        server_type = ServerType::REST;
       } else if (strcasecmp(optarg, "InfluxDB") == 0) {
-        if (type_is_set && server_type!=InfluxDB) {
+        if (type_is_set && server_type!=ServerType::InfluxDB) {
           fputs("ERROR: Server type is specified twice.\n", stderr);
           help();
         }
-        server_type = InfluxDB;
+        server_type = ServerType::InfluxDB;
       } else {
         fprintf(stderr, "ERROR: Unknown server type \"%s\".\n", optarg);
         help();
       }
+      type_is_set = true;
+      break;
+
+    case 'n':
+      if (type_is_set && server_type!=ServerType::NONE) {
+        fputs("ERROR: Output/server type is specified twice.\n", stderr);
+        help();
+      }
+      server_type = ServerType::NONE;
+      type_is_set = true;
+      break;
+
+    case 'o':
+      if (type_is_set && server_type!=ServerType::STDOUT) {
+        fputs("ERROR: Output/server type is specified twice.\n", stderr);
+        help();
+      }
+      server_type = ServerType::STDOUT;
       type_is_set = true;
       break;
 

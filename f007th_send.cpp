@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
   char* response_buffer = NULL;
   char* data_buffer = (char*)malloc(SEND_DATA_BUFFER_SIZE*sizeof(char));
 
-  if (cfg.server_type!=STDOUT) {
+  if (cfg.server_type!=ServerType::STDOUT && cfg.server_type!=ServerType::NONE) {
     curl_global_init(CURL_GLOBAL_ALL);
     response_buffer = (char*)malloc(SERVER_RESPONSE_BUFFER_SIZE*sizeof(char));
   }
@@ -139,24 +139,24 @@ int main(int argc, char *argv[]) {
 #ifdef INCLUDE_MQTT
           int really_changed = changed;
 #endif
-          if (changed == 0 && !cfg.changes_only && (isValid || cfg.server_type!=InfluxDB))
+          if (changed == 0 && !cfg.changes_only && (isValid || (cfg.server_type != ServerType::InfluxDB && cfg.server_type != ServerType::NONE)))
             changed = TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED;
           if (changed != 0) {
-            if (cfg.server_type==STDOUT) {
+            if (cfg.server_type == ServerType::STDOUT) {
               if (!is_message_printed) // already printed
                 message.print(stdout, cfg.options);
-            } else {
+            } else if (cfg.server_type != ServerType::NONE) {
               if (!send(message, cfg, changed, data_buffer, response_buffer, log) && (cfg.options&VERBOSITY_INFO) != 0)
                 Log->info("No data was sent to server.");
             }
           } else {
             if ((cfg.options&VERBOSITY_INFO) != 0) {
-              if (cfg.server_type==STDOUT) {
+              if (cfg.server_type == ServerType::STDOUT) {
                 if (!isValid)
                   fputs("Data is corrupted.\n", stderr);
                 else
                   fputs("Data is not changed.\n", stderr);
-              } else {
+              } else if (cfg.server_type != ServerType::NONE) {
                 if (!isValid)
                   fputs("Data is corrupted and is not sent to server.\n", stderr);
                 else
@@ -224,7 +224,7 @@ int main(int argc, char *argv[]) {
   if (response_buffer != NULL) free(response_buffer);
   Log->log("Exiting...");
   fclose(log);
-  if (cfg.server_type!=STDOUT) curl_global_cleanup();
+  if (cfg.server_type != ServerType::STDOUT && cfg.server_type != ServerType::NONE) curl_global_cleanup();
 
   exit(0);
 }
@@ -266,7 +266,7 @@ bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer,
 
   data_buffer[0] = '\0';
   int data_size;
-  if (cfg.server_type == InfluxDB) {
+  if (cfg.server_type == ServerType::InfluxDB) {
     data_size = message.influxDB(data_buffer, SEND_DATA_BUFFER_SIZE, changed, cfg.options);
   } else {
     data_size = message.json(data_buffer, SEND_DATA_BUFFER_SIZE, cfg.options);
@@ -293,13 +293,13 @@ bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer,
   if ((cfg.options&VERBOSITY_PRINT_CURL) != 0) curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 
   struct curl_slist *headers = NULL;
-  if (cfg.server_type == REST) {
+  if (cfg.server_type == ServerType::REST) {
     headers = curl_slist_append(headers, "Content-Type: application/json");
     headers = curl_slist_append(headers, "Accept: application/json");
     headers = curl_slist_append(headers, "charsets: utf-8");
     headers = curl_slist_append(headers, "Connection: close");
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-  } if (cfg.server_type == InfluxDB) {
+  } if (cfg.server_type == ServerType::InfluxDB) {
     headers = curl_slist_append(headers, "Content-Type:"); // do not set content type
     headers = curl_slist_append(headers, "Accept:");
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
@@ -307,7 +307,7 @@ bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer,
 
   curl_easy_setopt(curl, CURLOPT_URL, cfg.server_url);
 //  curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
-  if (cfg.server_type == InfluxDB)
+  if (cfg.server_type == ServerType::InfluxDB)
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "POST");
   else
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
@@ -333,7 +333,7 @@ bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer,
   bool success = rc == CURLE_OK;
   long http_code = 0;
   curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &http_code);
-  if (http_code != (cfg.server_type == InfluxDB ? 204 : 200)) {
+  if (http_code != (cfg.server_type == ServerType::InfluxDB ? 204 : 200)) {
     success = false;
     if (http_code == 0)
       Log->error("Failed to connect to server %s", cfg.server_url);
