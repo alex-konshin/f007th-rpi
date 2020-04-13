@@ -234,7 +234,7 @@ sensor tx6         92 "LaCrosse TX7U 2"
 # MQTT broker connection information
 mqtt_broker host=m700.dom port=1883 client_id=RPi4 user=pi password=censored
 
-# A rule that always sends temperature in Celcius to broker
+# A rule that always sends temperature in Fahrenheit to broker
 mqtt_rule id=alex_office      sensor="Alex office" metric=F topic=sensors/temperature/alex_office msg=%F
 
 # Rules that potentially may controls HVAC unit
