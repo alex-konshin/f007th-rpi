@@ -40,9 +40,9 @@ The utility supports all options that are defined on page [https://github.com/al
 
 All settings and rules that are related to MQTT can be set in configuration file only. They cannot be specified on command line.
 
-You have to specify configuration file with command line option -c|--config.
-Each line of configuration file may contain a single command line option (long form only!) or some other command.
-Symbol '#' starts a comment at any line of configuration file.
+You have to specify configuration file with command line option -c|--config.\
+Each line of configuration file may contain a single command line option (long form only!) or some other command.\
+Symbol '#' starts a comment at any line of configuration file.\
 String arguments with blanks and/or other special characters must be quoted.
 
 To use the utility with MQTT you must:
@@ -58,10 +58,10 @@ If you do not specify MQTT-related settings/rules in configuration files then th
 ```
 sensor <type> [<channel>] <rolling_code> <name>
 ```
-Defines a sensor and gives a name to it. This name is printed or sent to server with sensor's data. An argument `<name>` can be any word without blanks or quoted string.
-Argument `<type>` could be one of (case insensitive): `f007th`, `f007tp`, `00592txr`, `hg02832`, `tx6`, `wh2`, `ft007th`.
-Argument `<rolling_code>` may be decimal number or hex number started with `0x`.
-Warning: Argument `<channel>` is not optional: You must specify it if this particular sensor type has channels:
+Defines a sensor and gives a name to it. This name is printed or sent to server with sensor's data. An argument `<name>` can be any word without blanks or quoted string.\
+Argument `<type>` could be one of (case insensitive): `f007th`, `f007tp`, `00592txr`, `hg02832`, `tx6`, `wh2`, `ft007th`.\
+Argument `<rolling_code>` may be decimal number or hex number started with `0x`.\
+Warning: Argument `<channel>` is not optional: You must specify it if this particular sensor type has channels:\
 - For sensors of type 00592txr the value of channel is A, B or C.
 - For sensors f007th and f007tp it should be a number 1..8.
 - For sensors hg02832 it should be number 1..3.
@@ -70,11 +70,11 @@ Warning: Argument `<channel>` is not optional: You must specify it if this parti
 ```
 mqtt_broker [host=<host>] [port=<port>] [client_id=<client_id>] [user=<user> password=<password>] [keepalive=<keepalive>]
 ```
-The command defines the MQTT broker. The utility will send messages to this broker only. There is nor way to change the broker dynamically but probably you don't need it anyway.
-Arguments `host` and `port` specifies MQTT broker host and port. The default value of `host` is `localhost`. The dafault value of `port` is 1883.
-Argument `client_id` should specify any valid unique identifier that will distinguish this MQTT client from any other clients registered on the broker.
-Arguments `user` and `password` specify credentials for connection to MQTT broker. Sorry, currently there is no way to make it more secure.
-Argument `keepalive` specifies the number of seconds after which the broker should send a PING message to the client if no other messages have been exchanged in that time. The default value is 60.
+The command defines the MQTT broker. The utility will send messages to this broker only. There is nor way to change the broker dynamically but probably you don't need it anyway.\
+Arguments `host` and `port` specifies MQTT broker host and port. The default value of `host` is `localhost`. The dafault value of `port` is 1883.\
+Argument `client_id` should specify any valid unique identifier that will distinguish this MQTT client from any other clients registered on the broker.\
+Arguments `user` and `password` specify credentials for connection to MQTT broker. Sorry, currently there is no way to make it more secure.\
+Argument `keepalive` specifies the number of seconds after which the broker should send a PING message to the client if no other messages have been exchanged in that time. The default value is 60.\
 Arguments "protocol", "certificate", "tls_insecure", "tls_version" are not implemented yet but they are planned.
 
 #### Command `mqtt_rule`
