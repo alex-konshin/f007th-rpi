@@ -917,8 +917,11 @@ private:
 
 #ifdef INCLUDE_MQTT
   /*-------------------------------------------------------------
-   * Command "mqtt_broker':
-   *   mqtt_broker
+   * Command "mqtt_broker":
+   *   mqtt_broker [host=<host>] [port=<port>] [client_id=<client_id>] [user=<user> password=<password>] [keepalive=<keepalive>]
+   *
+   * TODO Options "protocol", "certificate", "tls_insecure", "tls_version" are not implemented yet.
+   *
    */
   void command_mqtt_broker(const char** argv, int linenum, const char* configFilePath) {
 
