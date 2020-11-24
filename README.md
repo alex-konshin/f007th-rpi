@@ -124,6 +124,8 @@ Timestamps are printed/sent in format "YYYY-mm-dd HH:MM:SS TZ".
 Parameter value is server URL.
 ##### --server-type, -t
 Parameter value is server type. Possible values are REST (default) or InfluxDB.
+##### --auth-header, -a
+If you are using InfluxDB 2.0 you will need to provide authentication. This value should be the complete header line, e.g. `--auth-header "Authorization: Token 5EAeQKcaDWM8q6Lj8U1C6vXfGn4b_DRB6m7tsjXvBIcp5XlPpb74Bp6ySgavagCLQlJfHI0IvZsLuU-CMza-1g=="`. See https://docs.influxdata.com/influxdb/v2.0/reference/api/influxdb-1x/#token-authentication
 ##### --stdout, -o
 Print data to stdout. This option is not compatible with --server-type and --no-server.
 ##### --no-server, -n

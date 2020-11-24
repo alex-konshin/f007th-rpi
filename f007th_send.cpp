@@ -302,6 +302,13 @@ bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer,
   } if (cfg.server_type == ServerType::InfluxDB) {
     headers = curl_slist_append(headers, "Content-Type:"); // do not set content type
     headers = curl_slist_append(headers, "Accept:");
+    if (cfg.auth_header != NULL) {
+      headers = curl_slist_append(headers, cfg.auth_header);
+      if (verbose) {
+        fputs(cfg.auth_header, stderr);
+    fputc('\n', stderr);
+      }
+    }
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
   }
 
