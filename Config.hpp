@@ -79,22 +79,23 @@ static const struct option long_options[] = {
     { "httpd", required_argument, NULL, 'H' },
 #endif
     { "max-gap", required_argument, NULL, 'G' },
+    { "auth-header", required_argument, NULL, 'a'},
     { NULL, 0, NULL, 0 }
 };
 
 #ifdef TEST_DECODING
 static const int DEFAULT_OPTIONS = VERBOSITY_INFO|VERBOSITY_PRINT_UNDECODED|VERBOSITY_PRINT_DETAILS;
 #ifdef INCLUDE_HTTPD
-static const char* short_options = "c:g:s:Al:vVt:TCULd256780DI:WH:G:no";
+static const char* short_options = "c:g:s:Al:vVt:TCULd256780DI:WH:G:a:no";
 #else
-static const char* short_options = "c:g:s:Al:vVt:TCULd256780DI:WG:no";
+static const char* short_options = "c:g:s:Al:vVt:TCULd256780DI:WG:a:no";
 #endif
 #elif defined(INCLUDE_HTTPD)
 static const int DEFAULT_OPTIONS = 0;
-static const char* short_options = "c:g:s:Al:vVt:TCULd256780DH:G:no";
+static const char* short_options = "c:g:s:Al:vVt:TCULd256780DH:G:a:no";
 #else
 static const int DEFAULT_OPTIONS = 0;
-static const char* short_options = "c:g:s:Al:vVt:TCULd256780DG:no";
+static const char* short_options = "c:g:s:Al:vVt:TCULd256780DG:a:no";
 #endif
 
 
@@ -284,6 +285,7 @@ public:
   ServerType server_type = ServerType::NONE;
   unsigned protocols = 0;
   time_t max_unchanged_gap = 0L;
+  const char* auth_header = NULL;
 
   bool changes_only = true;
   bool type_is_set = false;
@@ -343,6 +345,8 @@ public:
       "    Parameter value is server URL.\n"
       "--server-type, -t\n"
       "    Parameter value is server type. Possible values are REST (default) or InfluxDB.\n"
+      "--auth-header, -a\n"
+      "    Parameter value is additional header to send to InfluxDB. See https://docs.influxdata.com/influxdb/v2.0/reference/api/influxdb-1x/#token-authentication\n"
       "--stdout, -o\n"
       "    Print data to stdout. This option is not compatible with --server-type and --no-server.\n"
       "--no-server, -n\n"
@@ -585,6 +589,10 @@ public:
         help();
       }
       max_unchanged_gap = long_value*60;
+      break;
+
+    case 'a':
+      auth_header = clone(optarg);
       break;
 
     case '?':
