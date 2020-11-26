@@ -306,7 +306,7 @@ bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer,
       headers = curl_slist_append(headers, cfg.auth_header);
       if (verbose) {
         fputs(cfg.auth_header, stderr);
-    fputc('\n', stderr);
+        fputc('\n', stderr);
       }
     }
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);

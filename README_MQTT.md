@@ -126,7 +126,7 @@ mqtt_broker host=m700.dom port=1883 client_id=RPi4 user=pi password=censored
 # A rule that always sends temperature in Fahrenheit to broker
 mqtt_rule id=alex_office      sensor="Alex office" metric=F topic=sensors/temperature/alex_office msg=%F
 
-# Rules that potentially may controls HVAC unit
+# Rules that potentially may control HVAC unit
 mqtt_bounds_rule id=cool sensor="Alex office" metric=F topic=hvac/cooling msg_hi=on msg_lo=off bounds=72..77[24:00]70..77[8:00]
 mqtt_bounds_rule id=heat sensor="Kitchen" metric=F topic=hvac/heating msg_hi=off msg_lo=on bounds=72..77[24:00]70..77[8:00]
 ```
