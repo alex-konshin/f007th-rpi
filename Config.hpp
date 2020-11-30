@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
-#include <time.h>
+#include <getopt.h>
 #include <vector>
 
 #ifdef BPiM3
@@ -41,9 +41,22 @@
 #define DEFAULT_PIN_STR to_str(DEFAULT_PIN)
 #endif
 
-#define is_cmd(cmd,opt,opt_len) (opt_len == (sizeof(cmd)-1) && strncmp(cmd, opt, opt_len) == 0)
+#ifdef INCLUDE_HTTPD
+#ifdef USE_GPIO_TS
+#define MIN_HTTPD_PORT 1024
+#else
+#define MIN_HTTPD_PORT 1
+#endif
+#endif
 
-static const char* EMPTY_STRING = "";
+#ifdef INCLUDE_MQTT
+#include "MQTT.hpp"
+#endif
+
+#include "ConfigParser.hpp"
+
+
+#define is_cmd(cmd,opt,opt_len) (opt_len == (sizeof(cmd)-1) && strncmp(cmd, opt, opt_len) == 0)
 
 enum class ServerType : int {NONE, STDOUT, REST, InfluxDB};
 
@@ -127,8 +140,9 @@ struct CmdArgDef {
 };
 
 class Config;
-typedef void (Config::*CommanExecutor)(const char** argv, int linenum, const char* configFilePath);
-#define execute_command(cmd_def,argv,linenum,configFilePath) (this->*((cmd_def)->command_executor))(argv,linenum,configFilePath)
+
+typedef void (Config::*CommanExecutor)(const char** argv, ConfigParser* configParser);
+#define execute_command(cmd_def,argv,configParser) (this->*((cmd_def)->command_executor))(argv,configParser)
 
 struct CommandDef {
   struct CommandDef* next;
@@ -222,32 +236,107 @@ command_def(mqtt_bounds_rule, 3) = {
   { "msg_hi", 0 },
 #define CMD_MQTT_BOUNDS_RULE_MSG_IN    6
   { "msg_in", 0 },
-#define CMD_MQTT_RULE_BOUNDS_BOUNDS    7
+#define CMD_MQTT_BOUNDS_RULE_BOUNDS    7
   { "bounds", arg_required },
-#define CMD_MQTT_RULE_BOUNDS_LOCK_LO   8
+#define CMD_MQTT_BOUNDS_RULE_LOCK_LO   8
   { "lock_lo", 0 },
-#define CMD_MQTT_RULE_BOUNDS_UNLOCK_LO 9
+#define CMD_MQTT_BOUNDS_RULE_UNLOCK_LO 9
   { "unlock_lo", 0 },
-#define CMD_MQTT_RULE_BOUNDS_LOCK_HI   10
+#define CMD_MQTT_BOUNDS_RULE_LOCK_HI   10
   { "lock_hi", 0 },
-#define CMD_MQTT_RULE_BOUNDS_UNLOCK_HI 11
+#define CMD_MQTT_BOUNDS_RULE_UNLOCK_HI 11
   { "unlock_hi", 0 },
-#define CMD_MQTT_RULE_BOUNDS_LOCK_IN   12
+#define CMD_MQTT_BOUNDS_RULE_LOCK_IN   12
   { "lock_in", 0 },
-#define CMD_MQTT_RULE_BOUNDS_UNLOCK_IN 13
+#define CMD_MQTT_BOUNDS_RULE_UNLOCK_IN 13
+  { "unlock_in", 0 },
+};
+
+#endif
+
+//action_rule id=cool sensor="Room 1" metric=F cmd_hi=on cmd_lo=off bounds=72.5..74.5[22:00]72..75[8:00]
+
+command_def(action_rule, 3) = {
+#define CMD_ACTION_RULE_SENSOR    0
+  { "sensor", arg_required },
+#define CMD_ACTION_RULE_ID        1
+  { "id", 0 },
+#define CMD_ACTION_RULE_METRIC    2
+  { "metric", 0 },
+#define CMD_ACTION_RULE_CMD_LO    3
+  { "cmd_lo", 0 },
+#define CMD_ACTION_RULE_CMD_HI    4
+  { "cmd_hi", 0 },
+#define CMD_ACTION_RULE_CMD_IN    5
+  { "cmd_in", 0 },
+#define CMD_ACTION_RULE_BOUNDS    6
+  { "bounds", arg_required },
+#define CMD_ACTION_RULE_LOCK_LO   7
+  { "lock_lo", 0 },
+#define CMD_ACTION_RULE_UNLOCK_LO 8
+  { "unlock_lo", 0 },
+#define CMD_ACTION_RULE_LOCK_HI   9
+  { "lock_hi", 0 },
+#define CMD_ACTION_RULE_UNLOCK_HI 10
+  { "unlock_hi", 0 },
+#define CMD_ACTION_RULE_LOCK_IN   11
+  { "lock_in", 0 },
+#define CMD_ACTION_RULE_UNLOCK_IN 12
   { "unlock_in", 0 },
 };
 
 
-typedef struct UresolvedReferenceToMqttRule {
-  struct UresolvedReferenceToMqttRule* next;
-  MqttRule** rule_ptr;
+//-------------------------------------------------------------
+const char* const VALID_OPTIONS =
+    "\nValid options:\n\n"
+#ifndef TEST_DECODING
+    "--gpio, -g\n"
+    "    Value is GPIO pin number (default is " DEFAULT_PIN_STR ") as defined on page http://abyz.co.uk/rpi/pigpio/index.html\n"
+#endif
+    "--celsius, -C\n"
+    "    Output temperature in degrees Celsius.\n"
+    "--utc, -U\n"
+    "    Timestamps are printed/sent in ISO 8601 format.\n"
+    "--local-time, -L\n"
+    "    Timestamps are printed/sent in format \"YYYY-mm-dd HH:MM:SS TZ\".\n"
+    "--send-to, -s\n"
+    "    Parameter value is server URL.\n"
+    "--server-type, -t\n"
+    "    Parameter value is server type. Possible values are REST (default) or InfluxDB.\n"
+    "--auth-header, -a\n"
+    "    Parameter value is additional header to send to InfluxDB.\n"
+    "    See https://docs.influxdata.com/influxdb/v2.0/reference/api/influxdb-1x/#token-authentication\n"
+    "--stdout, -o\n"
+    "    Print data to stdout. This option is not compatible with --server-type and --no-server.\n"
+    "--no-server, -n\n"
+    "    Do not print data on console or send it to servers. This option is not compatible with --server-type and --stdout.\n"
+    "--all-changes, -A\n"
+    "    Send/print all data. Only changed and valid data is sent by default.\n"
+    "--log-file, -l\n"
+    "    Parameter is a path to log file.\n"
+#ifdef TEST_DECODING
+    "--input-log, -I\n"
+    "    Parameter is a path to input log file to be processed.\n"
+#endif
+#ifdef INCLUDE_HTTPD
+    "--httpd, -H\n"
+    "    Run HTTPD server on the specified port.\n"
+#endif
+    "--max_gap, -G\n"
+    "    Max gap between reported reading. Next reading will be sent to server or printed even it is the same as previous readings.\n"
+    "--verbose, -v\n"
+    "    Verbose output.\n"
+    "--more_verbose, -V\n"
+    "    More verbose output.\n";
+
+//-------------------------------------------------------------
+typedef struct UresolvedReferenceToRule {
+  struct UresolvedReferenceToRule* next;
+  AbstractRuleWithSchedule** rule_ptr;
   const char* id;
   int linenum;
   const char* configFilePath;
-} UresolvedReferenceToMqttRule;
-
-#endif
+} UresolvedReferenceToRule;
 
 
 //-------------------------------------------------------------
@@ -258,6 +347,7 @@ private:
 
   void init_command_defs() {
     add_command_def(sensor);
+    add_command_def(action_rule);
 #ifdef INCLUDE_MQTT
     add_command_def(mqtt_broker);
     add_command_def(mqtt_rule);
@@ -306,10 +396,10 @@ public:
   const char* mqtt_username = NULL;
   const char* mqtt_password = NULL;
   uint16_t mqtt_keepalive = 60;
-
-  std::vector<MqttRule*> mqtt_rules;
-  UresolvedReferenceToMqttRule* unresolved_references_to_mqtt_rules = NULL;
 #endif
+
+  std::vector<AbstractRuleWithSchedule*> rules;
+  UresolvedReferenceToRule* unresolved_references_to_rules = NULL;
 
 public:
   Config() {
@@ -322,59 +412,27 @@ public:
   ~Config() {}
 
   //-------------------------------------------------------------
-  static void help() {
+  static const char* getVersion();
+
+  static void printHelpAndExit(const char* version) {
     fputs(
       "(c) 2017-2020 Alex Konshin\n"
-#ifdef TEST_DECODING
+  #ifdef TEST_DECODING
       "Test decoding of received data for f007th* utilities.\n"
-#else
+  #else
       "Receive data from thermometers then print it to stdout or send it to a remote server.\n"
-#endif
-      "Version " RF_RECEIVER_VERSION "\n\n"
-#ifndef TEST_DECODING
-      "--gpio, -g\n"
-      "    Value is GPIO pin number (default is " DEFAULT_PIN_STR ") as defined on page http://abyz.co.uk/rpi/pigpio/index.html\n"
-#endif
-      "--celsius, -C\n"
-      "    Output temperature in degrees Celsius.\n"
-      "--utc, -U\n"
-      "    Timestamps are printed/sent in ISO 8601 format.\n"
-      "--local-time, -L\n"
-      "    Timestamps are printed/sent in format \"YYYY-mm-dd HH:MM:SS TZ\".\n"
-      "--send-to, -s\n"
-      "    Parameter value is server URL.\n"
-      "--server-type, -t\n"
-      "    Parameter value is server type. Possible values are REST (default) or InfluxDB.\n"
-      "--auth-header, -a\n"
-      "    Parameter value is additional header to send to InfluxDB.\n"
-      "    See https://docs.influxdata.com/influxdb/v2.0/reference/api/influxdb-1x/#token-authentication\n"
-      "--stdout, -o\n"
-      "    Print data to stdout. This option is not compatible with --server-type and --no-server.\n"
-      "--no-server, -n\n"
-      "    Do not print data on console or send it to servers. This option is not compatible with --server-type and --stdout.\n"
-      "--all-changes, -A\n"
-      "    Send/print all data. Only changed and valid data is sent by default.\n"
-      "--log-file, -l\n"
-      "    Parameter is a path to log file.\n"
-#ifdef TEST_DECODING
-      "--input-log, -I\n"
-      "    Parameter is a path to input log file to be processed.\n"
-#endif
-#ifdef INCLUDE_HTTPD
-      "--httpd, -H\n"
-      "    Run HTTPD server on the specified port.\n"
-#endif
-      "--max_gap, -G\n"
-      "    Max gap between reported reading. Next reading will be sent to server or printed even it is the same as previous readings.\n"
-      "--verbose, -v\n"
-      "    Verbose output.\n"
-      "--more_verbose, -V\n"
-      "    More verbose output.\n",
-      stderr
-    );
+  #endif
+        ,stderr
+      );
+    fprintf(stderr, "Version %s\n\n", version);
+    fputs( VALID_OPTIONS, stderr );
     fflush(stderr);
     fclose(stderr);
     exit(1);
+  }
+
+  static void help() {
+    printHelpAndExit(getVersion());
   }
 
   //-------------------------------------------------------------
@@ -392,7 +450,7 @@ public:
     }
 
 #ifdef INCLUDE_MQTT
-    resolveReferencesToMqttRules();
+    resolveReferencesToRules();
 #endif
 
     if (optind < argc) {
@@ -412,7 +470,7 @@ public:
         // if server type and URL are not specified then
         // if any MQTT rule is specified then server type is set to NONE (no output on cosole)
         // otherwise data will be printed on console.
-        if (mqtt_rules.empty()) server_type = ServerType::STDOUT;
+        if (rules.empty()) server_type = ServerType::STDOUT;
 #endif
       }
     } else {
@@ -423,12 +481,12 @@ public:
       }
       if (!type_is_set) server_type = ServerType::REST;
     }
-  #ifdef TEST_DECODING
+#ifdef TEST_DECODING
     if (input_log_file_path == NULL) {
       fputs("ERROR: Input log file must be specified (option --input-log or -I).\n", stderr);
       exit(1);
     }
-  #endif
+#endif
 
   }
 
@@ -463,7 +521,7 @@ public:
       log_file_path = clone(optarg);
       break;
 
-  #ifdef TEST_DECODING
+#ifdef TEST_DECODING
     case 'I':
       input_log_file_path = clone(optarg);
       break;
@@ -471,9 +529,9 @@ public:
     case 'W':
       wait_after_reading = true;
       break;
-  #endif
+#endif
 
-  #ifdef INCLUDE_HTTPD
+#ifdef INCLUDE_HTTPD
     case 'H':
       long_value = strtol(optarg, NULL, 10);
 
@@ -483,7 +541,7 @@ public:
       }
       httpd_port = (int)long_value;
       break;
-  #endif
+#endif
 
     case 's':
       server_url = clone(optarg);
@@ -614,41 +672,21 @@ private:
    * Read configuration file.
    */
   void readConfig(const char* configFileRelativePath) {
-    const char* configFilePath = realpath(configFileRelativePath, NULL);
-    if (configFilePath == NULL) {
-      fprintf(stderr, "Configuration file \"%s\" does not exist.\n", configFileRelativePath);
-      exit(1);
-    }
+    ConfigParser configParser(VALID_OPTIONS);
 
-    FILE* configFileStream;
-
-    configFileStream = fopen(configFilePath, "r");
-    if (configFileStream == NULL) {
-      fprintf(stderr, "Cannot open configuration file \"%s\".\n", configFilePath);
-      exit(1);
-    }
-
-    fprintf(stderr, "Reading configuration file \"%s\"...\n", configFilePath);
-
-    int linenum = 0;
+    if (!configParser.open_file(configFileRelativePath)) exit(1);
 
     char* optarg_buffer = NULL;
     size_t optarg_bufsize = 0;
-    bool quoted;
+    const char* p;
 
-    char* line = NULL;
-    size_t bufsize = 0;
-
-    ssize_t bytesread;
-    while ((bytesread = getline(&line, &bufsize, configFileStream)) != -1) {
-      linenum++;
+    while ((p = configParser.read_line()) != NULL) {
 #ifndef NDEBUG
 //      fprintf(stderr, "DEBUG: line #%d of file \"%s\": %s\n", linenum, configFilePath, line);
 #endif
       size_t opt_len = 0;
       size_t key_len = 0;
-      const char* p = line;
-      const char* opt = getWord(p, opt_len);
+      const char* opt = configParser.getFirstWord(p, opt_len);
       if (opt == NULL) continue;
 
       ASSERT(command_defs != NULL);
@@ -661,10 +699,7 @@ private:
         int number_of_unnamed_args = 0;
         const char** argv = NULL;
         if (cmd_def->max_args == 0) {
-          if (skipBlanks(p) != NULL) {
-            fprintf(stderr, "ERROR: No arguments expected for command \"%s\" (line #%d of file \"%s\").\n", cmd_def->name, linenum, configFilePath);
-            exit(1);
-          }
+          if (configParser.skipBlanksInCommand(p) != NULL) configParser.error("No arguments expected for command \"%s\"", cmd_def->name);
         } else {
           argv = (const char**)calloc(cmd_def->max_args, sizeof(const char*));
 
@@ -672,19 +707,13 @@ private:
           bool has_named_args = false;
           const char* arg;
           size_t arg_len = 0;
-          while ( (arg=getString(p, optarg_buffer, optarg_bufsize, arg_len, key_len, quoted, linenum, configFilePath)) !=NULL ) {
+          while ( (arg=configParser.getString(p, optarg_buffer, optarg_bufsize, arg_len, &key_len)) !=NULL ) {
             const struct CmdArgDef* arg_def;
             const char* arg_value;
             int iarg_def = 0;
             if (key_len == 0) { // positional argument
-              if (has_named_args) {
-                fprintf(stderr, "ERROR: Unnamed argument is not allowed after named argument (line #%d of file \"%s\").\n", linenum, configFilePath);
-                exit(1);
-              }
-              if (iarg >=cmd_def->max_num_of_unnamed_args) {
-                fprintf(stderr, "ERROR: Too many unnamed arguments of command (line #%d of file \"%s\").\n", linenum, configFilePath);
-                exit(1);
-              }
+              if (has_named_args) configParser.error("Unnamed argument is not allowed after named argument");
+              if (iarg >=cmd_def->max_num_of_unnamed_args) configParser.error("Too many unnamed arguments of command");
               arg_def = &cmd_def->args[iarg];
               arg_value = arg;
               iarg_def = iarg;
@@ -698,18 +727,12 @@ private:
                 arg_def = &cmd_def->args[iarg_def];
                 if (arg_def->name != NULL && strlen(arg_def->name) == key_len && strncmp(arg_def->name, arg, key_len) == 0) break;
               }
-              if (iarg_def>=cmd_def->max_args) {
-                fprintf(stderr, "ERROR: Unrecognized argument #%d of command (line #%d of file \"%s\").\n", iarg+1, linenum, configFilePath);
-                exit(1);
-              }
+              if (iarg_def>=cmd_def->max_args) configParser.error("Unrecognized argument #%d of command \"%s\"", iarg+1, cmd_def->name);
               arg_value = arg+key_len+1;
             }
             if (argv[iarg_def] != NULL) {
-              if (arg_def != NULL)
-                fprintf(stderr, "ERROR: Duplicate argument \"%s\" in command (line #%d of file \"%s\").\n", arg_def->name, linenum, configFilePath);
-              else
-                fprintf(stderr, "PROGRAM ERROR: arg_def==NULL for argument #%d (line #%d of file \"%s\").\n", iarg+1, linenum, configFilePath);
-              exit(1);
+              if (arg_def != NULL) configParser.error("Duplicate argument \"%s\" in command", arg_def->name);
+              configParser.error("Program error arg_def==NULL for argument #%d", iarg+1);
             }
             argv[iarg_def] = clone(arg_value);
             iarg++;
@@ -725,17 +748,14 @@ private:
           if (value == NULL) {
             const struct CmdArgDef* arg_def = &cmd_def->args[i];
             if ((arg_def->flags && arg_required) != 0) {
-              if (arg_def->name != NULL) {
-                fprintf(stderr, "ERROR: Missing argument \"%s\" of command \"%s\" (line #%d of file \"%s\").\n", arg_def->name, cmd_def->name, linenum, configFilePath);
-              } else {
-                fprintf(stderr, "ERROR: Missing argument #%d of command \"%s\" (line #%d of file \"%s\").\n", i+1, cmd_def->name, linenum, configFilePath);
-              }
-              exit(1);
+              if (arg_def->name != NULL)
+                configParser.error("Missing argument \"%s\" of command \"%s\"", arg_def->name, cmd_def->name);
+              configParser.error("Missing argument #%d of command \"%s\"", i+1, cmd_def->name);
             }
           }
         }
 #ifndef NDEBUG
-        fprintf(stderr, "DEBUG: Command \"%s\" (line #%d of file \"%s\").\n", cmd_def->name, linenum, configFilePath);
+        fprintf(stderr, "DEBUG: Command \"%s\" (line #%d of file \"%s\").\n", cmd_def->name, configParser.linenum, configParser.configFilePath);
         for (int i = 0; i<cmd_def->max_args; i++) {
           const char* value = argv[i];
           if (value != NULL) {
@@ -750,7 +770,7 @@ private:
 #endif
 
         // execute the command
-        execute_command(cmd_def, argv, linenum, configFilePath);
+        execute_command(cmd_def, argv, &configParser);
 
         for (int i = 0; i<cmd_def->max_args; i++) {
           const char* value = argv[i];
@@ -768,37 +788,35 @@ private:
 
         const char* optarg = NULL;
         if (struct_opt->has_arg == no_argument) {
-          if (skipBlanks(p) != NULL) {
-            fprintf(stderr, "ERROR: Unexpected argument of option \"%s\" in line #%d of file \"%s\"\n", struct_opt->name, linenum, configFilePath);
-            help();
-          }
+          if (configParser.skipBlanksInCommand(p) != NULL) configParser.errorWithHelp("Unexpected argument of option \"%s\"", struct_opt->name);
         } else {
           size_t optarg_len = 0;
-          optarg = getString(p, optarg_buffer, optarg_bufsize, optarg_len, key_len, quoted, linenum, configFilePath);
-          if (optarg == NULL && struct_opt->has_arg == required_argument) {
-            fprintf(stderr, "ERROR: Missing argument of option \"%s\" in line #%d of file \"%s\"\n", struct_opt->name, linenum, configFilePath);
-            help();
-          }
+          optarg = configParser.getString(p, optarg_buffer, optarg_bufsize, optarg_len, &key_len);
+          if (optarg == NULL && struct_opt->has_arg == required_argument)
+            configParser.errorWithHelp("Missing argument of option \"%s\"", struct_opt->name);
         }
 
         //fprintf(stderr, ">>> option \"%s\": val='%c' optarg=\"%s\"\n", struct_opt->name, struct_opt->val, optarg );
 
-        if (!process_cmdline_option(struct_opt->val, struct_opt->name, optarg)) {
-          fprintf(stderr, "ERROR: Unexpected error when processing option \"%s\"('%c') in line #%d of file \"%s\"\n", struct_opt->name, struct_opt->val, linenum, configFilePath);
-          exit(1);
-        }
+        if (!process_cmdline_option(struct_opt->val, struct_opt->name, optarg))
+          configParser.error("Unexpected error when processing option \"%s\"('%c') ", struct_opt->name, struct_opt->val);
         continue;
       }
 
-      // unknown command-line option
+      // unknown command or command-line option
 
-      fprintf(stderr, "ERROR: Unrecognized option in line #%d of file \"%s\".\n", linenum, configFilePath);
-      help();
+      configParser.print_error("Unrecognized command or option \"%s\"", make_str(opt, opt_len));
+      fputs("\nValid commands:\n\n", stderr);
+      for (cmd_def = command_defs; cmd_def != NULL; cmd_def = cmd_def->next) {
+        fprintf(stderr, "  %s\n", cmd_def->name );
+      }
+      configParser.print_valid_options();
+      fflush(stderr);
+      fclose(stderr);
+      exit(1);
     }
 
-    if (line != NULL) free(line);
     if (optarg_buffer != NULL) free(optarg_buffer);
-    fclose(configFileStream);
   }
 
   void adjust_unnamed_args(const char** argv, int& number_of_unnamed_args, int max_num_of_unnamed_args, const struct CmdArgDef* arg_defs) {
@@ -828,16 +846,13 @@ private:
    * Command "sensor':
    *   sensor <protocol> [<channel>] <rolling_code> <name>
    */
-  void command_sensor(const char** argv, int linenum, const char* configFilePath) {
+  void command_sensor(const char** argv, ConfigParser* errorLogger) {
     const char* protocol_name = argv[CMD_SENSOR_PROTOCOL];
     const struct ProtocolDef *protocol_def;
     for (protocol_def = protocol_defs; protocol_def->name != NULL; protocol_def++) {
       if (strcasecmp(protocol_def->name, protocol_name) == 0) break;
     }
-    if ( protocol_def->name == NULL ) {
-      fprintf(stderr, "ERROR: Unrecognized sensor protocol in line #%d of file \"%s\"\n", linenum, configFilePath);
-      exit(1);
-    }
+    if ( protocol_def->name == NULL ) errorLogger->error("Unrecognized sensor protocol");
 
     const char* name = argv[CMD_SENSOR_NAME];
 
@@ -845,14 +860,8 @@ private:
     uint8_t channel_number = 0;
     if (protocol_def->number_of_channels != 0) {
       const char* channel_str = argv[CMD_SENSOR_CHANNEL];
-      if (channel_str == NULL) {
-        fprintf(stderr, "ERROR: Missed channel in the descriptor of sensor in line #%d of file \"%s\"\n", linenum, configFilePath);
-        exit(1);
-      }
-      if (strlen(channel_str) != 1) {
-        fprintf(stderr, "ERROR: Invalid value \"%s\" of channel argument in the descriptor of sensor in line #%d of file \"%s\"\n", channel_str, linenum, configFilePath);
-        exit(1);
-      }
+      if (channel_str == NULL) errorLogger->error("Missed channel in the descriptor of sensor");
+      if (strlen(channel_str) != 1) errorLogger->error("Invalid value \"%s\" of channel argument in the descriptor of sensor", channel_str);
       char ch = *channel_str;
       channel_number = 255;
       switch (protocol_def->channels_numbering_type) {
@@ -864,30 +873,19 @@ private:
         else if (ch>='A' && ch<='C') channel_number = ch-'A'+1;
         break;
       default:
-        fprintf(stderr, "PROGRAM ERROR: Invalid value %d of channels_numbering_type for protocol %s\n", protocol_def->channels_numbering_type, protocol_def->name);
-        exit(1);
+        errorLogger->error("Program error - invalid value %d of channels_numbering_type for protocol %s", protocol_def->channels_numbering_type, protocol_def->name);
       }
-      if (channel_number<=0 || channel_number>protocol_def->number_of_channels) {
-        fprintf(stderr, "ERROR: Invalid channel '%c' in the descriptor of sensor in line #%d of file \"%s\"\n", ch, linenum, configFilePath);
-        exit(1);
-      }
+      if (channel_number<=0 || channel_number>protocol_def->number_of_channels)
+        errorLogger->error("Invalid channel '%c' in the descriptor of sensor", ch);
     }
 
     const char* rc_str = argv[CMD_SENSOR_RC];
-    if (rc_str == NULL) {
-      fprintf(stderr, "ERROR: Missed rolling code in the descriptor of sensor in line #%d of file \"%s\"\n", linenum, configFilePath);
-      exit(1);
-    }
-    uint32_t rolling_code = getUnsigned(rc_str, linenum, configFilePath);
-    if (rolling_code >= (1U<<protocol_def->rolling_code_size)) {
-      fprintf(stderr, "ERROR: Invalid value %d for rolling code in the descriptor of sensor in line #%d of file \"%s\"\n", rolling_code, linenum, configFilePath);
-      exit(1);
-    }
+    if (rc_str == NULL) errorLogger->error("Missed rolling code in the descriptor of sensor");
+    uint32_t rolling_code = getUnsigned(rc_str, errorLogger);
+    if (rolling_code >= (1U<<protocol_def->rolling_code_size))
+      errorLogger->error("Invalid value %d for rolling code in the descriptor of sensor", rolling_code);
     uint32_t sensor_id = SensorData::getId(protocol_def->protocol, protocol_def->variant, channel_number, rolling_code);
-    if (sensor_id == 0) {
-      fprintf(stderr, "ERROR: Invalid descriptor of sensor in line #%d of file \"%s\"\n", linenum, configFilePath);
-      exit(1);
-    }
+    if (sensor_id == 0) errorLogger->error("Invalid descriptor of sensor");
 
     size_t name_len = name == NULL ? 0 : strlen(name);
     SensorDef* def = NULL;
@@ -895,32 +893,26 @@ private:
     case SENSOR_DEF_WAS_ADDED:
       break;
     case SENSOR_DEF_DUP:
-      fprintf(stderr, "ERROR: Duplicate descriptor of sensor in line #%d of file \"%s\"\n", linenum, configFilePath);
-      exit(1);
+      errorLogger->error("Duplicate descriptor of sensor");
       break;
     case SENSOR_DEF_DUP_NAME:
-      fprintf(stderr, "ERROR: Duplicate name \"%s\" of sensor in line #%d of file \"%s\"\n", name, linenum, configFilePath);
-      exit(1);
+      errorLogger->error("Duplicate name \"%s\" of sensor", name);
       break;
     case SENSOR_NAME_MISSING:
-      fprintf(stderr, "ERROR: Sensor name/id must be specified in the descriptor of sensor in line #%d of file \"%s\"\n", linenum, configFilePath);
-      exit(1);
+      errorLogger->error("Sensor name/id must be specified in the descriptor of sensor");
       break;
     case SENSOR_NAME_TOO_LONG:
-      fprintf(stderr, "ERROR: Sensor name is too long in the descriptor of sensor in line #%d of file \"%s\"\n", linenum, configFilePath);
-      exit(1);
+      errorLogger->error("Sensor name is too long in the descriptor of sensor");
       break;
     case SENSOR_NAME_INVALID:
-      fprintf(stderr, "ERROR: Invalid sensor name in the descriptor of sensor in line #%d of file \"%s\"\n", linenum, configFilePath);
-      exit(1);
+      errorLogger->error("Invalid sensor name in the descriptor of sensor");
       break;
     default:
-      fprintf(stderr, "ERROR: Programming error - unrecognized error code from SensorDef::add() while processing line #%d of file \"%s\"\n", linenum, configFilePath);
-      exit(1);
+      errorLogger->error("Programming error - unrecognized error code from SensorDef::add()");
     }
 #ifndef NDEBUG
     fprintf(stderr, "command \"sensor\" in line #%d of file \"%s\": channel=%d rolling_code=%d id=%08x name=%s ixdb_name=%s\n",
-        linenum, configFilePath, channel_number, rolling_code, sensor_id, def->quoted, def->influxdb_quoted);
+        errorLogger->linenum, errorLogger->configFilePath, channel_number, rolling_code, sensor_id, def->quoted, def->influxdb_quoted);
 #endif
   }
 
@@ -932,19 +924,15 @@ private:
    * TODO Options "protocol", "certificate", "tls_insecure", "tls_version" are not implemented yet.
    *
    */
-  void command_mqtt_broker(const char** argv, int linenum, const char* configFilePath) {
-
+  void command_mqtt_broker(const char** argv, ConfigParser* errorLogger) {
     const char* host = argv[CMD_MQTT_BROKER_HOST];
     if (host == NULL) host = "localhost";
     mqtt_broker_host = clone(host);
 
     const char* str = argv[CMD_MQTT_BROKER_PORT];
     if (str != NULL) {
-      uint32_t port = getUnsigned(str, linenum, configFilePath);
-      if (port==0 || port>65535) {
-        fprintf(stderr, "ERROR: Invalid MQTT broker port \"%s\" in line #%d of file \"%s\"\n", str, linenum, configFilePath);
-        exit(1);
-      }
+      uint32_t port = getUnsigned(str, errorLogger);
+      if (port==0 || port>65535) errorLogger->error("Invalid MQTT broker port \"%s\"", str);
       mqtt_broker_port = port;
     }
 
@@ -963,7 +951,7 @@ private:
 
     str = argv[CMD_MQTT_KEEPALIVE];
     if (str != NULL) {
-      uint32_t keepalive = getUnsigned(str, linenum, configFilePath);
+      uint32_t keepalive = getUnsigned(str, errorLogger);
       mqtt_keepalive = keepalive;
     }
 
@@ -974,15 +962,12 @@ private:
    * Command "mqtt_rule':
    *   mqtt_rule id=cool_high sensor="Room 1" metric=F hi=75 topic=/hvac/cooling message=on  unlock=cool_low
    */
-  void command_mqtt_rule(const char** argv, int linenum, const char* configFilePath) {
+  void command_mqtt_rule(const char** argv, ConfigParser* errorLogger) {
     const char* sensor_name = argv[CMD_MQTT_RULE_SENSOR];
-    if (sensor_name == NULL || *sensor_name == '\0')  errorMissingArg("mqtt_rule", "sensor", linenum, configFilePath);
+    if (sensor_name == NULL || *sensor_name == '\0')  errorMissingArg("mqtt_rule", "sensor", errorLogger);
 
     SensorDef* sensor_def = SensorDef::find(sensor_name);
-    if (sensor_def == NULL) {
-      fprintf(stderr, "ERROR: Undefined sensor name \"%s\" in line #%d of file \"%s\"\n", sensor_name, linenum, configFilePath);
-      exit(1);
-    }
+    if (sensor_def == NULL) errorLogger->error("Undefined sensor name \"%s\"", sensor_name);
 
     Metric metric;
     int scale = 0;
@@ -993,7 +978,7 @@ private:
       scale = 1;
       allow_negative = true;
     } else if (str[1] != '\0') {
-      errorInavidArg(str, "metric", linenum, configFilePath);
+      errorInavidArg(str, "metric", errorLogger);
     } else if (*str == 'F') {
       metric = Metric::TemperatureF;
       scale = 1;
@@ -1007,46 +992,43 @@ private:
     } else if (*str == 'B') {
       metric = Metric::BatteryStatus;
     } else {
-      errorInavidArg(str, "metric", linenum, configFilePath);
+      errorInavidArg(str, "metric", errorLogger);
     }
 
     int lo = 0;
-    bool is_lo_specified = convertDecimalArg(argv[CMD_MQTT_RULE_LO], lo, scale, allow_negative, "lo", linenum, configFilePath);
+    bool is_lo_specified = convertDecimalArg(argv[CMD_MQTT_RULE_LO], lo, scale, allow_negative, "lo", errorLogger);
     int hi = 0;
-    bool is_hi_specified = convertDecimalArg(argv[CMD_MQTT_RULE_HI], hi, scale, allow_negative, "hi", linenum, configFilePath);
+    bool is_hi_specified = convertDecimalArg(argv[CMD_MQTT_RULE_HI], hi, scale, allow_negative, "hi", errorLogger);
     if (is_lo_specified && is_hi_specified) {
-      fprintf(stderr, "ERROR: MQTT rule arguments \"hi\" and \"lo\" are mutually exclusive (line #%d of file \"%s\")\n", linenum, configFilePath);
+      errorLogger->error("MQTT rule arguments \"hi\" and \"lo\" are mutually exclusive");
       exit(1);
     }
 
     const char* topic = argv[CMD_MQTT_RULE_TOPIC];
-    if (topic == NULL || *topic == '\0')  errorMissingArg("mqtt_rule", "topic", linenum, configFilePath);
+    if (topic == NULL || *topic == '\0')  errorMissingArg("mqtt_rule", "topic", errorLogger);
     topic = clone(topic);
 
     const char* id = argv[CMD_MQTT_RULE_ID];
     if (id != NULL) id = *id == '\0'? NULL : clone(id);
     if (id != NULL) {
-      for (MqttRule* existing_rule: mqtt_rules) {
-        if (existing_rule->id != NULL && strcmp(id,existing_rule->id) == 0) {
-          fprintf(stderr, "ERROR: Duplicated id \"%s\" in the definition of MQTT rule in line #%d of file \"%s\"\n", id, linenum, configFilePath);
-          exit(1);
-        }
+      for (AbstractRuleWithSchedule* existing_rule: rules) {
+        if (existing_rule->id != NULL && strcmp(id,existing_rule->id) == 0)
+          errorLogger->error("Duplicated id \"%s\" in the definition of rule", id);
       }
     }
-
 
     MessageInsert* compiledMessageFormat = NULL;
     const char* messageFormat = argv[CMD_MQTT_RULE_MESSAGE];
     if (messageFormat != NULL) {
       messageFormat = *messageFormat == '\0' ? NULL : clone(messageFormat);
-      if (messageFormat != NULL) compiledMessageFormat = compileMqttMessage(messageFormat, linenum, configFilePath);
+      if (messageFormat != NULL) compiledMessageFormat = compileMessage(messageFormat, errorLogger);
     }
 
-    MqttRuleLock* lock_list = NULL;
+    RuleLock* lock_list = NULL;
     str = argv[CMD_MQTT_RULE_LOCK];
-    if (str != NULL) parseListOfMqttRuleLocks(&lock_list, true, str, "lock", linenum, configFilePath);
+    if (str != NULL) parseListOfRuleLocks(&lock_list, true, str, "lock", errorLogger);
     str = argv[CMD_MQTT_RULE_UNLOCK];
-    if (str != NULL) parseListOfMqttRuleLocks(&lock_list, false, str, "unlock", linenum, configFilePath);
+    if (str != NULL) parseListOfRuleLocks(&lock_list, false, str, "unlock", errorLogger);
 
     MqttRule* rule = new MqttRule(sensor_def, metric, topic);
     if (is_lo_specified) {
@@ -1062,13 +1044,246 @@ private:
       if (compiledMessageFormat != NULL) rule->setMessage(BoundCheckResult::Inside, messageFormat, compiledMessageFormat);
     }
     rule->id = id;
-    sensor_def->addMqttRule(rule);
-    mqtt_rules.push_back(rule);
+    sensor_def->addRule(rule);
+    rules.push_back(rule);
 
   }
 
+  /*-------------------------------------------------------------
+   * Command "mqtt_bounds_rule':
+   *   mqtt_bounds_rule id=cool sensor="Room 1" metric=F topic=hvac/cooling msg_hi=on msg_lo=off bounds=72.5..74.5[22:00]72..75[8:00]
+   */
+  void command_mqtt_bounds_rule(const char** argv, ConfigParser* errorLogger) {
+    const char* sensor_name = argv[CMD_MQTT_BOUNDS_RULE_SENSOR];
+    if (sensor_name == NULL || *sensor_name == '\0')  errorMissingArg("mqtt_bounds_rule", "sensor", errorLogger);
+    SensorDef* sensor_def = SensorDef::find(sensor_name);
+    if (sensor_def == NULL) errorLogger->error("Undefined sensor name \"%s\"", sensor_name);
+
+    Metric metric;
+    int scale = 0;
+    bool allow_negative = false;
+    const char* str = argv[CMD_MQTT_BOUNDS_RULE_METRIC];
+    if (str == NULL || *str == '\0') {
+      metric = (options&OPTION_CELSIUS)!=0 ? Metric::TemperatureC : Metric::TemperatureF;
+      scale = 1;
+      allow_negative = true;
+    } else if (str[1] != '\0') {
+      errorInavidArg(str, "metric", errorLogger);
+    } else if (*str == 'F') {
+      metric = Metric::TemperatureF;
+      scale = 1;
+      allow_negative = true;
+    } else if (*str == 'C') {
+      metric = Metric::TemperatureC;
+      scale = 1;
+      allow_negative = true;
+    } else if (*str == 'H') {
+      metric = Metric::Humidity;
+    } else if (*str == 'B') {
+      metric = Metric::BatteryStatus;
+    } else {
+      errorInavidArg(str, "metric", errorLogger);
+    }
+
+    const char* topic = argv[CMD_MQTT_BOUNDS_RULE_TOPIC];
+    if (topic == NULL || *topic == '\0')  errorMissingArg("mqtt_bounds_rule", "topic", errorLogger);
+    topic = clone(topic);
+
+    const char* id = argv[CMD_MQTT_BOUNDS_RULE_ID];
+    if (id != NULL) id = *id == '\0'? NULL : clone(id);
+    if (id != NULL) {
+      for (AbstractRuleWithSchedule* existing_rule: rules) {
+        if (existing_rule->id != NULL && strcmp(id,existing_rule->id) == 0)
+          errorLogger->error("Duplicated id \"%s\" in the definition of rule", id);
+      }
+    }
+
+    MessageInsert* compiledMessageFormatHi = NULL;
+    const char* messageFormatHi = argv[CMD_MQTT_BOUNDS_RULE_MSG_HI];
+    if (messageFormatHi != NULL && *messageFormatHi != '\0') {
+      messageFormatHi = clone(messageFormatHi);
+      compiledMessageFormatHi = compileMessage(messageFormatHi, errorLogger);
+    } else {
+      messageFormatHi = NULL;
+    }
+
+    MessageInsert* compiledMessageFormatLo = NULL;
+    const char* messageFormatLo = argv[CMD_MQTT_BOUNDS_RULE_MSG_LO];
+    if (messageFormatLo != NULL && *messageFormatLo != '\0') {
+      messageFormatLo = clone(messageFormatLo);
+      compiledMessageFormatLo = compileMessage(messageFormatLo, errorLogger);
+    } else {
+      messageFormatLo = NULL;
+    }
+
+    MessageInsert* compiledMessageFormatIn = NULL;
+    const char* messageFormatIn = argv[CMD_MQTT_BOUNDS_RULE_MSG_IN];
+    if (messageFormatIn != NULL && *messageFormatIn != '\0') {
+      messageFormatIn = clone(messageFormatIn);
+      compiledMessageFormatIn = compileMessage(messageFormatIn, errorLogger);
+    } else {
+      messageFormatIn = NULL;
+    }
+
+    RuleLock* lock_list_lo = NULL;
+    str = argv[CMD_MQTT_BOUNDS_RULE_LOCK_LO];
+    if (str != NULL) parseListOfRuleLocks(&lock_list_lo, true, str, "lock_lo", errorLogger);
+    str = argv[CMD_MQTT_BOUNDS_RULE_UNLOCK_LO];
+    if (str != NULL) parseListOfRuleLocks(&lock_list_lo, false, str, "unlock_lo", errorLogger);
+
+    RuleLock* lock_list_hi = NULL;
+    str = argv[CMD_MQTT_BOUNDS_RULE_LOCK_HI];
+    if (str != NULL) parseListOfRuleLocks(&lock_list_hi, true, str, "lock_hi", errorLogger);
+    str = argv[CMD_MQTT_BOUNDS_RULE_UNLOCK_HI];
+    if (str != NULL) parseListOfRuleLocks(&lock_list_hi, false, str, "unlock_hi", errorLogger);
+
+    RuleLock* lock_list_in = NULL;
+    str = argv[CMD_MQTT_BOUNDS_RULE_LOCK_IN];
+    if (str != NULL) parseListOfRuleLocks(&lock_list_in, true, str, "lock_in", errorLogger);
+    str = argv[CMD_MQTT_BOUNDS_RULE_UNLOCK_IN];
+    if (str != NULL) parseListOfRuleLocks(&lock_list_in, false, str, "unlock_in", errorLogger);
+
+    if (compiledMessageFormatHi == NULL && compiledMessageFormatLo == NULL && compiledMessageFormatIn == NULL && lock_list_lo == NULL && lock_list_hi == NULL && lock_list_in == NULL)
+      errorLogger->error("At least one of options msg_*, lock_*, unlock_* must be specified for command mqtt_bounds_rule");
+
+    const char* bounds_string = argv[CMD_MQTT_BOUNDS_RULE_BOUNDS];
+    if (bounds_string == NULL || *bounds_string == '\0') errorMissingArg("mqtt_bounds_rule", "bounds", errorLogger);
+
+    // Compile bounds=72.5..74.5[22:00]72..75[8:00]
+    AbstractRuleBoundSchedule* bounds = compileBoundSchedule(bounds_string, scale, allow_negative, "bounds", errorLogger);
+
+    MqttRule* rule = new MqttRule(sensor_def, metric, topic);
+    rule->setBound(bounds);
+    rule->id = id;
+    if (compiledMessageFormatHi != NULL) rule->setMessage(BoundCheckResult::Higher, messageFormatHi, compiledMessageFormatHi);
+    if (compiledMessageFormatLo != NULL) rule->setMessage(BoundCheckResult::Lower, messageFormatLo, compiledMessageFormatLo);
+    if (compiledMessageFormatIn != NULL) rule->setMessage(BoundCheckResult::Inside, messageFormatIn, compiledMessageFormatIn);
+    if (lock_list_hi != NULL) rule->setLocks(lock_list_hi, BoundCheckResult::Higher);
+    if (lock_list_lo != NULL) rule->setLocks(lock_list_lo, BoundCheckResult::Lower);
+    if (lock_list_in != NULL) rule->setLocks(lock_list_in, BoundCheckResult::Lower);
+    sensor_def->addRule(rule);
+    rules.push_back(rule);
+
+  }
+
+#endif
+
+  /*-------------------------------------------------------------
+   * Command "action_rule':
+   *   action_rule id=cool sensor="Room 1" metric=F cmd_hi=on cmd_lo=off bounds=72.5..74.5[22:00]72..75[8:00]
+   */
+  void command_action_rule(const char** argv, ConfigParser* errorLogger) {
+    const char* sensor_name = argv[CMD_ACTION_RULE_SENSOR];
+    if (sensor_name == NULL || *sensor_name == '\0')  errorMissingArg("action_rule", "sensor", errorLogger);
+    SensorDef* sensor_def = SensorDef::find(sensor_name);
+    if (sensor_def == NULL) errorLogger->error("Undefined sensor name \"%s\"", sensor_name);
+
+    Metric metric;
+    int scale = 0;
+    bool allow_negative = false;
+    const char* str = argv[CMD_ACTION_RULE_METRIC];
+    if (str == NULL || *str == '\0') {
+      metric = (options&OPTION_CELSIUS)!=0 ? Metric::TemperatureC : Metric::TemperatureF;
+      scale = 1;
+      allow_negative = true;
+    } else if (str[1] != '\0') {
+      errorInavidArg(str, "metric", errorLogger);
+    } else if (*str == 'F') {
+      metric = Metric::TemperatureF;
+      scale = 1;
+      allow_negative = true;
+    } else if (*str == 'C') {
+      metric = Metric::TemperatureC;
+      scale = 1;
+      allow_negative = true;
+    } else if (*str == 'H') {
+      metric = Metric::Humidity;
+    } else if (*str == 'B') {
+      metric = Metric::BatteryStatus;
+    } else {
+      errorInavidArg(str, "metric", errorLogger);
+    }
+
+    const char* id = argv[CMD_ACTION_RULE_ID];
+    if (id != NULL) id = *id == '\0'? NULL : clone(id);
+    if (id != NULL) {
+      for (AbstractRuleWithSchedule* existing_rule: rules) {
+        if (existing_rule->id != NULL && strcmp(id,existing_rule->id) == 0)
+          errorLogger->error("Duplicated id \"%s\" in the definition of rule", id);
+      }
+    }
+
+    MessageInsert* compiledMessageFormatHi = NULL;
+    const char* messageFormatHi = argv[CMD_ACTION_RULE_CMD_HI];
+    if (messageFormatHi != NULL && *messageFormatHi != '\0') {
+      messageFormatHi = clone(messageFormatHi);
+      compiledMessageFormatHi = compileMessage(messageFormatHi, errorLogger);
+    } else {
+      messageFormatHi = NULL;
+    }
+
+    MessageInsert* compiledMessageFormatLo = NULL;
+    const char* messageFormatLo = argv[CMD_ACTION_RULE_CMD_LO];
+    if (messageFormatLo != NULL && *messageFormatLo != '\0') {
+      messageFormatLo = clone(messageFormatLo);
+      compiledMessageFormatLo = compileMessage(messageFormatLo, errorLogger);
+    } else {
+      messageFormatLo = NULL;
+    }
+
+    MessageInsert* compiledMessageFormatIn = NULL;
+    const char* messageFormatIn = argv[CMD_ACTION_RULE_CMD_IN];
+    if (messageFormatIn != NULL && *messageFormatIn != '\0') {
+      messageFormatIn = clone(messageFormatIn);
+      compiledMessageFormatIn = compileMessage(messageFormatIn, errorLogger);
+    } else {
+      messageFormatIn = NULL;
+    }
+
+    RuleLock* lock_list_lo = NULL;
+    str = argv[CMD_ACTION_RULE_LOCK_LO];
+    if (str != NULL) parseListOfRuleLocks(&lock_list_lo, true, str, "lock_lo", errorLogger);
+    str = argv[CMD_ACTION_RULE_UNLOCK_LO];
+    if (str != NULL) parseListOfRuleLocks(&lock_list_lo, false, str, "unlock_lo", errorLogger);
+
+    RuleLock* lock_list_hi = NULL;
+    str = argv[CMD_ACTION_RULE_LOCK_HI];
+    if (str != NULL) parseListOfRuleLocks(&lock_list_hi, true, str, "lock_hi", errorLogger);
+    str = argv[CMD_ACTION_RULE_UNLOCK_HI];
+    if (str != NULL) parseListOfRuleLocks(&lock_list_hi, false, str, "unlock_hi", errorLogger);
+
+    RuleLock* lock_list_in = NULL;
+    str = argv[CMD_ACTION_RULE_LOCK_IN];
+    if (str != NULL) parseListOfRuleLocks(&lock_list_in, true, str, "lock_in", errorLogger);
+    str = argv[CMD_ACTION_RULE_UNLOCK_IN];
+    if (str != NULL) parseListOfRuleLocks(&lock_list_in, false, str, "unlock_in", errorLogger);
+
+    if (compiledMessageFormatHi == NULL && compiledMessageFormatLo == NULL && compiledMessageFormatIn == NULL && lock_list_lo == NULL && lock_list_hi == NULL && lock_list_in == NULL)
+      errorLogger->error("At least one of options cmd_*, lock_*, unlock_* must be specified for command action_rule");
+
+    const char* bounds_string = argv[CMD_ACTION_RULE_BOUNDS];
+    if (bounds_string == NULL || *bounds_string == '\0') errorMissingArg("action_rule", "bounds", errorLogger);
+
+    // Compile bounds=72.5..74.5[22:00]72..75[8:00]
+    AbstractRuleBoundSchedule* bounds = compileBoundSchedule(bounds_string, scale, allow_negative, "bounds", errorLogger);
+
+    ActionRule* rule = new ActionRule(sensor_def, metric);
+    rule->setBound(bounds);
+    rule->id = id;
+    if (compiledMessageFormatHi != NULL) rule->setMessage(BoundCheckResult::Higher, messageFormatHi, compiledMessageFormatHi);
+    if (compiledMessageFormatLo != NULL) rule->setMessage(BoundCheckResult::Lower, messageFormatLo, compiledMessageFormatLo);
+    if (compiledMessageFormatIn != NULL) rule->setMessage(BoundCheckResult::Inside, messageFormatIn, compiledMessageFormatIn);
+    if (lock_list_hi != NULL) rule->setLocks(lock_list_hi, BoundCheckResult::Higher);
+    if (lock_list_lo != NULL) rule->setLocks(lock_list_lo, BoundCheckResult::Lower);
+    if (lock_list_in != NULL) rule->setLocks(lock_list_in, BoundCheckResult::Lower);
+    sensor_def->addRule(rule);
+    rules.push_back(rule);
+
+  }
+
+
   //-------------------------------------------------------------
-  void parseListOfMqttRuleLocks(MqttRuleLock** last_ptr, bool lock, const char* str, const char* argname, int linenum, const char* configFilePath) {
+  void parseListOfRuleLocks(RuleLock** last_ptr, bool lock, const char* str, const char* argname, ConfigParser* errorLogger) {
     if (str == NULL || *str == '\0') return;
 
     const char* p = str;
@@ -1086,7 +1301,7 @@ private:
       while (id_len > 0 && ((ch=id[id_len-1]) ==' ' || ch == '\t')) id_len--;
       if (id_len == 0) continue;
 
-      MqttRuleLock* item = (MqttRuleLock*)malloc(sizeof(MqttRuleLock));
+      RuleLock* item = (RuleLock*)malloc(sizeof(RuleLock));
       item->next = NULL;
       item->rule = NULL;
       item->lock = lock;
@@ -1094,55 +1309,58 @@ private:
       last_ptr = &item->next;
 
       // find rule with requested id
-      MqttRule* rule = NULL;
-      for (MqttRule* r: mqtt_rules) {
+      AbstractRuleWithSchedule* rule = NULL;
+      for (AbstractRuleWithSchedule* r: rules) {
         const char* rid = r->id;
         if (rid != NULL && strlen(rid) == id_len && strncmp(rid, id, id_len) == 0) {
           item->rule = rule = r;
           break;
         }
       }
-      if ( rule == NULL) { // The rule with this id is not defined yet => delayed resolution
-        UresolvedReferenceToMqttRule* reference = (UresolvedReferenceToMqttRule*)malloc(sizeof(UresolvedReferenceToMqttRule));
+      if (rule == NULL) { // The rule with this id is not defined yet => delayed resolution
+        UresolvedReferenceToRule* reference = (UresolvedReferenceToRule*)malloc(sizeof(UresolvedReferenceToRule));
         reference->id = make_str(id, id_len);
         reference->rule_ptr = &(item->rule);
-        reference->linenum = linenum;
-        reference->configFilePath = configFilePath;
-        reference->next = unresolved_references_to_mqtt_rules;
-        unresolved_references_to_mqtt_rules = reference;
+        reference->linenum = errorLogger->linenum;
+        reference->configFilePath = errorLogger->configFilePath;
+        reference->next = unresolved_references_to_rules;
+        unresolved_references_to_rules = reference;
       }
     }
 
   }
 
-  void resolveReferencesToMqttRules() {
+  //-------------------------------------------------------------
+  void resolveReferencesToRules() {
     bool success = true;
-    UresolvedReferenceToMqttRule* reference = unresolved_references_to_mqtt_rules;
+    UresolvedReferenceToRule* reference = unresolved_references_to_rules;
     while (reference != NULL) {
-      if (!resolveReferenceToMqttRule(reference)) success = false;
-      UresolvedReferenceToMqttRule* next = reference->next;
+      if (!resolveReferenceToRule(reference)) success = false;
+      UresolvedReferenceToRule* next = reference->next;
       free((void*)reference->id);
       free(reference);
       reference = next;
     }
     if (!success) exit(1);
-    unresolved_references_to_mqtt_rules = NULL;
+    unresolved_references_to_rules = NULL;
   }
 
-  bool resolveReferenceToMqttRule(UresolvedReferenceToMqttRule* reference) {
-    for (MqttRule* rule: mqtt_rules) {
+  //-------------------------------------------------------------
+  bool resolveReferenceToRule(UresolvedReferenceToRule* reference) {
+    for (AbstractRuleWithSchedule* rule: rules) {
       const char* rid = rule->id;
       if (rid != NULL && strcmp(rid, reference->id) == 0) {
         *(reference->rule_ptr) = rule;
         return true;
       }
     }
-    fprintf(stderr, "ERROR: Undefined reference to MQTT rule with id=\"%s\" in line #%d of file \"%s\"\n", reference->id, reference->linenum, reference->configFilePath);
+    fprintf(stderr, "ERROR: Undefined reference to rule with id=\"%s\" in line #%d of file \"%s\"\n", reference->id, reference->linenum, reference->configFilePath);
     return false;
   }
 
+  //-------------------------------------------------------------
 #define MAX_MESSAGE_INSERTS 16
-  static MessageInsert* compileMqttMessage(const char* messageFormat, int linenum, const char* configFilePath) {
+  static MessageInsert* compileMessage(const char* messageFormat, ConfigParser* errorLogger) {
     const char* p = messageFormat;
 
     int index = 0;
@@ -1154,33 +1372,32 @@ private:
       while ( (ch=*p) != '\0' && ch != '%' ) p++;
       size_t len = p-start;
       if (len > 0) {
-        if (index >= MAX_MESSAGE_INSERTS) {
-          fprintf(stderr, "ERROR: Too complex message format in line #%d of file \"%s\": too many inserts.\n", linenum, configFilePath);
-          exit(1);
-        }
+        if (index >= MAX_MESSAGE_INSERTS) errorLogger->error("Too complex message/command format - too many inserts");
         compiled[index].type = MessageInsertType::Constant;
         compiled[index].stringArg = make_str(start, len);
         index++;
       }
       if (ch == '\0') break;
 
-      if (index >= MAX_MESSAGE_INSERTS) {
-        fprintf(stderr, "ERROR: Too complex message format in line #%d of file \"%s\": too many inserts.\n", linenum, configFilePath);
-        exit(1);
-      }
+      if (index >= MAX_MESSAGE_INSERTS) errorLogger->error("Too complex message/command format - too many inserts");
 
       ch = *++p;
       MessageInsertType messageInsertType = MessageInsertType::Constant;
       switch (ch) {
       case '\0':
-        fprintf(stderr, "ERROR: Invalid message format in line #%d of file \"%s\": character is expected after %%.\n", linenum, configFilePath);
-        exit(1);
+        errorLogger->error("Invalid message/command format: character is expected after %%");
         break;
       case 'F':
         messageInsertType = MessageInsertType::TemperatureF;
         break;
       case 'C':
         messageInsertType = MessageInsertType::TemperatureC;
+        break;
+      case 'f':
+        messageInsertType = MessageInsertType::TemperaturedF;
+        break;
+      case 'c':
+        messageInsertType = MessageInsertType::TemperaturedC;
         break;
       case 'N':
         messageInsertType = MessageInsertType::SensorName;
@@ -1189,8 +1406,7 @@ private:
         messageInsertType = MessageInsertType::ReferenceId;
         break;
       default:
-        fprintf(stderr, "ERROR: Invalid message format in line #%d of file \"%s\": invalid substitution \"%%%c\".\n", linenum, configFilePath, ch);
-        exit(1);
+        errorLogger->error("Invalid message/command format: invalid substitution \"%%%c\"", ch);
       }
       compiled[index].type = messageInsertType;
       compiled[index].stringArg = NULL;
@@ -1199,10 +1415,7 @@ private:
       p++;
     } while(true);
 
-    if (index == 0) {
-      fprintf(stderr, "ERROR: Empty message in line #%d of file \"%s\".\n", linenum, configFilePath);
-      exit(1);
-    }
+    if (index == 0) errorLogger->error("Empty message/command");
 
     MessageInsert* result = (MessageInsert*)malloc((index+1)*sizeof(MessageInsert));
     memcpy(result, compiled, index*sizeof(MessageInsert));
@@ -1212,169 +1425,45 @@ private:
     return result;
   }
 
-  /*-------------------------------------------------------------
-   * Command "mqtt_bounds_rule':
-   *   mqtt_bounds_rule id=cool sensor="Room 1" metric=F topic=hvac/cooling msg_hi=on msg_lo=off bounds=72.5..74.5[22:00]72..75[8:00]
-   */
-  void command_mqtt_bounds_rule(const char** argv, int linenum, const char* configFilePath) {
-    const char* sensor_name = argv[CMD_MQTT_BOUNDS_RULE_SENSOR];
-    if (sensor_name == NULL || *sensor_name == '\0')  errorMissingArg("mqtt_bounds_rule", "sensor", linenum, configFilePath);
-    SensorDef* sensor_def = SensorDef::find(sensor_name);
-    if (sensor_def == NULL) {
-      fprintf(stderr, "ERROR: Undefined sensor name \"%s\" in line #%d of file \"%s\"\n", sensor_name, linenum, configFilePath);
-      exit(1);
-    }
-
-    Metric metric;
-    int scale = 0;
-    bool allow_negative = false;
-    const char* str = argv[CMD_MQTT_BOUNDS_RULE_METRIC];
-    if (str == NULL || *str == '\0') {
-      metric = (options&OPTION_CELSIUS)!=0 ? Metric::TemperatureC : Metric::TemperatureF;
-      scale = 1;
-      allow_negative = true;
-    } else if (str[1] != '\0') {
-      errorInavidArg(str, "metric", linenum, configFilePath);
-    } else if (*str == 'F') {
-      metric = Metric::TemperatureF;
-      scale = 1;
-      allow_negative = true;
-    } else if (*str == 'C') {
-      metric = Metric::TemperatureC;
-      scale = 1;
-      allow_negative = true;
-    } else if (*str == 'H') {
-      metric = Metric::Humidity;
-    } else if (*str == 'B') {
-      metric = Metric::BatteryStatus;
-    } else {
-      errorInavidArg(str, "metric", linenum, configFilePath);
-    }
-
-    const char* topic = argv[CMD_MQTT_BOUNDS_RULE_TOPIC];
-    if (topic == NULL || *topic == '\0')  errorMissingArg("mqtt_bounds_rule", "topic", linenum, configFilePath);
-    topic = clone(topic);
-
-    const char* id = argv[CMD_MQTT_BOUNDS_RULE_ID];
-    if (id != NULL) id = *id == '\0'? NULL : clone(id);
-    if (id != NULL) {
-      for (MqttRule* existing_rule: mqtt_rules) {
-        if (existing_rule->id != NULL && strcmp(id,existing_rule->id) == 0) {
-          fprintf(stderr, "ERROR: Duplicated id \"%s\" in the definition of MQTT rule in line #%d of file \"%s\"\n", id, linenum, configFilePath);
-          exit(1);
-        }
-      }
-    }
-
-    MessageInsert* compiledMessageFormatHi = NULL;
-    const char* messageFormatHi = argv[CMD_MQTT_BOUNDS_RULE_MSG_HI];
-    if (messageFormatHi != NULL && *messageFormatHi != '\0') {
-      messageFormatHi = clone(messageFormatHi);
-      compiledMessageFormatHi = compileMqttMessage(messageFormatHi, linenum, configFilePath);
-    } else {
-      messageFormatHi = NULL;
-    }
-
-    MessageInsert* compiledMessageFormatLo = NULL;
-    const char* messageFormatLo = argv[CMD_MQTT_BOUNDS_RULE_MSG_LO];
-    if (messageFormatLo != NULL && *messageFormatLo != '\0') {
-      messageFormatLo = clone(messageFormatLo);
-      compiledMessageFormatLo = compileMqttMessage(messageFormatLo, linenum, configFilePath);
-    } else {
-      messageFormatLo = NULL;
-    }
-
-    MessageInsert* compiledMessageFormatIn = NULL;
-    const char* messageFormatIn = argv[CMD_MQTT_BOUNDS_RULE_MSG_IN];
-    if (messageFormatIn != NULL && *messageFormatIn != '\0') {
-      messageFormatIn = clone(messageFormatIn);
-      compiledMessageFormatIn = compileMqttMessage(messageFormatIn, linenum, configFilePath);
-    } else {
-      messageFormatIn = NULL;
-    }
-
-    MqttRuleLock* lock_list_lo = NULL;
-    str = argv[CMD_MQTT_RULE_BOUNDS_LOCK_LO];
-    if (str != NULL) parseListOfMqttRuleLocks(&lock_list_lo, true, str, "lock_lo", linenum, configFilePath);
-    str = argv[CMD_MQTT_RULE_BOUNDS_UNLOCK_LO];
-    if (str != NULL) parseListOfMqttRuleLocks(&lock_list_lo, false, str, "unlock_lo", linenum, configFilePath);
-
-    MqttRuleLock* lock_list_hi = NULL;
-    str = argv[CMD_MQTT_RULE_BOUNDS_LOCK_HI];
-    if (str != NULL) parseListOfMqttRuleLocks(&lock_list_hi, true, str, "lock_hi", linenum, configFilePath);
-    str = argv[CMD_MQTT_RULE_BOUNDS_UNLOCK_HI];
-    if (str != NULL) parseListOfMqttRuleLocks(&lock_list_hi, false, str, "unlock_hi", linenum, configFilePath);
-
-    MqttRuleLock* lock_list_in = NULL;
-    str = argv[CMD_MQTT_RULE_BOUNDS_LOCK_IN];
-    if (str != NULL) parseListOfMqttRuleLocks(&lock_list_in, true, str, "lock_in", linenum, configFilePath);
-    str = argv[CMD_MQTT_RULE_BOUNDS_UNLOCK_IN];
-    if (str != NULL) parseListOfMqttRuleLocks(&lock_list_in, false, str, "unlock_in", linenum, configFilePath);
-
-    if (compiledMessageFormatHi == NULL && compiledMessageFormatLo == NULL && compiledMessageFormatIn == NULL && lock_list_lo == NULL && lock_list_hi == NULL && lock_list_in == NULL) {
-      fprintf(stderr, "ERROR: At least one of options msg_*, lock_*, unlock_* must be specified for command mqtt_bounds_rule in line #%d of file \"%s\"\n", linenum, configFilePath);
-      exit(1);
-    }
-
-    const char* bounds_string = argv[CMD_MQTT_RULE_BOUNDS_BOUNDS];
-    if (bounds_string == NULL || *bounds_string == '\0') errorMissingArg("mqtt_bounds_rule", "bounds", linenum, configFilePath);
-
-    // Compile bounds=72.5..74.5[22:00]72..75[8:00]
-    AbstractMqttRuleBoundSchedule* bounds = compileBoundSchedule(bounds_string, scale, allow_negative, "bounds", linenum, configFilePath);
-
-    MqttRule* rule = new MqttRule(sensor_def, metric, topic);
-    rule->setBound(bounds);
-    rule->id = id;
-    if (compiledMessageFormatHi != NULL) rule->setMessage(BoundCheckResult::Higher, messageFormatHi, compiledMessageFormatHi);
-    if (compiledMessageFormatLo != NULL) rule->setMessage(BoundCheckResult::Lower, messageFormatLo, compiledMessageFormatLo);
-    if (compiledMessageFormatIn != NULL) rule->setMessage(BoundCheckResult::Inside, messageFormatIn, compiledMessageFormatIn);
-    if (lock_list_hi != NULL) rule->setLocks(lock_list_hi, BoundCheckResult::Higher);
-    if (lock_list_lo != NULL) rule->setLocks(lock_list_lo, BoundCheckResult::Lower);
-    if (lock_list_in != NULL) rule->setLocks(lock_list_in, BoundCheckResult::Lower);
-    sensor_def->addMqttRule(rule);
-    mqtt_rules.push_back(rule);
-
-  }
-
-
+  //-------------------------------------------------------------
   // compile bounds=72.5..74.5[22:00]72..75[8:00]
-  AbstractMqttRuleBoundSchedule* compileBoundSchedule(const char* arg, int scale, bool allow_negative, const char* argname, int linenum, const char* configFilePath) {
+  static AbstractRuleBoundSchedule* compileBoundSchedule(const char* arg, int scale, bool allow_negative, const char* argname, ConfigParser* errorLogger) {
     const char* p = arg;
 
     int low, high;
-    convertDecimalArg(arg, p, low, scale, allow_negative, '.', argname, linenum, configFilePath);
-    convertDecimalArg(arg, p, high, scale, allow_negative, '[', argname, linenum, configFilePath);
-    if (high <= low) errorInavidArg(arg, p, argname, linenum, configFilePath);
+    convertDecimalArg(arg, p, low, scale, allow_negative, '.', argname, errorLogger);
+    convertDecimalArg(arg, p, high, scale, allow_negative, '[', argname, errorLogger);
+    if (high <= low) errorInavidArg(arg, p, argname, errorLogger);
 
-    if (p == NULL || *p == '\0') return new MqttRuleBoundFixed(low, high);
+    if (p == NULL || *p == '\0') return new RuleBoundFixed(low, high);
 
-    uint32_t first_time_offset = getDayTimeOffset(arg, p, argname, linenum, configFilePath);
-    MqttRuleBoundsSheduleItem* scheduleItem = (MqttRuleBoundsSheduleItem*)malloc(sizeof(MqttRuleBoundsSheduleItem));
-    scheduleItem->bounds = MqttRuleBounds::make(low, high);
+    uint32_t first_time_offset = getDayTimeOffset(arg, p, argname, errorLogger);
+    RuleBoundsSheduleItem* scheduleItem = (RuleBoundsSheduleItem*)malloc(sizeof(RuleBoundsSheduleItem));
+    scheduleItem->bounds = RuleBounds::make(low, high);
     scheduleItem->time_offset = first_time_offset;
     scheduleItem->prev = scheduleItem;
     scheduleItem->next = scheduleItem;
-    MqttRuleBoundsSheduleItem* firstScheduleItem = scheduleItem;
-    MqttRuleBoundsSheduleItem** pNextItem = &scheduleItem->next;
+    RuleBoundsSheduleItem* firstScheduleItem = scheduleItem;
+    RuleBoundsSheduleItem** pNextItem = &scheduleItem->next;
 
     bool flipped = false;
     uint32_t prev_time_offset = first_time_offset;
     do {
-      convertDecimalArg(arg, p, low, scale, allow_negative, '.', argname, linenum, configFilePath);
-      convertDecimalArg(arg, p, high, scale, allow_negative, '[', argname, linenum, configFilePath);
-      if (high <= low) errorInavidArg(arg, p, argname, linenum, configFilePath);
+      convertDecimalArg(arg, p, low, scale, allow_negative, '.', argname, errorLogger);
+      convertDecimalArg(arg, p, high, scale, allow_negative, '[', argname, errorLogger);
+      if (high <= low) errorInavidArg(arg, p, argname, errorLogger);
 
-      uint32_t time_offset = getDayTimeOffset(arg, p, argname, linenum, configFilePath);
+      uint32_t time_offset = getDayTimeOffset(arg, p, argname, errorLogger);
 
-      if (time_offset == prev_time_offset) errorInavidArg(arg, p, argname, linenum, configFilePath);
+      if (time_offset == prev_time_offset) errorInavidArg(arg, p, argname, errorLogger);
       if (time_offset < prev_time_offset) {
-        if (flipped) errorInavidArg(arg, p, argname, linenum, configFilePath);
+        if (flipped) errorInavidArg(arg, p, argname, errorLogger);
         flipped = true;
       }
       prev_time_offset = time_offset;
 
-      MqttRuleBoundsSheduleItem* scheduleItem = (MqttRuleBoundsSheduleItem*)malloc(sizeof(MqttRuleBoundsSheduleItem));
-      scheduleItem->bounds = MqttRuleBounds::make(low, high);
+      RuleBoundsSheduleItem* scheduleItem = (RuleBoundsSheduleItem*)malloc(sizeof(RuleBoundsSheduleItem));
+      scheduleItem->bounds = RuleBounds::make(low, high);
       scheduleItem->time_offset = time_offset;
       scheduleItem->next = firstScheduleItem;
       scheduleItem->prev = firstScheduleItem->prev;
@@ -1384,79 +1473,74 @@ private:
 
     } while (*p != '\0');
 
-    return new MqttRuleBoundSchedule(firstScheduleItem);
+    return new RuleBoundSchedule(firstScheduleItem);
   }
 
-  static uint32_t getDayTimeOffset(const char* arg, const char*& p, const char* argname, int linenum, const char* configFilePath) {
-    if (*p != '[') errorInavidArg(arg, p, argname, linenum, configFilePath);
+  //-------------------------------------------------------------
+  static uint32_t getDayTimeOffset(const char* arg, const char*& p, const char* argname, ConfigParser* errorLogger) {
+    if (*p != '[') errorInavidArg(arg, p, argname, errorLogger);
     p++;
     int hour, min;
-    convertDecimalArg(arg, p, hour, 0, false, ':', argname, linenum, configFilePath);
-    if (hour > 24) errorInavidArg(arg, p, argname, linenum, configFilePath);
-    if (*p != ':') errorInavidArg(arg, p, argname, linenum, configFilePath);
+    convertDecimalArg(arg, p, hour, 0, false, ':', argname, errorLogger);
+    if (hour > 24) errorInavidArg(arg, p, argname, errorLogger);
+    if (*p != ':') errorInavidArg(arg, p, argname, errorLogger);
     p++;
-    convertDecimalArg(arg, p, min, 0, false, ']', argname, linenum, configFilePath);
-    if (hour==24 ? min != 0 : min > 60) errorInavidArg(arg, p, argname, linenum, configFilePath);
-    if (*p != ']') errorInavidArg(arg, p, argname, linenum, configFilePath);
+    convertDecimalArg(arg, p, min, 0, false, ']', argname, errorLogger);
+    if (hour==24 ? min != 0 : min > 60) errorInavidArg(arg, p, argname, errorLogger);
+    if (*p != ']') errorInavidArg(arg, p, argname, errorLogger);
     p++;
     return (uint32_t)hour*60+min;
   }
 
-#endif
-
   //-------------------------------------------------------------
-  static bool errorMissingArg(const char* command, const char* argname, int linenum, const char* configFilePath) {
-    fprintf(stderr, "ERROR: Missing argument \"%s\" in the definition of command \"%s\" in line #%d of file \"%s\"\n", argname, command, linenum, configFilePath);
-    exit(1);
+  static void errorMissingArg(const char* command, const char* argname, ConfigParser* errorLogger) {
+    errorLogger->error("Missing argument \"%s\" in the definition of command \"%s\"", argname, command);
   }
-  static bool errorInavidArg(const char* str, const char* argname, int linenum, const char* configFilePath) {
-    fprintf(stderr, "ERROR: Invalid value \"%s\" of argument \"%s\" in line #%d of file \"%s\".\n", str, argname, linenum, configFilePath);
-    exit(1);
+  static void errorInavidArg(const char* str, const char* argname, ConfigParser* errorLogger) {
+    errorLogger->error("Invalid value \"%s\" of argument \"%s\"", str, argname);
   }
-  static bool errorInavidArg(const char* str, const char* p, const char* argname, int linenum, const char* configFilePath) {
+  static void errorInavidArg(const char* str, const char* p, const char* argname, ConfigParser* errorLogger) {
     int pos = p == NULL ? -1 : p-str;
     if (pos >= 0 && pos < (int)strlen(str))
-      fprintf(stderr, "ERROR: Error near index %d in value \"%s\" of argument \"%s\" in line #%d of file \"%s\".\n", pos, str, argname, linenum, configFilePath);
-    else
-      fprintf(stderr, "ERROR: Invalid value \"%s\" of argument \"%s\" in line #%d of file \"%s\".\n", str, argname, linenum, configFilePath);
-    exit(1);
+      errorLogger->error("Error near index %d in value \"%s\" of argument \"%s\"", pos, str, argname);
+    errorLogger->error("Invalid value \"%s\" of argument \"%s\"", str, argname);
   }
 
   //-------------------------------------------------------------
-  static bool convertDecimalArg(const char* str, int& result, int scale, bool allow_negative, const char* argname, int linenum, const char* configFilePath) {
+  static bool convertDecimalArg(const char* str, int& result, int scale, bool allow_negative, const char* argname, ConfigParser* errorLogger) {
     const char* p = str;
-    return convertDecimalArg(str, p, result, scale, allow_negative, '\0', argname, linenum, configFilePath);
+    return convertDecimalArg(str, p, result, scale, allow_negative, '\0', argname, errorLogger);
   }
 
-  static bool convertDecimalArg(const char* str, const char*& p, int& result, int scale, bool allow_negative, char stop_char, const char* argname, int linenum, const char* configFilePath) {
+  static bool convertDecimalArg(const char* str, const char*& p, int& result, int scale, bool allow_negative, char stop_char, const char* argname, ConfigParser* errorLogger) {
     result = 0xffffffff;
     if (skipBlanks(p) == NULL) {
-      if (stop_char != '\0') errorInavidArg(str, p, argname, linenum, configFilePath);
+      if (stop_char != '\0') errorInavidArg(str, p, argname, errorLogger);
       return false;
     }
 
     bool negative = false;
     char ch = *p;
     if (ch=='-') {
-      if (!allow_negative) errorInavidArg(str, p, argname, linenum, configFilePath);
+      if (!allow_negative) errorInavidArg(str, p, argname, errorLogger);
       negative = true;
       ch = *++p;
     } else if (ch=='+') {
       ch = *++p;
     }
-    if (ch<'0' || ch>'9') errorInavidArg(str, p, argname, linenum, configFilePath);
+    if (ch<'0' || ch>'9') errorInavidArg(str, p, argname, errorLogger);
 
     int n = (ch-'0');
 
     while ((ch=*++p)!='\0' && ch != '.' && ch != stop_char) {
-      if (ch<'0' || ch>'9') errorInavidArg(str, p, argname, linenum, configFilePath);
+      if (ch<'0' || ch>'9') errorInavidArg(str, p, argname, errorLogger);
       n = n*10 + (ch-'0');
     }
 
     if ((ch == '.') && (stop_char != '.' || *(p+1) != '.')) {
-      if (scale <= 0) errorInavidArg(str, p, argname, linenum, configFilePath);
+      if (scale <= 0) errorInavidArg(str, p, argname, errorLogger);
       while ((ch=*++p) != '\0' && ch != stop_char && --scale >= 0) {
-        if (ch<'0' || ch>'9') errorInavidArg(str, p, argname, linenum, configFilePath);
+        if (ch<'0' || ch>'9') errorInavidArg(str, p, argname, errorLogger);
         n = n*10 + (ch-'0');
       }
     }
@@ -1464,11 +1548,11 @@ private:
 
     if (ch == stop_char) {
       if (stop_char == '.') {
-        if (*++p != '.') errorInavidArg(str, p, argname, linenum, configFilePath);
+        if (*++p != '.') errorInavidArg(str, p, argname, errorLogger);
         p++;
       }
     } else {
-      if (ch == '\0' && stop_char != '[') errorInavidArg(str, p, argname, linenum, configFilePath);
+      if (ch == '\0' && stop_char != '[') errorInavidArg(str, p, argname, errorLogger);
     }
 
     if (negative) n = -n;
@@ -1478,382 +1562,10 @@ private:
 
 
   //-------------------------------------------------------------
-  static const char* skipBlanks(const char*& p) {
-    if (p == NULL) return NULL;
-    char ch;
-    while ((ch=*p) ==' ' || ch == '\t') p++;
-    if (ch == '\0' || ch == '\n' || ch == '\r' || ch == '#') p = NULL;
-    return p;
-  }
-
-  //-------------------------------------------------------------
-  static const char* getWord(const char*& p, size_t& length) {
-    length = 0;
-    const char* start = skipBlanks(p);
-    if (start == NULL) return p = NULL;
-
-    char ch;
-    while ((ch=*p) !=' ' && ch != '\t') {
-      if (ch == '\0' || ch == '\n' || ch == '\r') {
-        length = p-start;
-        p = NULL;
-        return start;
-      }
-      p++;
-    }
-
-    length = p-start;
-    return start;
-  }
-
-  //-------------------------------------------------------------
-  static const char* getString(const char*& p, char*& buffer, size_t& bufsize, size_t& length, size_t&key_len, bool& quoted, int linenum, const char* configFilePath) {
-    length = 0;
-    quoted = false;
-    key_len = 0;
-    const char* start = skipBlanks(p);
-    if (start == NULL) return p = NULL;
-
-    char ch;
-    if (*start == '"') {
-      // quoted string
-      quoted = true;
-
-      int value_len = 0;
-      const char* ptr = start;
-      while ((ch=*++ptr) !='"') {
-        if (ch == '\\') {
-          ch = *++ptr;
-          if (ch == '\0' || ch == '\n' || ch == '\r' || ch == '\f') {
-            fprintf(stderr, "ERROR: Unmatched quote ('\"') in line #%d of file \"%s\".\n", linenum, configFilePath);
-            exit(1);
-          }
-          switch ( ch) {
-          case '\\':
-          case '"':
-          case '\'':
-          case 'n':
-          case 't':
-          case 'r':
-          case 'f':
-            break;
-          case 'x':
-            if (!isHex(*++ptr) || !isHex(*++ptr)) {
-              fprintf(stderr, "ERROR: Two digits are expected after \\x in line #%d of file \"%s\".\n", linenum, configFilePath);
-              exit(1);
-            }
-            break;
-          case '\0':
-          case '\n':
-          case '\r':
-          case '\f':
-            fprintf(stderr, "ERROR: Backslash is not allowed at the end of line (line #%d of file \"%s\").\n", linenum, configFilePath);
-            exit(1);
-          default:
-            fprintf(stderr, "ERROR: Unexpected character '%c' after backslash in line #%d of file \"%s\".\n", ch, linenum, configFilePath);
-            exit(1);
-          }
-        } else if (ch == '\0' || ch == '\n' || ch == '\r') {
-          fprintf(stderr, "ERROR: Unmatched quote ('\"') in line #%d of file \"%s\".\n", linenum, configFilePath);
-          exit(1);
-        }
-        value_len++;
-      }
-
-      ch = *++ptr;
-      if (ch == '\0' || ch == '\n' || ch == '\r' || ch == '\f' || ch == '#') {
-        p = NULL;
-      } else if (ch == ' ' || ch == '\t') {
-        p = ptr;
-      } else {
-        fprintf(stderr, "ERROR: Invalid quoted string in line #%d of file \"%s\".\n", linenum, configFilePath);
-        exit(1);
-      }
-
-      size_t new_size = sizeof(char)*(value_len+1);
-      if (buffer == NULL) {
-        buffer = (char*)malloc(new_size);
-        bufsize = new_size;
-      } else if (bufsize<=new_size) {
-        buffer = (char*)realloc(buffer, new_size);
-        bufsize = new_size;
-      }
-      if (buffer == NULL) {
-        fprintf(stderr, "ERROR: Out of memory\n");
-        exit(1);
-      }
-
-      char* out = buffer;
-      ptr = start;
-      while ((ch=*++ptr) !='"') {
-        if (ch == '\\') {
-          ch = *++ptr;
-          if (ch == '\0' || ch == '\n' || ch == '\r') {
-            fprintf(stderr, "ERROR: Unmatched quote ('\"') in line #%d of file \"%s\".\n", linenum, configFilePath);
-            exit(1);
-          }
-          switch ( ch) {
-          case '\\':
-          case '"':
-          case '\'':
-            break;
-          case 'n':
-            ch = '\n';
-            break;
-          case 't':
-            ch = '\t';
-            break;
-          case 'r':
-            ch = '\r';
-            break;
-          case 'f':
-            ch = '\f';
-            break;
-          case 'x':
-            ch = getHex(ptr, linenum, configFilePath);
-            break;
-          }
-        }
-        *out++ = ch;
-      }
-      *out++ = '\0';
-      length = value_len;
-      return buffer;
-    }
-
-    // started as unquoted
-    bool include_quotes = false;
-    bool inside_quotes = false;
-    int value_len = 0;
-    while ((ch=*p) != '\0' && ch != '\r' && ch != '\n' && ch!='\f') {
-      if (!inside_quotes) {
-        if (ch == ' ' || ch == '\t' || ch == '#') break;
-        if (ch == '=' && !include_quotes && key_len == 0) {
-          key_len = p-start;
-          if (key_len == 0) key_len = -1; // missing key but the argument still may be valid
-        }
-      }
-      p++;
-
-      if (ch == '"')  {
-        inside_quotes = !inside_quotes;
-        include_quotes = true;
-      } else {
-        if (ch == '\\') {
-          if (!inside_quotes) {
-            fprintf(stderr, "ERROR: Backslash is not allowed in unquoted strings (line #%d of file \"%s\").\n", linenum, configFilePath);
-            exit(1);
-          }
-          ch = *p++;
-          switch ( ch) {
-          case '\\':
-          case '"':
-          case '\'':
-          case 'n':
-          case 't':
-          case 'r':
-          case 'f':
-            break;
-          case 'x':
-            if (!isHex(*p++) || !isHex(*p++)) {
-              fprintf(stderr, "ERROR: Two digits are expected after \\x in line #%d of file \"%s\".\n", linenum, configFilePath);
-              exit(1);
-            }
-            break;
-          case '\0':
-          case '\n':
-          case '\r':
-          case '\f':
-            fprintf(stderr, "ERROR: Backslash is not allowed at the end of line (line #%d of file \"%s\").\n", linenum, configFilePath);
-            exit(1);
-          default:
-            fprintf(stderr, "ERROR: Unexpected character '%c' after backslash in line #%d of file \"%s\".\n", ch, linenum, configFilePath);
-            exit(1);
-          }
-        }
-        value_len++;
-      }
-    }
-    if (inside_quotes) {
-      fprintf(stderr, "ERROR: Unmatched quote ('\"') in line #%d of file \"%s\".\n", linenum, configFilePath);
-      exit(1);
-    }
-    if (!include_quotes && ch == '\0') {
-      length = p-start;
-      p = NULL;
-      return start;
-    }
-    quoted = include_quotes;
-    size_t new_size = sizeof(char)*(value_len+1);
-    if (buffer == NULL) {
-      buffer = (char*)malloc(new_size);
-      bufsize = new_size;
-    } else if (bufsize<=new_size) {
-      buffer = (char*)realloc(buffer, new_size);
-      bufsize = new_size;
-    }
-    if (buffer == NULL) {
-      fprintf(stderr, "ERROR: Out of memory\n");
-      exit(1);
-    }
-    if (!include_quotes) {
-      strncpy(buffer, start, value_len);
-      buffer[value_len] = '\0';
-    } else {
-      inside_quotes = false;
-      p = start;
-      char* pout = buffer;
-      while ((ch=*p++) != '\0' && ch != '\r' && ch != '\n' && ch!='\f') {
-        if (!inside_quotes && (ch == ' ' || ch == '\t' || ch == '#')) break;
-        if (ch == '"')  {
-          inside_quotes = !inside_quotes;
-        } else {
-          if (ch == '\\') {
-            ch = *p++;
-            switch ( ch) {
-            case '\\':
-            case '"':
-            case '\'':
-              break;
-            case 'n':
-              ch = '\n';
-              break;
-            case 't':
-              ch = '\t';
-              break;
-            case 'r':
-              ch = '\r';
-              break;
-            case 'f':
-              ch = '\f';
-              break;
-            case 'x':
-              ch = getHex(p, linenum, configFilePath);
-              break;
-            }
-          }
-          *pout++ = ch;
-        }
-      }
-      *pout = '\0';
-      value_len = pout-buffer;
-    }
-
-    if (ch=='\0' || ch == '\n' || ch == '\r' || ch == '\f' || ch == '#') p = NULL;
-    length = value_len;
-    return buffer;
-  }
-
-  //-------------------------------------------------------------
   static inline bool isHex(char ch) {
     return (ch>='0' && ch<='9') || (ch>='a' && ch<='f') || (ch>='A' && ch<='F');
   }
 
-  //-------------------------------------------------------------
-  static int getHex(char ch, int linenum, const char* configFilePath) {
-    if (ch>='0' && ch<='9') return (ch-'0');
-    if (ch>='a' && ch<='f') return (ch-'a')+10;
-    if (ch<'A' || ch>'F') {
-      fprintf(stderr, "ERROR: Invalid hex character '%c' in line #%d of file \"%s\".\n", ch, linenum, configFilePath);
-      exit(1);
-    }
-    return (ch-'A')+10;
-  }
-
-  static char getHex(const char*& p, int linenum, const char* configFilePath) {
-    int n = getHex(*p++, linenum, configFilePath);
-    n <<= 4;
-    n |= getHex(*p++, linenum, configFilePath);
-    return (char)n;
-  }
-
-  //-------------------------------------------------------------
-  static int16_t readInt(const char*& p) {
-    int16_t n = 0;
-
-    char ch;
-    while ((ch=*p)==' ') p++;
-
-    if (ch=='\0' || ch=='\n' || ch=='\r') return -1;
-
-    do {
-      n = n*10+(ch-'0');
-      ch = *++p;
-    } while (ch>='0' && ch<='9');
-
-    if (ch==',') p++;
-    return n;
-  }
-
-  //-------------------------------------------------------------
-  static uint32_t getUnsigned(const char*& p, int linenum, const char* configFilePath) {
-    if (skipBlanks(p) == NULL) {
-      fprintf(stderr, "ERROR: Missed unsigned integer argument in line #%d of file \"%s\".\n", linenum, configFilePath);
-      exit(1);
-    }
-
-    uint32_t result = 0;
-
-    char ch = *p;
-    if (ch>='0' && ch<='9') {
-      result = (ch-'0');
-    } else {
-      fprintf(stderr, "ERROR: Unsigned integer argument was expected in line #%d of file \"%s\".\n", linenum, configFilePath);
-      exit(1);
-    }
-
-    if ( result == 0 && *(p+1) == 'x') { // hex number
-      p += 2;
-      result = getHex(*p, linenum, configFilePath); // must be at least one hex digit
-      for ( int i=0; i<7; i++) {
-        ch = *++p;
-        if (ch == ' ' || ch == '\t' ) return result;
-        if (ch == '\0' || ch == '#' || ch == '\r' || ch == '\n' ) {
-          p = NULL;
-          return result;
-        }
-        result <<= 4;
-        result |= getHex(ch, linenum, configFilePath);
-      }
-      ch = *++p;
-      if (ch == ' ' || ch == '\t' ) return result;
-      if (ch != '\0' && ch != '#' && ch != '\r' && ch != '\n' ) {
-        fprintf(stderr, "ERROR: Invalid hex number in line #%d of file \"%s\".\n", linenum, configFilePath);
-        exit(1);
-      }
-      p = NULL;
-      return result;
-    }
-
-    while ( (ch=*++p)!='\0' && ch != '#' && ch != '\r' && ch != '\n') {
-      if (ch == ' ' || ch == '\t' ) return result;
-      if (ch>='0' && ch<='9') {
-        result = result*10 + (ch-'0');
-      } else {
-        fprintf(stderr, "ERROR: Unsigned integer argument was expected in line #%d of file \"%s\".\n", linenum, configFilePath);
-        exit(1);
-      }
-    }
-    p = NULL;
-    return result;
-  }
-
-  //-------------------------------------------------------------
-  static const char* clone(const char* str) {
-    if (str == NULL) return NULL;
-    int length = strlen(str);
-    if (length == 0) return EMPTY_STRING;
-    char* result = (char*)malloc((length+1)*sizeof(char));
-    strcpy(result, str);
-    return result;
-  }
-  static const char* make_str(const char* str, size_t length) {
-    if (str == NULL) return NULL;
-    if (length == 0) return EMPTY_STRING;
-    char* result = (char*)malloc((length+1)*sizeof(char));
-    strcpy(result, str);
-    return result;
-  }
-
 };
+
 #endif /* CONFIG_HPP_ */

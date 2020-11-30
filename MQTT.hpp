@@ -12,6 +12,8 @@
 #include <mosquittopp.h>
 #include <errno.h>
 
+class Config;
+
 class MqttPublisher: public mosqpp::mosquittopp {
 
 private:
@@ -30,11 +32,30 @@ public:
     this->id = id;
     this->port = port;
     this->host = host;
+    instance = this;
   }
 
   ~MqttPublisher() {
     if (connected) stop(true);
     mosqpp::lib_cleanup();   // Mosquitto library cleanup
+  }
+
+  static MqttPublisher* instance;
+
+  static bool create(Config& cfg);
+
+  static void destroy() {
+    if (instance != NULL) {
+      MqttPublisher* publisher = instance;
+      instance = NULL;
+      if (publisher->is_connected()) {
+        Log->log("Stopping MQTT publisher...");
+        publisher->stop(true);
+        Log->log("MQTT publisher has been stopped.");
+      }
+      Log->log("Destroying MQTT publisher...");
+      delete publisher;
+    }
   }
 
   bool start() {
@@ -128,5 +149,24 @@ private:
 
 };
 
+
+//-------------------------------------------------------------
+// MQTT rule definition
+
+class MqttRule : public AbstractRuleWithSchedule {
+public:
+  const char* mqttTopic;
+
+  MqttRule(SensorDef* sensor_def, Metric metric, const char* mqttTopic) : AbstractRuleWithSchedule(sensor_def, metric) {
+    this->mqttTopic = mqttTopic;
+  }
+
+  const char* getTypeName() {
+    return "MQTT rule";
+  }
+
+  void execute(const char* message, class Config& cfg);
+
+};
 
 #endif /* MQTT_HPP_ */

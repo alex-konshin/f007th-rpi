@@ -14,14 +14,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <signal.h>
-#include <getopt.h>
 
 #ifdef INCLUDE_HTTPD
-#ifdef USE_GPIO_TS
-#define MIN_HTTPD_PORT 1024
-#else
-#define MIN_HTTPD_PORT 1
-#endif
 #include <microhttpd.h>
 #endif
 
@@ -37,7 +31,7 @@
 #include <pigpio.h>
 #endif
 
-#define RF_RECEIVER_VERSION "4.1"
+#define RF_RECEIVER_VERSION "4.2"
 
 #include "Logger.hpp"
 #include "Bits.hpp"
@@ -104,17 +98,6 @@
 #ifndef DEFAULT_PIN
 #define DEFAULT_PIN 27
 #endif
-
-#ifndef ASSERT
-#ifdef  NDEBUG
-#define ASSERT(expr)     ((void)0)
-#define DBG(format, arg...)     ((void)0)
-#else
-#define PRINT_ASSERT(expr,file,line)  fputs("ASSERTION: ("#expr") in "#file" : " #line "\n", stderr)
-#define ASSERT(expr)  if(!(expr)) { PRINT_ASSERT(expr,__FILE__,__LINE__); /*assert(expr);*/ }
-#define DBG(format, arg...)  Log->info(format, ## arg)
-#endif // NDEBUG
-#endif //ASSERT
 
 class RFReceiver {
 
