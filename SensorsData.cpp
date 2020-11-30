@@ -8,31 +8,77 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <vector>
+
+#include "Logger.hpp"
+#include "Utils.hpp"
 #include "SensorsData.hpp"
+#include "Config.hpp"
 
 //-------------------------------------------------------------
+void ActionRule::execute(const char* message, class Config& cfg) {
+  bool debug = (cfg.options&VERBOSITY_DEBUG) != 0;
+  //bool verbose = (cfg.options&VERBOSITY_INFO) != 0;
+  if (debug) Log->info("====> %s \"%s\" => command: '%s'\n", getTypeName(), id, message);
 
-#define T2D_BUFFER_SIZE 13
-char* MessageInsert::t2d(int t, char* buffer, uint32_t& length) {
-  char* p = buffer+T2D_BUFFER_SIZE-1;
-  *p = '\0';
-  bool negative = t<0;
-  if (negative) t = -t;
-  int d = t%10;
-  if (d!=0) {
-    *--p = ('0'+d);
-    *--p = '.';
+  //system(message);
+  const char* p = message;
+  Logger* logger = Logger::defaultLogger;
+
+  std::vector<const char*> vargs;
+
+  char* arg_buffer = NULL;
+  size_t arg_bufsize = 0;
+  const char* raw_arg;
+  size_t arg_len = 0;
+  bool failed = false;
+  while ( (raw_arg=getString(p, arg_buffer, arg_bufsize, arg_len, NULL, NULL, &failed, logger)) !=NULL && !failed) {
+    const char* arg = make_str(raw_arg, arg_len);
+    vargs.push_back(arg);
   }
-  t = t/10;
-  do {
-    d = t%10;
-    *--p = ('0'+d);
-    t = t/10;
-  } while (t > 0);
-  if (negative) *--p = '-';
-  length = buffer+T2D_BUFFER_SIZE-1-p;
-  return p;
+  if (arg_buffer != NULL) free(arg_buffer);
+  if (failed) {
+    logger->error("Failed to parse system command: %s", message);
+  } else {
+
+    int argc = vargs.size();
+    if (argc == 0) {
+      logger->error("Empty command");
+    } else {
+
+      const char** args = (const char**)calloc(argc+1, sizeof(const char*));
+
+      int iarg = 0;
+      for (const char* arg : vargs) {
+        if (debug) logger->info("   args[%d] = \"%s\"",iarg,arg);
+        args[iarg++] = arg;
+      }
+      args[iarg] = NULL;
+
+      pid_t pid;
+
+      if ((pid = fork()) == -1) {
+         perror("fork() error");
+      } else if (pid == 0) {
+         execvp(args[0], (char *const*)args);
+         logger->error("Error on execvp().");
+         exit(2);
+      }
+
+      free((void*)args);
+    }
+  }
+  if (!vargs.empty()) {
+    for (const char* arg : vargs) {
+      free((void*)arg);
+    }
+    vargs.clear();
+  }
+
 }
+
+//-------------------------------------------------------------
 
 void MessageInsert::append(char*& output, uint32_t& remain, const char* str, uint32_t len) {
   if (len == 0 || remain <= 0) return;
@@ -84,6 +130,20 @@ void MessageInsert::append(char*& output, uint32_t& remain, struct SensorData* d
     str = t2d(intValue, t2d_buffer, len);
     append(output, remain, str, len);
     break;
+
+  case MessageInsertType::TemperaturedF:
+    if (remain < 5 || data == NULL) break;
+    intValue = data->getTemperatureFx10();
+    str = i2a(intValue, t2d_buffer, len);
+    append(output, remain, str, len);
+    break;
+
+  case MessageInsertType::TemperaturedC:
+    if (remain < 5 || data == NULL) break;
+    intValue = data->getTemperatureCx10();
+    str = i2a(intValue, t2d_buffer, len);
+    append(output, remain, str, len);
+    break;
   }
 }
 
@@ -96,3 +156,6 @@ uint32_t MessageInsert::formatMessage(char* buffer, uint32_t buffer_size, const 
   *output = '\0';
   return output-buffer;
 }
+
+
+

@@ -43,7 +43,7 @@ all: test_decode
 test_decode: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: Cross G++ Linker'
-	g++ -pthread -o "test_decode" $(OBJS) $(USER_OBJS) $(LIBS)
+	C:\Windows\Sysnative\wsl.exe g++ -pthread -o "test_decode" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 

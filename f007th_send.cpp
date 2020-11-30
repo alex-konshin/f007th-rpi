@@ -13,10 +13,6 @@
 #include "SensorsData.hpp"
 #include "Config.hpp"
 
-#ifdef INCLUDE_MQTT
-#include "MQTT.hpp"
-#endif
-
 static bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer, char* response_buffer, FILE* log);
 
 #ifdef INCLUDE_HTTPD
@@ -24,6 +20,9 @@ static struct MHD_Daemon* start_httpd(int port, SensorsData* sensorsData);
 static void stop_httpd(struct MHD_Daemon* httpd);
 #endif
 
+const char* Config::getVersion() {
+  return RF_RECEIVER_VERSION;
+}
 
 int main(int argc, char *argv[]) {
 
@@ -87,23 +86,17 @@ int main(int argc, char *argv[]) {
 #endif
 
 #ifdef INCLUDE_MQTT
-#define MQTT_MESSAGE_MAX_SIZE 512
-  MqttPublisher* mqtt_publisher = NULL;
-  char mqtt_message_buffer[MQTT_MESSAGE_MAX_SIZE];
-
-  if (cfg.mqtt_enable) {
-    Log->log("Starting MQTT publisher to broker %s:%d...", cfg.mqtt_broker_host, cfg.mqtt_broker_port);
-    mqtt_publisher = new MqttPublisher(cfg.mqtt_client_id, cfg.mqtt_broker_host, cfg.mqtt_broker_port);
-    if (!mqtt_publisher->start()) {
-      Log->error("Could not connect to MQTT broker.");
-      fclose(log);
-      exit(1);
-    }
+  if (!MqttPublisher::create(cfg)) {
+    fclose(log);
+    exit(1);
   }
 #endif
 
   if ((cfg.options&VERBOSITY_PRINT_STATISTICS) != 0)
     receiver.printStatisticsPeriodically(1000); // print statistics every second
+
+#define RULE_MESSAGE_MAX_SIZE 4096
+  char rule_message_buffer[RULE_MESSAGE_MAX_SIZE];
 
   if ((cfg.options&VERBOSITY_INFO) != 0) fputs("Receiving data...\n", stderr);
   while(!receiver.isStopped()) {
@@ -136,9 +129,7 @@ int main(int argc, char *argv[]) {
         bool isValid = message.isValid();
         int changed = isValid ? message.update(sensorsData, cfg.max_unchanged_gap) : 0;
         if (changed != TIME_NOT_CHANGED) {
-#ifdef INCLUDE_MQTT
           int really_changed = changed;
-#endif
           if (changed == 0 && !cfg.changes_only && (isValid || (cfg.server_type != ServerType::InfluxDB && cfg.server_type != ServerType::NONE)))
             changed = TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED | BATTERY_STATUS_IS_CHANGED;
           if (changed != 0) {
@@ -165,29 +156,24 @@ int main(int argc, char *argv[]) {
             }
           }
 
-#ifdef INCLUDE_MQTT
-          if (isValid && mqtt_publisher != NULL) {
+          if (isValid) {
             SensorData* sensorData = &message.data->sensorData;
             SensorDef* sensorDef = sensorData->def;
             if (sensorDef != NULL) {
-              MqttRule* mqtt_rule = sensorDef->getMqttRules();
-              while (mqtt_rule != NULL) {
-                BoundCheckResult checkResult = sensorData->checkMqqtRule(mqtt_rule, really_changed);
+              bool debug = (cfg.options&VERBOSITY_DEBUG) != 0;
+              AbstractRuleWithSchedule* rule = sensorDef->getRules();
+              while (rule != NULL) {
+                BoundCheckResult checkResult = sensorData->checkRule(rule, really_changed);
                 if (checkResult != BoundCheckResult::Locked && checkResult != BoundCheckResult::NotApplicable) {
-                  //TODO
-                  if ((cfg.options&VERBOSITY_DEBUG) != 0) Log->info("MQTT rule \"%s\" => MATCHED.", mqtt_rule->id);
-                  uint32_t size = mqtt_rule->formatMessage(mqtt_message_buffer, MQTT_MESSAGE_MAX_SIZE, checkResult, sensorData);
-                  if (size > 0) {
-                    if ((cfg.options&VERBOSITY_DEBUG) != 0) Log->info("MQTT rule \"%s\" => topic=\"%s\" message=\"%s\".\n", mqtt_rule->id, mqtt_rule->mqttTopic, mqtt_message_buffer);
-                    mqtt_publisher->publish_message(mqtt_rule->mqttTopic, mqtt_message_buffer);
-                  }
-                  mqtt_rule->applyLocks(checkResult);
+                  if (debug) Log->info("%s \"%s\" => MATCHED.", rule->getTypeName(), rule->id);
+                  uint32_t size = rule->formatMessage(rule_message_buffer, RULE_MESSAGE_MAX_SIZE, checkResult, sensorData);
+                  if (size > 0) rule->execute(rule_message_buffer, cfg);
+                  rule->applyLocks(checkResult);
                 }
-                mqtt_rule = mqtt_rule->next;
+                rule = rule->next;
               }
             }
           }
-#endif
 
         }
       }
@@ -200,16 +186,7 @@ int main(int argc, char *argv[]) {
   }
 
 #ifdef INCLUDE_MQTT
-  if (mqtt_publisher != NULL) {
-    if (mqtt_publisher->is_connected()) {
-      Log->log("Stopping MQTT publisher...");
-      mqtt_publisher->stop(true);
-      Log->log("MQTT publisher has been stopped.");
-    }
-    Log->log("Destroying MQTT publisher...");
-    delete mqtt_publisher;
-    mqtt_publisher = NULL;
-  }
+  MqttPublisher::destroy();
 #endif
 
 #ifdef INCLUDE_HTTPD

@@ -1724,4 +1724,3 @@ void RFReceiver::printDebugStatistics() {
       interrupted, sequences, skipped, dropped, corrected, sequence_pool_overflow);
 #endif
 }
-
