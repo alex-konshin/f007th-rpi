@@ -17,7 +17,7 @@
 
 class ProtocolF007TH : public Protocol {
 
-  ProtocolF007TH() : Protocol(PROTOCOL_F007TH, PROTOCOL_INDEX_F007TH) {
+  ProtocolF007TH() : Protocol(PROTOCOL_F007TH, PROTOCOL_INDEX_F007TH, "F007TH") {
   }
 
   uint32_t getId(SensorData* data) {
@@ -183,6 +183,7 @@ class ProtocolF007TH : public Protocol {
 #pragma GCC diagnostic pop
 
   bool decodeManchester(ReceivedData* message, Bits& bitSet) {
+    DBG("ProtocolF007TH::decodeManchester()");
     message->protocol_tried_manchester |= 1<<PROTOCOL_INDEX_F007TH;
     return Protocol::decodeManchester(message, bitSet, MIN_DURATION_F007TH, MAX_HALF_DURATION);
   }

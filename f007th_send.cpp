@@ -109,17 +109,14 @@ int main(int argc, char *argv[]) {
       if ((cfg.options&VERBOSITY_DEBUG) != 0 || ((cfg.options&VERBOSITY_PRINT_UNDECODED) != 0 && message.isUndecoded())) {
         message.print(stdout, cfg.options);
         is_message_printed = true;
-        Protocol::printManchesterBits(message, stdout);
-        if (message.print(log, cfg.options)) {
-          Protocol::printManchesterBits(message, log);
-          fflush(log);
-        }
+        FILE* log_file = NULL;
+        if (message.print(log, cfg.options)) log_file = log;
+        Protocol::printManchesterBits(message, stdout, log_file);
       } else if ((cfg.options&VERBOSITY_INFO) != 0) {
         message.print(stdout, cfg.options);
         is_message_printed = true;
         if (message.print(log, cfg.options)) fflush(log);
       }
-
       if (message.isEmpty()) {
         fputs("ERROR: Missing data.\n", stderr);
       } else if (message.isUndecoded()) {

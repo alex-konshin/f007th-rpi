@@ -17,7 +17,7 @@
 
 class ProtocolHG02832 : public Protocol {
 
-  ProtocolHG02832() : Protocol(PROTOCOL_HG02832, PROTOCOL_INDEX_HG02832) {
+  ProtocolHG02832() : Protocol(PROTOCOL_HG02832, PROTOCOL_INDEX_HG02832, "HG02832") {
   }
 
   uint32_t getId(SensorData* data) {

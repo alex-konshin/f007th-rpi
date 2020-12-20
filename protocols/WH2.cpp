@@ -21,7 +21,7 @@
 class ProtocolWH2 : public Protocol {
 public:
 
-  ProtocolWH2() : Protocol(PROTOCOL_WH2, PROTOCOL_INDEX_WH2) {
+  ProtocolWH2() : Protocol(PROTOCOL_WH2, PROTOCOL_INDEX_WH2, "WH2") {
   }
 
   static ProtocolWH2* instance;

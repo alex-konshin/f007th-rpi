@@ -16,7 +16,7 @@
 
 class ProtocolTX7U : public Protocol {
 
-  ProtocolTX7U() : Protocol(PROTOCOL_TX7U, PROTOCOL_INDEX_TX7U) {
+  ProtocolTX7U() : Protocol(PROTOCOL_TX7U, PROTOCOL_INDEX_TX7U, "TX7U") {
   }
   static ProtocolTX7U* instance;
 

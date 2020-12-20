@@ -15,7 +15,7 @@
 
 class Protocol00592TXR : public Protocol {
 public:
-  Protocol00592TXR() : Protocol(PROTOCOL_00592TXR,PROTOCOL_INDEX_00592TXR) {
+  Protocol00592TXR() : Protocol(PROTOCOL_00592TXR, PROTOCOL_INDEX_00592TXR, "00592TXR") {
   }
 
   static Protocol00592TXR* instance;

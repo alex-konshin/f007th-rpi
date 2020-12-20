@@ -155,7 +155,7 @@ static int process_params(HTTPD* httpd, struct MHD_Connection* connection, const
 }
 
 //-------------------------------------------------------------
-static SensorData* find_requested_sensor_data(const char* name, SensorsData* sensorsData) {
+static SensorDataStored* find_requested_sensor_data(const char* name, SensorsData* sensorsData) {
   const char* p = name;
   if (sensorsData == NULL || p == NULL || *p=='\0') return NULL;
 /*
@@ -403,7 +403,7 @@ static int process_request(
           x10 = false;
         }
 
-        SensorData* sensorData = find_requested_sensor_data(p, sensorsData);
+        SensorDataStored* sensorData = find_requested_sensor_data(p, sensorsData);
         if (sensorData == NULL) return error_data_not_found(connection);
         if (!sensorData->hasTemperature()) return error_not_supported(connection);
 
@@ -474,7 +474,7 @@ static int process_request(
         int result = process_params(httpd, connection, p, request_params(humidity_history), max_number_of_params(humidity_history), params, success);
         if (!success) return result;
 
-        SensorData* sensorData = find_requested_sensor_data(p, sensorsData);
+        SensorDataStored* sensorData = find_requested_sensor_data(p, sensorsData);
         if (sensorData == NULL) return error_data_not_found(connection);
         if (!sensorData->hasHumidity()) return error_not_supported(connection);
 

@@ -208,12 +208,12 @@ public:
   }
 
   bool print(FILE* file, int options) {
+    if (data == NULL) return false;
+
     bool print_details = (options&VERBOSITY_PRINT_DETAILS) != 0;
     bool print_undecoded = (options&VERBOSITY_PRINT_UNDECODED) != 0;
 
-    if (data == __null) return false;
-
-    if (file == __null) file = stdout;
+    if (file == NULL) file = stdout;
 
     // print timestamp
     char dt[32];
@@ -469,7 +469,7 @@ public:
   }
 
   int update(SensorsData& sensorsData, time_t max_unchanged_gap) {
-    is_sensor_def_set = true;
+    getSensorDef(); // sets is_sensor_def_set = true;
     return sensorsData.update(&data->sensorData, data_time, max_unchanged_gap);
   }
 };
