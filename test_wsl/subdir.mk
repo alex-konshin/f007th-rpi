@@ -4,27 +4,12 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 CPP_SRCS += \
-../Logger.cpp \
-../MQTT.cpp \
-../RFReceiver.cpp \
-../SensorsData.cpp \
-../Utils.cpp \
 ../f007th_send.cpp 
 
 OBJS += \
-./Logger.o \
-./MQTT.o \
-./RFReceiver.o \
-./SensorsData.o \
-./Utils.o \
 ./f007th_send.o 
 
 CPP_DEPS += \
-./Logger.d \
-./MQTT.d \
-./RFReceiver.d \
-./SensorsData.d \
-./Utils.d \
 ./f007th_send.d 
 
 
