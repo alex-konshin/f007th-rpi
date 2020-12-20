@@ -183,9 +183,10 @@ class ProtocolF007TH : public Protocol {
 #pragma GCC diagnostic pop
 
   bool decodeManchester(ReceivedData* message, Bits& bitSet) {
-    DBG("ProtocolF007TH::decodeManchester()");
+    //DBG("ProtocolF007TH::decodeManchester()");
+    if (!Protocol::decodeManchester(message, bitSet, MIN_DURATION_F007TH, MAX_HALF_DURATION) ) return false;
     message->protocol_tried_manchester |= 1<<PROTOCOL_INDEX_F007TH;
-    return Protocol::decodeManchester(message, bitSet, MIN_DURATION_F007TH, MAX_HALF_DURATION);
+    return true;
   }
 
 };

@@ -122,16 +122,16 @@ bool Protocol::printManchesterBits(ReceivedMessage& message, FILE* file, FILE* f
   if ( protocol == NULL || (message.data->detailedDecodingStatus[PROTOCOL_INDEX_F007TH] & 7)!=0 ) return false;
   if ((message.data->protocol_tried_manchester&(1<<protocol->protocol_index)) == 0) return false;
 
-  fprintf(file, "  Manchester decoding was successful\n");
-  if (file2 != NULL) {
-    fprintf(file2, "  Manchester decoding was successful\n");
-    fflush(file2);
-  }
-
   // Manchester decoding was successful. Print bits...
   uint16_t decodingStatus = message.data->decodingStatus;
   Bits bits(message.data->iSequenceSize+1);
   if (protocol->decodeManchester(message.data, bits)) {
+    fprintf(file, "  Manchester decoding was successful\n");
+    if (file2 != NULL) {
+      fprintf(file2, "  Manchester decoding was successful\n");
+      fflush(file2);
+    }
+
     ReceivedMessage::printBits(file, &bits);
     if (file2 != NULL) {
       ReceivedMessage::printBits(file2, &bits);
