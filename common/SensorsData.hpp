@@ -459,10 +459,9 @@ typedef struct HistoryData {
     char* ptr = (char*)resize_buffer(required_buffer_size, buffer, buffer_size)+start;
     size_t remain = buffer_size-start;
 
-    int32_t converted_value;
+    int32_t converted_value = value;
     switch (convertion) {
     case ValueConversion::None:
-      converted_value = value;
       break;
     case ValueConversion::F2C:
       converted_value = ((value-320)*5)/9;
