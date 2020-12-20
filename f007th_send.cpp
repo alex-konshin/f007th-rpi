@@ -7,18 +7,18 @@
  * @author Alex Konshin <akonshin@gmail.com>
  */
 
-#include "RFReceiver.hpp"
+#include "common/RFReceiver.hpp"
 #include <curl/curl.h>
 
-#include "SensorsData.hpp"
-#include "Config.hpp"
+#include "common/SensorsData.hpp"
+#include "common/Config.hpp"
+
+#ifdef INCLUDE_HTTPD
+#include "utils/HTTPD.hpp"
+#endif
 
 static bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer, char* response_buffer, FILE* log);
 
-#ifdef INCLUDE_HTTPD
-static struct MHD_Daemon* start_httpd(int port, SensorsData* sensorsData);
-static void stop_httpd(struct MHD_Daemon* httpd);
-#endif
 
 const char* Config::getVersion() {
   return RF_RECEIVER_VERSION;
@@ -71,12 +71,12 @@ int main(int argc, char *argv[]) {
   receiver.enableReceive();
 
 #ifdef INCLUDE_HTTPD
-  struct MHD_Daemon* httpd = NULL;
+  HTTPD* httpd = NULL;
 
   if (cfg.httpd_port >= MIN_HTTPD_PORT && cfg.httpd_port<65535) {
     // start HTTPD server
     Log->log("Starting HTTPD server on port %d...", cfg.httpd_port);
-    httpd = start_httpd(cfg.httpd_port, &sensorsData);
+    httpd = HTTPD::start(&sensorsData, &cfg);
     if (httpd == NULL) {
       Log->error("Could not start HTTPD server on port %d.", cfg.httpd_port);
       fclose(log);
@@ -109,9 +109,9 @@ int main(int argc, char *argv[]) {
       if ((cfg.options&VERBOSITY_DEBUG) != 0 || ((cfg.options&VERBOSITY_PRINT_UNDECODED) != 0 && message.isUndecoded())) {
         message.print(stdout, cfg.options);
         is_message_printed = true;
-        receiver.printManchesterBits(message, stdout);
+        Protocol::printManchesterBits(message, stdout);
         if (message.print(log, cfg.options)) {
-          receiver.printManchesterBits(message, log);
+          Protocol::printManchesterBits(message, log);
           fflush(log);
         }
       } else if ((cfg.options&VERBOSITY_INFO) != 0) {
@@ -190,8 +190,7 @@ int main(int argc, char *argv[]) {
 #endif
 
 #ifdef INCLUDE_HTTPD
-  if ((cfg.options&VERBOSITY_INFO) != 0) Log->log("Stopping HTTPD server...");
-  stop_httpd(httpd);
+  HTTPD::destroy(httpd);
 #endif
 
   if ((cfg.options&VERBOSITY_INFO) != 0) fputs("\nExiting...\n", stderr);
@@ -337,70 +336,5 @@ bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer,
   return success;
 }
 
-#ifdef INCLUDE_HTTPD
-/*
- * Handling HTTP requests
- */
-
-static int ahc_echo(
-    void* cls,
-    struct MHD_Connection * connection,
-    const char* url,
-    const char* method,
-    const char* version,
-    const char* upload_data,
-    size_t* upload_data_size,
-    void** ptr
-) {
-  static int dummy;
-  SensorsData* sensorsData = (SensorsData*)cls;
-  struct MHD_Response* response;
-  int ret;
-
-  if (strcmp(method, "GET") != 0) return MHD_NO; /* unexpected method */
-  if (&dummy != *ptr) {
-    /* The first time only the headers are valid, do not respond in the first round... */
-    *ptr = &dummy;
-    return MHD_YES;
-  }
-  if (0 != *upload_data_size) return MHD_NO; /* upload data in a GET!? */
-
-  *ptr = NULL; /* clear context pointer */
-  void* buffer = __null;
-  size_t buffer_size = 0;
-
-  size_t data_size = sensorsData->generateJson(buffer, buffer_size);
-  if (data_size == 0)
-    response = MHD_create_response_from_buffer(2, (void*)"[]", MHD_RESPMEM_PERSISTENT);
-  else
-    response = MHD_create_response_from_buffer(data_size, buffer, MHD_RESPMEM_MUST_FREE);
-  MHD_add_response_header(response, "Content-Type", "application/json");
-
-  ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
-  MHD_destroy_response(response);
-  return ret;
-}
-
-struct MHD_Daemon* start_httpd(int port, SensorsData* sensorsData) {
-  struct MHD_Daemon* httpd;
-  httpd =
-      MHD_start_daemon(
-          MHD_USE_THREAD_PER_CONNECTION,
-          port,
-          NULL,
-          NULL,
-          &ahc_echo,
-          (void*)sensorsData,
-          MHD_OPTION_END
-      );
-
-  return httpd;
-}
-
-void stop_httpd(struct MHD_Daemon* httpd) {
-  MHD_stop_daemon(httpd);
-}
-
-#endif
 
 
