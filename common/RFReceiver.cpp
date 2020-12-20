@@ -781,6 +781,7 @@ void RFReceiver::decoder() {
     for (int protocol_index = 0; protocol_index<NUMBER_OF_PROTOCOLS; protocol_index++) {
       Protocol* protocol = Protocol::protocols[protocol_index];
       if (protocol != NULL && (protocol->protocol_bit&protocols) != 0) {
+        //DBG("  calling Protocol%s::decode()", protocol->protocol_class);
         decoded = protocol->decode(message);
         message->detailedDecodingStatus[protocol_index] = message->decodingStatus;
         message->detailedDecodedBits[protocol_index] = message->decodedBits;

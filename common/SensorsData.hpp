@@ -313,7 +313,7 @@ public:
   const char* name;
   const char* quoted;
   const char* influxdb_quoted;
-  SensorData* data;
+  struct SensorDataStored* data;
 
   static SensorDef* find(uint32_t id) {
     for (SensorDef* p = sensorDefs; p != NULL; p = p->next) {
@@ -620,9 +620,6 @@ typedef struct SensorData {
   Protocol* protocol;
   time_t data_time;
 
-  History temperatureHistory;
-  History humidityHistory;
-
   union {
     uint64_t u64;
     uint32_t nF007TH; // F007TH data - 4 bytes
@@ -643,6 +640,12 @@ typedef struct SensorData {
   };
 
 public:
+  void copyFrom(SensorData* data) {
+    def = data->def;
+    protocol = data->protocol;
+    data_time = data->data_time;
+    fields = data->fields;
+  }
 
   uint32_t getId() { return protocol == NULL ? 0 : protocol->getId(this); }
 
@@ -788,24 +791,29 @@ protected:
 
 } SensorData;
 
+typedef struct SensorDataStored : SensorData  {
+  History temperatureHistory;
+  History humidityHistory;
+} SensorDataStored;
+
 //-------------------------------------------------------------
 
 class SensorsData {
 private:
   std::mutex items_mutex;
-  SensorData** items;
+  SensorDataStored** items;
   int size;
 #define SENSORS_DATA_INITIAL_CAPACITY 32
   int capacity;
   int options;
 
-  SensorData* add(SensorData* data, time_t& data_time) {
-    SensorData* new_item = (SensorData*)calloc(1, sizeof(SensorData));
+  SensorDataStored* add(SensorData* data, time_t& data_time) {
+    SensorDataStored* new_item = (SensorDataStored*)calloc(1, sizeof(SensorDataStored));
     if (new_item == NULL) {
       Log->error("Out of memory");
       return NULL;
     }
-    memcpy((void*)new_item, (void*)data, sizeof(SensorData));
+    new_item->copyFrom(data);
 
     items_mutex.lock();
 
@@ -813,7 +821,7 @@ private:
     int new_size = size+1;
     if (new_size > capacity) {
       int new_capacity = capacity + 8;
-      SensorData** new_items = (SensorData**)realloc(items, new_capacity*sizeof(SensorData*));
+      SensorDataStored** new_items = (SensorDataStored**)realloc(items, new_capacity*sizeof(SensorDataStored*));
       if (new_items != NULL) {
         items_mutex.unlock();
         Log->error("Out of memory");
@@ -841,13 +849,13 @@ private:
     return new_item;
   }
 
-  SensorData** getSnapshot(int& count) {
-    SensorData** result = NULL;
+  SensorDataStored** getSnapshot(int& count) {
+    SensorDataStored** result = NULL;
     count = 0;
     items_mutex.lock();
     if (size > 0) {
-      size_t copy_size = size*sizeof(SensorData*);
-      result = (SensorData**)malloc(copy_size);
+      size_t copy_size = size*sizeof(SensorDataStored*);
+      result = (SensorDataStored**)malloc(copy_size);
       if (result != NULL) {
         memcpy(result, items, copy_size);
         count = size;
@@ -857,7 +865,7 @@ private:
     return result;
   }
 
-  size_t generateJsonAllData(SensorData** items, int nItems, void*& buffer, size_t& buffer_size) {
+  size_t generateJsonAllData(SensorDataStored** items, int nItems, void*& buffer, size_t& buffer_size) {
     size_t required_buffer_size = nItems*(JSON_SIZE_PER_ITEM_ALLDATA+2)-2+5;
     char* ptr = (char*)resize_buffer(required_buffer_size, buffer, buffer_size);
     size_t len;
@@ -870,7 +878,7 @@ private:
     for (int index=0; index<nItems; index++) {
       required_buffer_size = total_len + (nItems-index)*(JSON_SIZE_PER_ITEM_ALLDATA+2);
       ptr = (char*)resize_buffer(required_buffer_size, buffer, buffer_size)+total_len;
-      SensorData* sensorData = items[index];
+      SensorDataStored* sensorData = items[index];
       if (sensorData == NULL) continue;
       if (total_len > 2) {
         ptr[0] = ',';
@@ -899,14 +907,14 @@ private:
 
 public:
   SensorsData(int options) {
-    items = (SensorData**)calloc(SENSORS_DATA_INITIAL_CAPACITY, sizeof(SensorData*));
+    items = (SensorDataStored**)calloc(SENSORS_DATA_INITIAL_CAPACITY, sizeof(SensorDataStored*));
     capacity = SENSORS_DATA_INITIAL_CAPACITY;
     size = 0;
     this->options = options;
   }
   SensorsData(int capacity, int options) {
     if (capacity <= 0) capacity = SENSORS_DATA_INITIAL_CAPACITY;
-    items = (SensorData**)calloc(capacity, sizeof(SensorData*));
+    items = (SensorDataStored**)calloc(capacity, sizeof(SensorDataStored*));
     this->capacity = capacity;
     size = 0;
     this->options = options;
@@ -916,7 +924,7 @@ public:
     items_mutex.lock();
     if ( items != NULL) {
       for (int index = 0; index<size; index++) {
-        SensorData* item = items[index];
+        SensorDataStored* item = items[index];
         if (item != NULL) {
           free(item);
           items[index] = NULL;
@@ -934,12 +942,12 @@ public:
 
   int getOptions() { return options; }
 
-  SensorData* getData(Protocol* protocol, int channel, uint8_t rolling_code = -1) {
+  SensorDataStored* getData(Protocol* protocol, int channel, uint8_t rolling_code = -1) {
     if (protocol == NULL) return NULL;
-    SensorData* result = NULL;
+    SensorDataStored* result = NULL;
     items_mutex.lock();
     for (int index = 0; index<size; index++) {
-      SensorData* p = items[index];
+      SensorDataStored* p = items[index];
       if (p != NULL && p->protocol == protocol && protocol->sameId(p, channel, rolling_code)) {
         result = p;
         break;
@@ -949,13 +957,13 @@ public:
     return result;
   }
 
-  SensorData* find(SensorData* sensorData) {
-    SensorData* result = NULL;
+  SensorDataStored* find(SensorData* sensorData) {
+    SensorDataStored* result = NULL;
     Protocol* protocol = sensorData->protocol;
     if (protocol != NULL ) {
       items_mutex.lock();
       for (int index = 0; index<size; index++) {
-        SensorData* p = items[index];
+        SensorDataStored* p = items[index];
         if (p != NULL && protocol == p->protocol && protocol->equals(sensorData, p)) {
           result = p;
           break;
@@ -967,25 +975,25 @@ public:
   }
 
   // Find sensor data by the name defined in the config
-  SensorData* find(const char* name) {
+  SensorDataStored* find(const char* name) {
     if (name == NULL || *name == '\0') return NULL;
     SensorDef* def = SensorDef::find(name);
     return def == NULL ? NULL : find(def);
   }
 
-  SensorData* find(const char* name, size_t name_len) {
+  SensorDataStored* find(const char* name, size_t name_len) {
     if (name == NULL || name_len == 0 || *name == '\0') return NULL;
     SensorDef* def = SensorDef::find(name, name_len);
     return def == NULL ? NULL : find(def);
   }
 
-  SensorData* find(SensorDef* def) {
+  SensorDataStored* find(SensorDef* def) {
     if (def == NULL) return NULL;
-    SensorData* result = def->data;
+    SensorDataStored* result = def->data;
     if (result == NULL) {
       items_mutex.lock();
       for (int index = 0; index<size; index++) {
-        SensorData* sensorData = items[index];
+        SensorDataStored* sensorData = items[index];
         if (sensorData != NULL && sensorData->def == def) {
           result = sensorData;
           def->data = sensorData;
@@ -1002,7 +1010,7 @@ public:
     if (protocol == NULL) return 0;
 
     int changed;
-    SensorData* item = find(sensorData);
+    SensorDataStored* item = find(sensorData);
     if (item != NULL) {
       changed = protocol->update(sensorData, item, data_time, max_unchanged_gap);
     } else {
@@ -1029,7 +1037,7 @@ public:
 
   size_t generateJsonAllData(void*& buffer, size_t& buffer_size) {
     int nItems = 0;
-    SensorData** snapshot = getSnapshot(nItems);
+    SensorDataStored** snapshot = getSnapshot(nItems);
     if (snapshot== NULL || nItems <= 0) return 0;
 
     size_t result = generateJsonAllData(snapshot, nItems, buffer, buffer_size);
@@ -1040,7 +1048,7 @@ public:
 
   size_t generateJson(void*& buffer, size_t& buffer_size, RestRequestType requestType) {
     int nItems = 0;
-    SensorData** snapshot = getSnapshot(nItems);
+    SensorDataStored** snapshot = getSnapshot(nItems);
     if (items== NULL || nItems <= 0) return 0;
 
     size_t result;
@@ -1062,7 +1070,7 @@ public:
       for (int index=0; index<nItems; index++) {
         required_buffer_size = total_len + (nItems-index)*(JSON_SIZE_PER_ITEM+2)+1;
         char* ptr = (char*)resize_buffer(required_buffer_size, buffer, buffer_size);
-        SensorData* sensorData = snapshot[index];
+        SensorDataStored* sensorData = snapshot[index];
         if (sensorData == __null) continue;
         if (total_len > 2) {
           ptr[0] = ',';

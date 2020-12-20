@@ -71,8 +71,9 @@ public:
 
   uint8_t protocol_bit;
   uint8_t protocol_index;
+  const char* protocol_class;
 
-  Protocol(uint8_t protocol_bit, uint8_t protocol_index) : protocol_bit(protocol_bit), protocol_index(protocol_index) {
+  Protocol(uint8_t protocol_bit, uint8_t protocol_index, const char* protocol_class) : protocol_bit(protocol_bit), protocol_index(protocol_index), protocol_class(protocol_class) {
     registerProtocol(this);
   }
   virtual ~Protocol() {}
@@ -134,7 +135,7 @@ public:
   virtual bool decode(ReceivedData* message) { return false; }
 
   virtual bool decodeManchester(ReceivedData* message, Bits& bitSet) { return false; }
-  static bool printManchesterBits(ReceivedMessage& message, FILE* file);
+  static bool printManchesterBits(ReceivedMessage& message, FILE* file, FILE* file2);
 protected:
   static bool decodeManchester(ReceivedData* message, Bits& bitSet, int min_duration, int max_half_duration);
   static bool decodeManchester(ReceivedData* message, int startIndex, int endIndex, Bits& bitSet, int max_half_duration);
