@@ -6,6 +6,7 @@
 
 #include "RFReceiver.hpp"
 #include "../protocols/Protocol.hpp"
+#include "Config.hpp"
 #include <mutex>
 
 bool RFReceiver::isLibInitialized = false;
