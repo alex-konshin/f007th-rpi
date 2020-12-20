@@ -19,6 +19,7 @@ typedef struct ReceivedData {
   uint32_t uSequenceStartTime;
   SensorData sensorData;
 
+  long protocol_tried_manchester;
   uint16_t decodingStatus;
   uint16_t decodedBits;
 
