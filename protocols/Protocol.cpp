@@ -117,8 +117,11 @@ bool Protocol::decodeManchester(ReceivedData* message, int startIndex, int endIn
 }
 
 bool Protocol::printManchesterBits(ReceivedMessage& message, FILE* file) {
+  // FIXME rewrite it
   Protocol* protocol = protocols[PROTOCOL_INDEX_F007TH];
   if ( protocol == NULL || (message.data->detailedDecodingStatus[PROTOCOL_INDEX_F007TH] & 7)!=0 ) return false;
+  if ((message.data->protocol_tried_manchester&(1<<protocol->protocol_index)) == 0) return false;
+
   fprintf(file, "  Manchester decoding was successful\n");
   // Manchester decoding was successful. Print bits...
   uint16_t decodingStatus = message.data->decodingStatus;
