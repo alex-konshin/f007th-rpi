@@ -13,6 +13,15 @@
 
 #define T2D_BUFFER_SIZE 13
 
+
+#define TIME2STR_BUFFER_SIZE 128
+
+  /*
+     char dt[TIME2STR_BUFFER_SIZE];
+     const char* str = convert_time(&data_time, dt, TIME2STR_BUFFER_SIZE, utc);
+   */
+  const char* convert_time(time_t* data_time, char* buffer, size_t buffer_size, bool utc);
+
   char* t2d(int t, char* buffer, uint32_t& length);
   char* i2a(int n, char* buffer, uint32_t& length);
 

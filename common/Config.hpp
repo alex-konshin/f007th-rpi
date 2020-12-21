@@ -53,13 +53,16 @@
 #define MIN_HTTPD_PORT 1
 #endif
 
-#endif
+#endif // INCLUDE_HTTPD
 
 #ifdef INCLUDE_MQTT
 #include "../utils/MQTT.hpp"
 #endif
 
+#define MAX_SENSOR_NAME_LEN 64
+
 #include "ConfigParser.hpp"
+
 
 
 #define is_cmd(cmd,opt,opt_len) (opt_len == (sizeof(cmd)-1) && strncmp(cmd, opt, opt_len) == 0)
@@ -907,6 +910,8 @@ private:
     if (sensor_id == 0) errorLogger->error("Invalid descriptor of sensor");
 
     size_t name_len = name == NULL ? 0 : strlen(name);
+    if (name_len > MAX_SENSOR_NAME_LEN) errorLogger->error("The name of the sensor is too long (max length is %d", MAX_SENSOR_NAME_LEN);
+
     SensorDef* def = NULL;
     switch (SensorDef::add(sensor_id, name, name_len, def)) {
     case SENSOR_DEF_WAS_ADDED:
