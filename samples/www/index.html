@@ -1,0 +1,174 @@
+<!doctype html>
+<html>
+
+<head>
+  <title>Temperature</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.18.1/moment.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.bundle.min.js"></script>
+  <style>
+    canvas {
+      -moz-user-select: none;
+      -webkit-user-select: none;
+      -ms-user-select: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div style="width:1000px">
+    <p id="status_line">This is a demonstration of REST API</p>
+    <canvas id="chart1"></canvas>
+  </div>
+  <br>
+  <br>
+  <button id="update">update</button>
+  <script>
+    window.chartColors = {
+      red: 'rgb(255, 99, 132)',
+      orange: 'rgb(255, 159, 64)',
+      yellow: 'rgb(255, 205, 86)',
+      green: 'rgb(75, 192, 192)',
+      blue: 'rgb(54, 162, 235)',
+      purple: 'rgb(153, 102, 255)',
+      grey: 'rgb(201, 203, 207)'
+    };
+
+
+    var color = Chart.helpers.color;
+    var cfg = {
+      data: {
+        datasets: [{
+          label: 'Temperature',
+          backgroundColor: color(window.chartColors.red).alpha(0.5).rgbString(),
+          borderColor: window.chartColors.red,
+          data: [],
+          type: 'line',
+          pointRadius: 0,
+          fill: false,
+          lineTension: 0,
+          borderWidth: 2
+        }]
+      },
+      options: {
+        animation: {
+          duration: 0
+        },
+        scales: {
+          xAxes: [{
+            type: 'time',
+            distribution: 'series',
+            offset: true,
+            ticks: {
+              major: {
+                enabled: true,
+                fontStyle: 'bold'
+              },
+              source: 'data',
+              autoSkip: true,
+              autoSkipPadding: 75,
+              maxRotation: 0,
+              sampleSize: 100
+            },
+            afterBuildTicks: function(scale, ticks) {
+              var majorUnit = scale._majorUnit;
+              var firstTick = ticks[0];
+              var i, ilen, val, tick, currMajor, lastMajor;
+
+              val = moment(ticks[0].value);
+              if ((majorUnit === 'minute' && val.second() === 0)
+                  || (majorUnit === 'hour' && val.minute() === 0)
+                  || (majorUnit === 'day' && val.hour() === 9)
+                  || (majorUnit === 'month' && val.date() <= 3 && val.isoWeekday() === 1)
+                  || (majorUnit === 'year' && val.month() === 0)) {
+                firstTick.major = true;
+              } else {
+                firstTick.major = false;
+              }
+              lastMajor = val.get(majorUnit);
+
+              for (i = 1, ilen = ticks.length; i < ilen; i++) {
+                tick = ticks[i];
+                val = moment(tick.value);
+                currMajor = val.get(majorUnit);
+                tick.major = currMajor !== lastMajor;
+                lastMajor = currMajor;
+              }
+              return ticks;
+            }
+          }],
+          yAxes: [{
+            gridLines: {
+              drawBorder: false
+            },
+            scaleLabel: {
+              display: true,
+              labelString: 'Temperature (F)'
+            }
+          }]
+        },
+        tooltips: {
+          intersect: false,
+          mode: 'index',
+          callbacks: {
+            label: function(tooltipItem, myData) {
+              var label = myData.datasets[tooltipItem.datasetIndex].label || '';
+              if (label) {
+                label += ': ';
+              }
+              label += parseFloat(tooltipItem.value).toFixed(2);
+              return label;
+            }
+          }
+        }
+      }
+    };
+
+    var ctx = document.getElementById('chart1').getContext('2d');
+    ctx.canvas.width = 1000;
+    ctx.canvas.height = 300;
+
+    var context = {
+      chart: null,
+      element_ctx: ctx,
+      config: cfg
+    };
+
+    var status_line = document.getElementById('status_line');
+
+    function updateData(dataset_index, sensor_id) {
+      var xmlhttp = new XMLHttpRequest();
+      xmlhttp.onloadend = function() {
+        if (this.readyState == 4 && this.status == 200) {
+          var data = JSON.parse(this.responseText);
+          var chart = context.chart;
+          if (chart == null) {
+            var dataset = context.config.data.datasets[dataset_index];
+            dataset.label = sensor_id;
+            dataset.data = data;
+            context.chart = chart = new Chart(context.element_ctx, context.config);
+          } else {
+            var dataset = chart.config.data.datasets[dataset_index];
+            dataset.label = sensor_id;
+            dataset.data = data;
+          }
+          chart.update();
+        }
+      };
+      xmlhttp.open("GET", '/api/temperature/'+sensor_id+'?scale=F&utc=0', true);
+      xmlhttp.send();
+    }
+
+    var sensor_id = 'Backyard';
+    updateData(0, sensor_id);
+
+    document.getElementById('update').addEventListener(
+      'click',
+      function() {
+        updateData(0, sensor_id);
+      }
+    );
+
+  </script>
+</body>
+
+</html>

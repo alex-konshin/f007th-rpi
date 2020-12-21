@@ -9,16 +9,36 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <time.h>
 
 #include "Utils.hpp"
 
 static const char* EMPTY_STRING = "";
 
 //-------------------------------------------------------------
+/*
+   char dt[TIME2STR_BUFFER_SIZE];
+   const char* str = convert_time(&data_time, dt, TIME2STR_BUFFER_SIZE, utc);
+ */
+const char* convert_time(time_t* data_time, char* buffer, size_t buffer_size, bool utc) {
+  struct tm tm;
+  if (utc) { // UTC time zone
+    struct tm* ptm = gmtime_r(data_time, &tm);
+    if (ptm == NULL) return NULL;
+    strftime(buffer, buffer_size, "%FT%T%z", ptm); // ISO format
+  } else { // local time zone
+    struct tm* ptm = localtime_r(data_time, &tm);
+    if (ptm == NULL) return NULL;
+    strftime(buffer, buffer_size, "%Y-%m-%d %H:%M:%S %Z", ptm);
+  }
+  return buffer;
+}
+
+//-------------------------------------------------------------
 void* resize_buffer(size_t required_buffer_size, void*& buffer, size_t& buffer_size) {
   if (buffer==NULL || buffer_size < required_buffer_size) {
     buffer = realloc(buffer, required_buffer_size);
-    buffer_size = required_buffer_size;
+    if (buffer != NULL) buffer_size = required_buffer_size;
   }
   return buffer;
 }

@@ -73,12 +73,10 @@ protected:
     struct tm tm;
     time_t data_time = time(NULL);
 
-    if ((flags&LOGGER_FLAG_TIME_UTC) != 0) {
-      tm = *gmtime(&data_time); // convert time_t to struct tm
-      strftime(buffer, BUFFER_SIZE, "%FT%TZ ", &tm); // ISO 8601 format
-    } else {
-      tm = *localtime(&data_time); // convert time_t to struct tm
-      strftime(buffer, BUFFER_SIZE, "%Y-%m-%d %H:%M:%S %Z ", &tm);
+    if ((flags&LOGGER_FLAG_TIME_UTC) != 0) { // UTC time zone
+      strftime(buffer, BUFFER_SIZE, "%FT%T%z ", gmtime_r(&data_time, &tm)); // ISO format
+    } else { // local time zone
+      strftime(buffer, BUFFER_SIZE, "%Y-%m-%d %H:%M:%S %Z ", localtime_r(&data_time, &tm));
     }
   }
 

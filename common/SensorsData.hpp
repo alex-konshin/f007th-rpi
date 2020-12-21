@@ -71,7 +71,7 @@ public:
 //-------------------------------------------------------------
 enum class BoundCheckResult : int { Lower=0, Inside=1, Higher=2, NotApplicable=-2, Locked=-1 };
 
-enum class RestRequestType : int { AllData=0, TemperatureF=1, TemperatureF10=2, TemperatureC=3, TemperatureC10=4, Humidity=5, Battery=6 };
+enum class RestRequestType : int { AllData=0, TemperatureF=1, TemperatureF10=2, TemperatureC=3, TemperatureC10=4, Humidity=5, Battery=6, Brief=7 };
 
 //-------------------------------------------------------------
 #define NO_BOUND 0x00008000
@@ -442,17 +442,8 @@ typedef struct HistoryData {
 
   size_t generateJson(int start, void*& buffer, size_t& buffer_size, ValueConversion convertion, bool x10, bool time_UTC) {
 
-    struct tm tm;
-    char dt[32];
-    char t2d_buffer[T2D_BUFFER_SIZE];
-
-    if (time_UTC) { // UTC time zone
-      tm = *gmtime(&time); // convert time_t to struct tm
-      strftime(dt, sizeof dt, "%FT%TZ", &tm); // ISO format
-    } else { // local time zone
-      tm = *localtime(&time); // convert time_t to struct tm
-      strftime(dt, sizeof dt, "%Y-%m-%d %H:%M:%S%z", &tm);
-    }
+    char dt[TIME2STR_BUFFER_SIZE];
+    convert_time(&time, dt, TIME2STR_BUFFER_SIZE, time_UTC);
 
     // {"t":"2020-12-31 00:00:00+05:00","y":-12345678900}
     size_t required_buffer_size = (size_t)start+(strlen(dt)+12+14)*sizeof(unsigned char);
@@ -475,7 +466,7 @@ typedef struct HistoryData {
       len = snprintf(ptr, remain, "{\"t\":\"%s\",\"y\":%d}", dt, converted_value );
     } else {
       uint32_t dummy = 0;
-      len = snprintf(ptr, remain, "{\"t\":\"%s\",\"y\":%s}", dt, t2d(converted_value, t2d_buffer, dummy));
+      len = snprintf(ptr, remain, "{\"t\":\"%s\",\"y\":%s}", dt, t2d(converted_value, dt, dummy));
     }
 
     return (size_t)len;
@@ -640,11 +631,18 @@ typedef struct SensorData {
   };
 
 public:
-  void copyFrom(SensorData* data) {
+  void copyFrom(SensorData* data, bool merge) {
     def = data->def;
     protocol = data->protocol;
     data_time = data->data_time;
-    fields = data->fields;
+    if (!merge) {
+      u64 = data->u64;
+    } else {
+
+      // FIXME TX7U has separate data for humidity and temperature
+      u64 = data->u64;
+
+    }
   }
 
   uint32_t getId() { return protocol == NULL ? 0 : protocol->getId(this); }
@@ -696,39 +694,7 @@ public:
   uint8_t getRollingCode() { return protocol == NULL ? -1 : protocol->getRollingCode(this); }
 
 
-  size_t generateJson(int start, void*& buffer, size_t& buffer_size, int options) {
-
-    char dt[32];
-    struct tm tm;
-    if ((options&OPTION_UTC) != 0) { // UTC time zone
-      tm = *gmtime(&data_time); // convert time_t to struct tm
-      strftime(dt, sizeof dt, "%FT%T%z", &tm); // ISO format
-    } else { // local time zone
-      tm = *localtime(&data_time); // convert time_t to struct tm
-      strftime(dt, sizeof dt, "%Y-%m-%d %H:%M:%S %Z", &tm);
-    }
-
-    char* ptr = (char*)buffer+start;
-    size_t remain = buffer_size-start;
-
-    int len = snprintf(ptr, remain, "{\"time\":\"%s\",\"type\":\"%s\"", dt, getSensorTypeName() );
-    int channel = getChannelNumber();
-    if (channel >= 0) len += snprintf(ptr+len, remain-len, ",\"channel\":%d", channel);
-    len += snprintf(ptr+len, remain-len, ",\"rolling_code\":%d", getRollingCode());
-    if (def != NULL && def->quoted != NULL)
-      len += snprintf(ptr+len, remain-len, ",\"name\":%s", def->quoted);
-    if (hasTemperature())
-      len += snprintf(ptr+len, remain-len, ",\"temperature\":%d", getTemperature10((options&OPTION_CELSIUS) != 0));
-    if (hasHumidity())
-      len += snprintf(ptr+len, remain-len, ",\"humidity\":%d", getHumidity());
-    if (hasBatteryStatus())
-      len += snprintf(ptr+len, remain-len, ",\"battery_ok\":%s", getBatteryStatus() ? "true" :"false");
-    len += snprintf(ptr+len, remain-len, "}");
-
-    return (size_t)(len*sizeof(unsigned char));
-  }
-
-  size_t generateJsonLine(int start, void*& buffer, size_t& buffer_size, RestRequestType requestType);
+  size_t generateJson(int start, void*& buffer, size_t& buffer_size, int options);
 
   void printRawData(FILE* file) {
     if (protocol != NULL) protocol->printRawData(this, file);
@@ -738,10 +704,11 @@ public:
     if (rule == NULL || changed_fields == 0) return BoundCheckResult::NotApplicable;
     if (rule->isLocked) return BoundCheckResult::Locked;
 
+    struct tm ltm;
     time_t tm = time(NULL);
-    struct tm* ltm = localtime(&tm);
-    uint32_t day_time_offset = ltm->tm_hour*60 + ltm->tm_min;
-    uint32_t week_time_offset = ltm->tm_wday*24*60 + day_time_offset;
+    localtime_r(&tm, &ltm);
+    uint32_t day_time_offset = ltm.tm_hour*60 + ltm.tm_min;
+    uint32_t week_time_offset = ltm.tm_wday*24*60 + day_time_offset;
 
     BoundCheckResult result = BoundCheckResult::NotApplicable;
 
@@ -794,6 +761,10 @@ protected:
 typedef struct SensorDataStored : SensorData  {
   History temperatureHistory;
   History humidityHistory;
+
+  size_t generateJsonLine(int start, void*& buffer, size_t& buffer_size, RestRequestType requestType, int options);
+  size_t generateJsonLineBrief(int start, void*& buffer, size_t& buffer_size, int options);
+
 } SensorDataStored;
 
 //-------------------------------------------------------------
@@ -813,7 +784,7 @@ private:
       Log->error("Out of memory");
       return NULL;
     }
-    new_item->copyFrom(data);
+    new_item->copyFrom(data,false);
 
     items_mutex.lock();
 
@@ -865,45 +836,7 @@ private:
     return result;
   }
 
-  size_t generateJsonAllData(SensorDataStored** items, int nItems, void*& buffer, size_t& buffer_size) {
-    size_t required_buffer_size = nItems*(JSON_SIZE_PER_ITEM_ALLDATA+2)-2+5;
-    char* ptr = (char*)resize_buffer(required_buffer_size, buffer, buffer_size);
-    size_t len;
-    size_t total_len = 2;
-    ptr[0] = '[';
-    ptr[1] = '\n';
-    ptr[2] = '\0';
-    ptr += 2;
-
-    for (int index=0; index<nItems; index++) {
-      required_buffer_size = total_len + (nItems-index)*(JSON_SIZE_PER_ITEM_ALLDATA+2);
-      ptr = (char*)resize_buffer(required_buffer_size, buffer, buffer_size)+total_len;
-      SensorDataStored* sensorData = items[index];
-      if (sensorData == NULL) continue;
-      if (total_len > 2) {
-        ptr[0] = ',';
-        ptr[1] = '\n';
-        ptr += 2;
-        total_len += 2;
-      }
-      len = sensorData->generateJson(total_len, buffer, buffer_size, options);
-      if (len > 0) {
-        total_len += len;
-        ptr += len;
-      } else if (total_len > 2) { // remove last comma
-        total_len -= 2;
-        ptr -= 2;
-      }
-    }
-    if (buffer_size-total_len > 3) {
-      ptr = (char*)buffer;
-      ptr[total_len++] = '\n';
-      ptr[total_len++] = ']';
-      ptr[total_len] = '\0';
-    }
-
-    return total_len;
-  }
+  size_t generateJsonAllData(SensorDataStored** items, int nItems, void*& buffer, size_t& buffer_size, int options);
 
 public:
   SensorsData(int options) {
@@ -1019,10 +952,11 @@ public:
       changed = protocol->getMetrics(sensorData) | NEW_UID;
     }
     if (item->def != NULL && (changed&DATA_IS_CHANGED) != 0) {
+      struct tm tm;
       time_t now = time(NULL);
-      struct tm* tm = localtime(&now);
-      tm->tm_hour -= HISTORY_DEPTH_HOURS;
-      time_t from_time = mktime(tm);
+      localtime_r(&now, &tm);
+      tm.tm_hour -= HISTORY_DEPTH_HOURS;
+      time_t from_time = mktime(&tm);
       if ((changed&TEMPERATURE_IS_CHANGED) != 0) {
         item->temperatureHistory.truncate(from_time);
         item->temperatureHistory.add(data_time, item->getRawTemperature());
@@ -1038,67 +972,15 @@ public:
   size_t generateJsonAllData(void*& buffer, size_t& buffer_size) {
     int nItems = 0;
     SensorDataStored** snapshot = getSnapshot(nItems);
-    if (snapshot== NULL || nItems <= 0) return 0;
+    if (snapshot == NULL || nItems <= 0) return 0;
 
-    size_t result = generateJsonAllData(snapshot, nItems, buffer, buffer_size);
-
-    free(snapshot);
-    return result;
-  }
-
-  size_t generateJson(void*& buffer, size_t& buffer_size, RestRequestType requestType) {
-    int nItems = 0;
-    SensorDataStored** snapshot = getSnapshot(nItems);
-    if (items== NULL || nItems <= 0) return 0;
-
-    size_t result;
-    if (requestType == RestRequestType::AllData) {
-
-      result = generateJsonAllData(snapshot, nItems, buffer, buffer_size);  // TODO generate JSON: {"name":{data},"name":{data}}
-
-    } else {
-
-      size_t required_buffer_size = nItems*(JSON_SIZE_PER_ITEM+2)-2+5;
-      char* ptr = (char*)resize_buffer(required_buffer_size, buffer, buffer_size);
-      size_t len = 2;
-      size_t total_len = 2;
-      ptr[0] = '{';
-      ptr[1] = '\n';
-      ptr[2] = '\0';
-      ptr += 2;
-
-      for (int index=0; index<nItems; index++) {
-        required_buffer_size = total_len + (nItems-index)*(JSON_SIZE_PER_ITEM+2)+1;
-        char* ptr = (char*)resize_buffer(required_buffer_size, buffer, buffer_size);
-        SensorDataStored* sensorData = snapshot[index];
-        if (sensorData == __null) continue;
-        if (total_len > 2) {
-          ptr[0] = ',';
-          ptr[1] = '\n';
-          ptr += 2;
-          total_len += 2;
-        }
-        len = sensorData->generateJsonLine(total_len, buffer, buffer_size, requestType);
-        if (len > 0) {
-          total_len += len;
-          ptr += len;
-        } else if (total_len > 2) { // remove last comma
-          total_len -= 2;
-          ptr -= 2;
-        }
-      }
-      if (buffer_size-total_len > 3) {
-        ptr = (char*)buffer;
-        ptr[total_len++] = '\n';
-        ptr[total_len++] = '}';
-        ptr[total_len] = '\0';
-      }
-      result = total_len;
-    }
+    size_t result = generateJsonAllData(snapshot, nItems, buffer, buffer_size, options);
 
     free(snapshot);
     return result;
   }
+
+  size_t generateJson(void*& buffer, size_t& buffer_size, RestRequestType requestType, int options);
 
 };
 

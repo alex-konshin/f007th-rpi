@@ -55,6 +55,20 @@ static const char* request_params(humidity_history)[] = {
 //  "to"
 };
 
+static const char* request_params(brief)[] = {
+#define REQ_BRIEF_PARAM_UTC 0
+  "utc",
+#define REQ_BRIEF_PARAM_CELSIUS 1
+  "celsius",
+};
+
+static const char* request_params(sensors)[] = {
+#define REQ_SENSORS_PARAM_UTC 0
+  "utc",
+#define REQ_SENSORS_PARAM_CELSIUS 1
+  "celsius",
+};
+
 // Max total length of request (without arguments)
 #define MAX_URL 256
 // Max length of request name
@@ -288,6 +302,21 @@ static int download_file(struct MHD_Connection * connection, const char* filepat
 }
 
 //-------------------------------------------------------------
+// Returns false on error
+static bool update_options(int& options, int bit, const char* value) {
+  if (value != NULL && *value != '\0') {
+    if (strcmp("0", value) == 0) {
+      if ((options&bit) != 0) options &= ~bit;
+    } else if (strcmp("1", value) == 0) {
+      if ((options&bit) == 0) options |= bit;
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+//-------------------------------------------------------------
 static int process_request(
     void* cls,
     struct MHD_Connection * connection,
@@ -303,74 +332,72 @@ static int process_request(
   SensorsData* sensorsData = httpd->sensorsData;
   Config* cfg = httpd->cfg;
 
-  static int dummy;
   if (strcmp(method, "GET") != 0) return MHD_NO; // unexpected method
+
+  //FIXME it looks suspicious
+  static int dummy;
   if (&dummy != *ptr) {
     // The first time only the headers are valid, do not respond in the first round...
     *ptr = &dummy;
     return MHD_YES;
   }
+  *ptr = NULL; // clear context pointer
   if (*upload_data_size != 0) return MHD_NO; // upload data in a GET!?
 
   if (url == NULL || *url != '/') return MHD_NO;
 
   if ((cfg->options&VERBOSITY_INFO) != 0) Log->log("GET \"%s\"", url);
 
-  if (strlen(url) > MAX_URL) return error_bad_request(connection);
-
-  *ptr = NULL; // clear context pointer
+  size_t url_len = strlen(url);
+  if (url_len > MAX_URL) return error_bad_request(connection);
 
   void* buffer = __null;
   size_t buffer_size = 0;
   size_t data_size = 0;
 
-  const char* p = url+1;
-  int len = 0;
-  char ch = '\0';
-  bool is_query = true;
-  bool processed = false;
-  while ((ch=*p) >= 'a' && ch <='z') {
-    if (++len >= MAX_REQ_LEN) {
-      is_query = false;
-      break;
-    }
-    p++;
-  }
-
-  if (ch == '?') return error_bad_request(connection);
-
   struct MHD_Response* response;
 
-  if ( is_query && (ch == '/' || ch == '\0')) {
+  if (url_len == 1) { // no path
+
+    if (!httpd->no_home_page) { // Home page exists or has not checked yet.
+      // If home page exist then return it in the response
+      const char* www_root = cfg->www_root;
+      if (www_root != NULL) {
+        // Try to show home page
+        const char* home_page_file = get_www_file_path(www_root, "/index.html");
+        if(home_page_file != NULL && access(home_page_file, R_OK) == 0) {
+          int ret = download_file(connection, home_page_file);
+          free((void*)home_page_file);
+          return ret;
+        }
+      }
+      httpd->no_home_page = true;
+    }
+
+    data_size = sensorsData->generateJson(buffer, buffer_size, RestRequestType::AllData, cfg->options);
+
+#define API_REQ_PREFIX "/api/"
+#define API_REQ_PREFIX_LEN 5
+  } else if (url_len>5 && strncmp(url, API_REQ_PREFIX, API_REQ_PREFIX_LEN) == 0) {
+
+    const char* api_req = url+API_REQ_PREFIX_LEN;
+    const char* p = api_req;
+    int len = 0;
+    char ch = '\0';
+    while ((ch=*p) >= 'a' && ch <='z') {
+      if (++len >= MAX_REQ_LEN) return error_bad_request(connection);
+      p++;
+    }
+    if (ch == '?') return error_bad_request(connection);
+
     const char* params[MAX_NUMBER_OF_PARAMS];
     //memset(params, MAX_NUMBER_OF_PARAMS, sizeof(const char*));
     for (int index=0; index<MAX_NUMBER_OF_PARAMS; index++) {
       params[index] = NULL;
     }
 
-    if (len == 0 && ch =='\0') {
-      if (!httpd->no_home_page) {
-
-        const char* www_root = cfg->www_root;
-        if (www_root != NULL) {
-          // Try to show home page
-          const char* home_page_file = get_www_file_path(www_root, "/index.html");
-          if(home_page_file != NULL && access(home_page_file, R_OK) == 0) {
-            int ret = download_file(connection, home_page_file);
-            free((void*)home_page_file);
-            return ret;
-          }
-        }
-
-        httpd->no_home_page = true;
-      }
-
-      data_size = sensorsData->generateJson(buffer, buffer_size, RestRequestType::AllData);
-      processed = true;
-
 #define is_req(req, str, len) (strlen(req) == len && strncmp(req, str, len) == 0)
-    } else if (is_req("temperature", url+1, len)) {
-
+    if (is_req("temperature", api_req, len)) {
 
       if (ch == '/' && *++p != '\0') {
         // temperature history
@@ -418,23 +445,14 @@ static int process_request(
           convertion = ValueConversion::C2F;
         }
 
-        bool time_UTC = (sensorsData->getOptions()&OPTION_UTC) != 0;
-        value = params[REQ_TEMPERATURE_HISTORY_PARAM_UTC];
-        if (value != NULL && *value != '\0') {
-          if (strcmp("0", value) == 0) {
-            time_UTC = false;
-          } else if (strcmp("1", value) == 0) {
-            time_UTC = true;
-          } else {
-            return error_bad_request(connection);
-          }
-        }
+        int options = sensorsData->getOptions();
+        if (!update_options(options, OPTION_UTC, params[REQ_TEMPERATURE_HISTORY_PARAM_UTC])) return error_bad_request(connection);
+        bool time_UTC = (options&OPTION_UTC) != 0;
 
         time_t from = 0; // TODO
         time_t to = 0; // TODO
 
         data_size = sensorData->temperatureHistory.generateJson(from, to, buffer, buffer_size, convertion, x10, time_UTC);
-        processed = true;
 
       } else {
         // current temperature from all defined sensors
@@ -462,11 +480,10 @@ static int process_request(
         }
 
         // The current temperature from all defined sensors
-        data_size = sensorsData->generateJson(buffer, buffer_size, requestType);
-        processed = true;
+        data_size = sensorsData->generateJson(buffer, buffer_size, requestType, 0);
       }
 
-    } else if (is_req("humidity", url+1, len)) {
+    } else if (is_req("humidity", api_req, len)) {
       if (ch == '/' && *++p != '\0') {
         // humidity history
 
@@ -478,23 +495,14 @@ static int process_request(
         if (sensorData == NULL) return error_data_not_found(connection);
         if (!sensorData->hasHumidity()) return error_not_supported(connection);
 
-        bool time_UTC = (sensorsData->getOptions()&OPTION_UTC) != 0;
-        const char* value = params[REQ_HUMIDITY_HISTORY_PARAM_UTC];
-        if (value != NULL && *value != '\0') {
-          if (strcmp("0", value) == 0) {
-            time_UTC = false;
-          } else if (strcmp("1", value) == 0) {
-            time_UTC = true;
-          } else {
-            return error_bad_request(connection);
-          }
-        }
+        int options = sensorsData->getOptions();
+        if (!update_options(options, OPTION_UTC, params[REQ_HUMIDITY_HISTORY_PARAM_UTC])) return error_bad_request(connection);
+        bool time_UTC = (options&OPTION_UTC) != 0;
 
         time_t from = 0; // TODO
         time_t to = 0; // TODO
 
         data_size = sensorData->humidityHistory.generateJson(from, to, buffer, buffer_size, ValueConversion::None, false, time_UTC);
-        processed = true;
 
       } else {
         // The current humidity from all defined sensors that supports this metric
@@ -503,25 +511,40 @@ static int process_request(
         int result = process_params(httpd, connection, p, /*request_params(humidity)*/NULL, /*max_number_of_params(humidity)*/0, params, success);
         if (!success) return result;
 
-        data_size = sensorsData->generateJson(buffer, buffer_size, RestRequestType::Humidity);
-        processed = true;
+        data_size = sensorsData->generateJson(buffer, buffer_size, RestRequestType::Humidity, 0);
       }
 
-    } else if (is_req("sensors", url+1, len)) {
+    } else if (is_req("sensors", api_req, len)) {
       if (ch == '\0') {
         bool success = false;
-        int result = process_params(httpd, connection, p, /*request_params(sensors)*/NULL, /*max_number_of_params(sensors)*/0, params, success);
+        int result = process_params(httpd, connection, p, request_params(sensors), max_number_of_params(sensors), params, success);
         if (!success) return result;
 
-        // current data from all defined sensors
-        data_size = sensorsData->generateJson(buffer, buffer_size, RestRequestType::AllData);
-        processed = true;
+        int options = sensorsData->getOptions();
+        if (!update_options(options, OPTION_UTC, params[REQ_SENSORS_PARAM_UTC])) return error_bad_request(connection);
+        if (!update_options(options, OPTION_CELSIUS, params[REQ_SENSORS_PARAM_CELSIUS])) return error_bad_request(connection);
+
+        data_size = sensorsData->generateJson(buffer, buffer_size, RestRequestType::AllData, options); // current data from all defined sensors
       } else {
-        // TODO current data from the specific sensor
         return error_bad_request(connection);
       }
 
-    } else if (is_req("version", url+1, len)) {
+    } else if (is_req("brief", api_req, len)) {
+      if (ch == '\0') {
+        bool success = false;
+        int result = process_params(httpd, connection, p, request_params(brief), max_number_of_params(brief), params, success);
+        if (!success) return result;
+
+        int options = sensorsData->getOptions();
+        if (!update_options(options, OPTION_UTC, params[REQ_BRIEF_PARAM_UTC])) return error_bad_request(connection);
+        if (!update_options(options, OPTION_CELSIUS, params[REQ_BRIEF_PARAM_CELSIUS])) return error_bad_request(connection);
+
+        data_size = sensorsData->generateJson(buffer, buffer_size, RestRequestType::Brief, options);
+      } else {
+        return error_bad_request(connection);
+      }
+
+    } else if (is_req("version", api_req, len)) {
 
       response = MHD_create_response_from_buffer(2, (void*)RF_RECEIVER_VERSION, MHD_RESPMEM_PERSISTENT);
       MHD_add_response_header(response, "Content-Type", "text/plain");
@@ -529,20 +552,21 @@ static int process_request(
       int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
       MHD_destroy_response(response);
       return ret;
+    } else {
+      return error_bad_request(connection);
     }
-  }
-  if (!processed) {
-    // This is not REST request but it could be request for some file in folder www_root
+
+  } else {
+    // This is not API request but it could be request for some file in folder www_root
 
     const char* www_root = cfg->www_root;
     if (www_root == NULL) return error_request_refused(connection);
 
-    size_t len = strlen(url);
     if (
       url[1] =='/' ||
-      url[len-1] == '/' ||
-      (url[len-1] == '.' && url[len-2] =='/') || // ends with "/."
-      (len>=3 && url[len-1] == '.' && url[len-2] == '.' && url[len-3] == '/') ||  // ends with "/.."
+      url[url_len-1] == '/' ||
+      (url[url_len-1] == '.' && url[url_len-2] =='/') || // ends with "/."
+      (url_len>=3 && url[url_len-1] == '.' && url[url_len-2] == '.' && url[url_len-3] == '/') ||  // ends with "/.."
       strstr(url, "/../") != NULL ||
       strstr(url, "/./") != NULL ||
       strstr(url, "//") != NULL
@@ -550,8 +574,9 @@ static int process_request(
       Log->error("Bad request: %s", url);
       return error_bad_request(connection);
     }
-    for (size_t i=0; i<len; i++) {
-      if ((unsigned)(ch=url[i]) < 32 || ch == '*' || ch == '?' || ch == '|' || ch == '<' || ch == '>') {
+    char ch;
+    for (size_t i=0; i<url_len; i++) {
+      if ((unsigned)(ch=url[i]) < 32 || ch == '*' || ch == '?') {
         Log->error("Bad request: %s", url);
         return error_bad_request(connection);
       }

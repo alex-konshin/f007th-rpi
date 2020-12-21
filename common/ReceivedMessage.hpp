@@ -75,20 +75,21 @@ public:
 
   ~ReceivedMessage() {
     ReceivedData* data = this->data;
-    if (data != __null) {
-      this->data = __null;
+    if (data != NULL) {
+      this->data = NULL;
       free((void*)data);
     }
   }
 
   void setData(ReceivedData* data) {
     ReceivedData* oldData = this->data;
-    if (oldData != __null) {
-      this->data = __null;
+    if (oldData != NULL) {
+      this->data = NULL;
       free((void*)oldData);
     }
     this->data = data;
     data_time = time(NULL);
+    if (data != NULL) data->sensorData.data_time = data_time;
     is_sensor_def_set = false;
   }
 
@@ -216,15 +217,8 @@ public:
     if (file == NULL) file = stdout;
 
     // print timestamp
-    char dt[32];
-    struct tm tm;
-    if ((options&OPTION_UTC) != 0) {
-      tm = *gmtime(&data_time); // convert time_t to struct tm
-      strftime(dt, sizeof dt, "%FT%TZ", &tm); // ISO 8601 format
-    } else {
-      tm = *localtime(&data_time); // convert time_t to struct tm
-      strftime(dt, sizeof dt, "%Y-%m-%d %H:%M:%S %Z", &tm);
-    }
+    char dt[TIME2STR_BUFFER_SIZE];
+    convert_time(&data_time, dt, TIME2STR_BUFFER_SIZE, (options&OPTION_UTC) != 0);
 
     uint16_t decodingStatus = data->decodingStatus;
 
@@ -287,34 +281,33 @@ public:
   }
 
   bool json(FILE* file, int options) {
-    if (data == __null) return false;
+    if (data == NULL) return false;
 
-    if (file == __null) file = stdout;
+    if (file == NULL) file = stdout;
 
     uint16_t decodingStatus = data->decodingStatus;
     if ((decodingStatus & 0x3f) == 0 ) {
 
-      char dt[32];
-      struct tm tm;
-      if ((options&OPTION_UTC) != 0) {
-        tm = *gmtime(&data_time); // convert time_t to struct tm
-        strftime(dt, sizeof dt, "%FT%TZ", &tm); // ISO 8601 format
-      } else {
-        tm = *localtime(&data_time); // convert time_t to struct tm
-        strftime(dt, sizeof dt, "%Y-%m-%d %H:%M:%S %Z", &tm);
+      bool first = true;
+      char dt[TIME2STR_BUFFER_SIZE];
+      const char* timestr = convert_time(&data_time, dt, TIME2STR_BUFFER_SIZE, (options&OPTION_UTC) != 0);
+      if (timestr != NULL) {
+        fprintf( file, "{\"time\":\"%s\"", dt );
+        first = false;
       }
-      fprintf( file, "{\"time\":\"%s\"", dt );
 
       if ((decodingStatus & 0xc0) != 0 ) {
-        fputs(",\"valid\":false,", file);
+        fprintf(file, "%c\"valid\":false,", first?'{':',');
+        first = false;
       }
 
       SensorDef* sensor_def = getSensorDef();
       if (sensor_def != NULL && sensor_def->name != NULL) {
-        fprintf(file, ",\"name\":%s", sensor_def->quoted);
+        fprintf(file, "%c\"name\":%s", first?'{':',', sensor_def->quoted);
+        first = false;
       }
 
-      fprintf(file, ",\"type\":\"%s\"", data->sensorData.getSensorTypeLongName());
+      fprintf(file, "%c\"type\":\"%s\"", first?'{':',', data->sensorData.getSensorTypeLongName());
 
       int channel = getChannelNumber();
       if (channel >= 0) fprintf(file, ",\"channel\":%d", channel);
@@ -349,20 +342,14 @@ public:
       return -2;
     }
 
-    char dt[32];
-    struct tm tm;
-    if ((options&OPTION_UTC) != 0) { // UTC time zone
-      tm = *gmtime(&data_time); // convert time_t to struct tm
-      strftime(dt, sizeof dt, "%FT%TZ", &tm); // ISO format
-    } else { // local time zone
-      tm = *localtime(&data_time); // convert time_t to struct tm
-      strftime(dt, sizeof dt, "%Y-%m-%d %H:%M:%S %Z", &tm);
-    }
+    char dt[TIME2STR_BUFFER_SIZE];
+    const char* timestr = convert_time(&data_time, dt, TIME2STR_BUFFER_SIZE, (options&OPTION_UTC) != 0);
 
-    int len = snprintf( buffer, buflen,
-      "{\"time\":\"%s\",\"type\":\"%s\",\"valid\":%s",
-      dt, data->sensorData.getSensorTypeLongName(), decodingStatus == 0 ? "true" : "false"
-    );
+    int len;
+    if (timestr == NULL)
+      len = snprintf( buffer, buflen, "{\"type\":\"%s\",\"valid\":%s", data->sensorData.getSensorTypeLongName(), decodingStatus == 0 ? "true" : "false");
+    else
+      len = snprintf( buffer, buflen, "{\"time\":\"%s\",\"type\":\"%s\",\"valid\":%s", timestr, data->sensorData.getSensorTypeLongName(), decodingStatus == 0 ? "true" : "false");
     SensorDef* sensor_def = getSensorDef();
     if (sensor_def != NULL && sensor_def->name != NULL) {
       len += snprintf(buffer+len, buflen-len, ",\"name\":%s", sensor_def->quoted);
