@@ -465,8 +465,9 @@ typedef struct HistoryData {
     if (x10) {
       len = snprintf(ptr, remain, "{\"t\":\"%s\",\"y\":%d}", dt, converted_value );
     } else {
+      char t2d_buffer[T2D_BUFFER_SIZE];
       uint32_t dummy = 0;
-      len = snprintf(ptr, remain, "{\"t\":\"%s\",\"y\":%s}", dt, t2d(converted_value, dt, dummy));
+      len = snprintf(ptr, remain, "{\"t\":\"%s\",\"y\":%s}", dt, t2d(converted_value, t2d_buffer, dummy));
     }
 
     return (size_t)len;
