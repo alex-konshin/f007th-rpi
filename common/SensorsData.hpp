@@ -632,18 +632,15 @@ typedef struct SensorData {
   };
 
 public:
-  void copyFrom(SensorData* data, bool merge) {
-    def = data->def;
-    protocol = data->protocol;
+
+  // Copies data from received and decoded message to a new object that
+  // will be added to collection SensorsData
+  void copyFrom(SensorData* data) {
+    Protocol* protocol = data->protocol;
+    this->protocol = protocol;
+    protocol->copyFields(this, data);
     data_time = data->data_time;
-    if (!merge) {
-      u64 = data->u64;
-    } else {
-
-      // FIXME TX7U has separate data for humidity and temperature
-      u64 = data->u64;
-
-    }
+    if (def == NULL) def = data->def;
   }
 
   uint32_t getId() { return protocol == NULL ? 0 : protocol->getId(this); }
@@ -743,20 +740,6 @@ public:
     return result != BoundCheckResult::NotApplicable && rule->isSelfLocked(result) ? BoundCheckResult::Locked : result;
   }
 
-protected:
-  inline int getTX7temperature() {
-    return
-        (u32.hi&0x00800000)!=0
-        ? (u32.hi>>12)&0x07ff
-        : ((u32.low >> 20)&15)*100 + ((u32.low >> 16)&15)*10 + ((u32.low >> 12)&15);
-  }
-  inline int getTX7humidity() {
-    return
-        (u32.hi&0x80000000)!=0
-        ? (u32.hi>>24)&0x7f
-        : ((u32.low >> 20)&15)*10 + ((u32.low >> 16)&15);
-  }
-
 } SensorData;
 
 typedef struct SensorDataStored : SensorData  {
@@ -785,7 +768,8 @@ private:
       Log->error("Out of memory");
       return NULL;
     }
-    new_item->copyFrom(data,false);
+    new_item->copyFrom(data);
+    if (new_item->def == NULL) new_item->def = SensorDef::find(data->getId());
 
     items_mutex.lock();
 
@@ -808,16 +792,6 @@ private:
 
     items_mutex.unlock();
 
-    if (data->protocol->protocol_bit == PROTOCOL_TX7U) {
-      if (data->hasTemperature()) {
-        uint32_t raw_t = ((data->u32.low >> 20)&15)*100 + ((data->u32.low >> 16)&15)*10 + ((data->u32.low >> 12)&15);
-        new_item->u32.hi |= 0x00800000 | (raw_t << 12);
-      } else if (data->hasHumidity()) {
-        uint32_t raw_h = (((data->u32.low >> 20)&15)*10 + ((data->u32.low >> 16)&15))&0x7f;
-        new_item->u32.hi |= 0x80000000 | (raw_h << 24);
-      }
-    }
-    new_item->def = SensorDef::find(data->getId());
     return new_item;
   }
 
