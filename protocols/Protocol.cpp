@@ -14,6 +14,11 @@ Protocol* Protocol::protocols[NUMBER_OF_PROTOCOLS];
 
 Statistics* statistics = new Statistics();
 
+void Protocol::copyFields(SensorData* to, SensorData* from) {
+  to->data_time = from->data_time;
+  to->u64 = from->u64;
+}
+
 int Protocol::getTemperature10(SensorData* data, bool celsius) { return celsius ? data->getTemperatureCx10() : data->getTemperatureFx10(); }
 
 bool Protocol::decodeManchester(ReceivedData* message, Bits& bitSet, int min_duration, int max_half_duration) {

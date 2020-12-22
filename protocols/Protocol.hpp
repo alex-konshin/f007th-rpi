@@ -109,9 +109,11 @@ public:
 
   virtual bool equals(SensorData* s, SensorData* p) = 0;
   virtual bool sameId(SensorData* s, int channel, uint8_t rolling_code = -1) = 0;
+  virtual void copyFields(SensorData* to, SensorData* from);
   virtual int update(SensorData* sensorData, SensorData* p, time_t data_time, time_t max_unchanged_gap) = 0;
 
   virtual void printRawData(SensorData* sensorData, FILE* file) = 0;
+
 
   static void setLimits(unsigned protocol_mask, unsigned long& min_sequence_length, unsigned long& max_duration, unsigned long& min_duration) {
     max_duration = 0;

@@ -67,6 +67,28 @@ class ProtocolTX7U : public Protocol {
     return rolling_code == -1 || ((s->u32.low >> 25)&0x7f) == rolling_code;
   }
 
+  void copyFields(SensorData* to, SensorData* from) {
+    // TX7U sends temperature and humidity in separate sequences.
+    // As result we need to merge them in stored data
+    uint32_t mask;
+    uint32_t new_value;
+    uint8_t type = from->u32.hi&15;
+    if (type == 0) {
+      new_value = ((from->u32.low >> 20)&15)*100 + ((from->u32.low >> 16)&15)*10 + ((from->u32.low >> 12)&15);
+      new_value = 0x00800000 | (new_value << 12);
+      mask = 0x00fff000;
+    } else if (type == 14) {
+      new_value = (((from->u32.low >> 20)&15)*10 + ((from->u32.low >> 16)&15))&0x7f;
+      new_value = 0x80000000 | (new_value << 24);
+      mask = 0xff000000;
+    } else {
+      return; // unsupported type of value
+    }
+    to->data_time = from->data_time;
+    to->u32.low = from->u32.low;
+    to->u32.hi = (from->u32.hi & ~mask) | new_value;
+  }
+
   int update(SensorData* sensorData, SensorData* item, time_t data_time, time_t max_unchanged_gap) {
     uint8_t type = sensorData->u32.hi&15;
     uint32_t mask;
@@ -87,10 +109,12 @@ class ProtocolTX7U : public Protocol {
     }
 
     sensorData->def = item->def;
-    if (((item->u32.hi)&mask) == new_value) {
+    if (((item->u32.hi)&mask) == new_value) { // the value has not changed
       time_t gap = data_time - item->data_time;
       if (gap < 2L) return TIME_NOT_CHANGED;
-      return (max_unchanged_gap > 0L && gap > max_unchanged_gap) ? result : 0;
+      if (max_unchanged_gap == 0L || gap < max_unchanged_gap) return 0;
+      item->data_time = data_time;
+      return result;
     }
     item->data_time = data_time;
     item->u32.low = sensorData->u32.low;
