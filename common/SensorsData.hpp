@@ -743,8 +743,10 @@ public:
 } SensorData;
 
 typedef struct SensorDataStored : SensorData  {
+#ifdef INCLUDE_HTTPD
   History temperatureHistory;
   History humidityHistory;
+#endif
 
   size_t generateJsonLine(int start, void*& buffer, size_t& buffer_size, RestRequestType requestType, int options);
   size_t generateJsonLineBrief(int start, void*& buffer, size_t& buffer_size, int options);
@@ -791,7 +793,10 @@ private:
     size = new_size;
 
     items_mutex.unlock();
-
+#ifdef INCLUDE_HTTPD
+    if (new_item->hasTemperature()) new_item->temperatureHistory.add(data_time, new_item->getRawTemperature());
+    if (new_item->hasHumidity()) new_item->humidityHistory.add(data_time, new_item->getHumidity());
+#endif
     return new_item;
   }
 
@@ -926,6 +931,7 @@ public:
       item = add(sensorData, data_time);
       changed = protocol->getMetrics(sensorData) | NEW_UID;
     }
+#ifdef INCLUDE_HTTPD
     if (item->def != NULL && (changed&DATA_IS_CHANGED) != 0) {
       struct tm tm;
       time_t now = time(NULL);
@@ -941,6 +947,7 @@ public:
         item->humidityHistory.add(data_time, item->getHumidity());
       }
     }
+#endif
     return changed;
   }
 
