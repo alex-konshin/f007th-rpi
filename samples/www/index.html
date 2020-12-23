@@ -2,7 +2,16 @@
 <html>
 
 <head>
+  <meta charset="utf-8">
   <title>Temperature</title>
+
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+
+  <link type="text/css" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jsgrid/1.5.3/jsgrid.min.css" />
+  <link type="text/css" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jsgrid/1.5.3/jsgrid-theme.min.css" />
+
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jsgrid/1.5.3/jsgrid.min.js"></script>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.18.1/moment.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.bundle.min.js"></script>
   <style>
@@ -22,6 +31,9 @@
   <br>
   <br>
   <button id="update">update</button>
+  <br>
+  <br>
+  <div id="jsGrid"></div>
   <script>
     window.chartColors = {
       red: 'rgb(255, 99, 132)',
@@ -135,7 +147,7 @@
 
     var status_line = document.getElementById('status_line');
 
-    function updateData(dataset_index, sensor_id) {
+    function updateChartData(dataset_index, sensor_id) {
       var xmlhttp = new XMLHttpRequest();
       xmlhttp.onloadend = function() {
         if (this.readyState == 4 && this.status == 200) {
@@ -154,19 +166,62 @@
           chart.update();
         }
       };
-      xmlhttp.open("GET", '/api/temperature/'+sensor_id+'?scale=F&utc=0', true);
+      xmlhttp.open("GET", '/api/temperature/'+sensor_id+'?scale=F&utc=1', true);
       xmlhttp.send();
     }
 
-    var sensor_id = 'Backyard';
-    updateData(0, sensor_id);
+    var sensor_id;
 
     document.getElementById('update').addEventListener(
       'click',
       function() {
-        updateData(0, sensor_id);
+        if (sensor_id !== undefined) updateChartData(0, sensor_id);
       }
-    );
+      );
+      
+      var current_data = [];
+      
+      $("#jsGrid").jsGrid({
+        height: "auto",
+        width: "500",
+        
+        sorting: true,
+        paging: false,
+        autoload: true,
+        
+        controller: {
+          loadData: function() {
+            var d = $.Deferred();
+            
+            $.ajax({
+              url: "/api/sensors",
+              dataType: "json"
+            }).done(function(response) {
+              d.resolve(response);
+              if (sensor_id === undefined && response.length > 0) {
+                var first = response[0];
+                sensor_id = first.name;
+                if (sensor_id !== undefined) updateChartData(0, sensor_id);
+            }
+          });
+
+          return d.promise();
+        }
+      },
+
+      rowClick: function(e) {
+        var item = e.item;
+        sensor_id = item.name;
+        updateChartData(0, sensor_id);
+      },
+ 
+      fields: [
+          { title: "Name", name: "name", type: "text" },
+          { title: "\u2109", name: "temperature", type: "number", width: 50, align: "center", itemTemplate: function(value) { return (value/10).toFixed(1); } },
+          { title: "Humidity", name: "humidity", type: "number", width: 50, align: "center" },
+          { title: "Battery", name: "battery_ok", type: "text", width: 50, align: "center", itemTemplate: function(value) { return value===undefined ? "-" : value ? "OK" : "Low"; } }
+      ]
+    });
 
   </script>
 </body>
