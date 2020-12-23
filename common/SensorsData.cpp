@@ -269,8 +269,8 @@ size_t SensorDataStored::generateJsonLineBrief(int start, void*& buffer, size_t&
   const char* type_name = getSensorTypeLongName();
   if (type_name == NULL) return 0;
 
-  // "Backyard":{"time":"2020-12-20 11:40:02 EST","type":"Acurite 00592TXR","temperature":-33.6,"humidity":66,"battery_ok":true,"t_history_size":10000,"h_history_size":10000}
-  size_t required_buffer_size = start+strlen(type_name)+strlen(def->quoted)+150;
+  // {"name":"Backyard","time":"2020-12-20 11:40:02 EST","type":"Acurite 00592TXR","temperature":-33.6,"humidity":66,"battery_ok":true,"t_history_size":10000,"h_history_size":10000}
+  size_t required_buffer_size = start+strlen(type_name)+strlen(def->quoted)+157;
   char* ptr = (char*)resize_buffer(required_buffer_size*sizeof(unsigned char), buffer, buffer_size);
   if (ptr == NULL) {
     Log->error("Out of memory (%s)", "SensorDataStored::generateJsonLineBrief");
@@ -280,7 +280,7 @@ size_t SensorDataStored::generateJsonLineBrief(int start, void*& buffer, size_t&
   size_t remain = buffer_size-start;
   ptr += start;
 
-  int len = snprintf(ptr, remain, "%s:{\"type\":\"%s\"", def->quoted, type_name);
+  int len = snprintf(ptr, remain, "{\"name\":%s,\"type\":\"%s\"", def->quoted, type_name);
   if (!check_buffer(remain, len, "SensorDataStored::generateJsonLineBrief")) return 0;
 
   char dt[TIME2STR_BUFFER_SIZE];
@@ -305,12 +305,14 @@ size_t SensorDataStored::generateJsonLineBrief(int start, void*& buffer, size_t&
     len += snprintf(ptr+len, remain-len, ",\"battery_ok\":%s", getBatteryStatus() ? "true" :"false");
     if (!check_buffer(remain, len, "SensorDataStored::generateJsonLineBrief")) return 0;
   }
+#ifdef INCLUDE_HTTPD
   if (hasT) {
     len += snprintf(ptr+len, remain-len, ",\"t_history_size\":%d", temperatureHistory.getCount());
     if (!check_buffer(remain, len, "SensorDataStored::generateJsonLineBrief")) return 0;
   }
   if (hasH)
     len += snprintf(ptr+len, remain-len, ",\"h_history_size\":%d", humidityHistory.getCount());
+#endif
 
   if (remain<(size_t)len+2) {
     Log->error("Buffer overflow (%s)", "SensorDataStored::generateJsonLineBrief");
@@ -337,9 +339,9 @@ size_t SensorsData::generateJson(void*& buffer, size_t& buffer_size, RestRequest
 
     size_t required_line_size;
     if (requestType == RestRequestType::Brief) {
-      // "Backyard":{"time":"2020-12-20 11:40:02 EST","type":"Acurite 00592TXR","temperature":-33.6,"humidity":66,"battery_ok":true,"t_history_size":10000,"h_history_size":10000}
+      // {"name":"Backyard","time":"2020-12-20 11:40:02 EST","type":"Acurite 00592TXR","temperature":-33.6,"humidity":66,"battery_ok":true,"t_history_size":10000,"h_history_size":10000}
       //size_t required_buffer_size = start+strlen(type_name)+strlen(def->quoted)+150;
-      required_line_size = 50+MAX_SENSOR_NAME_LEN+150+2;
+      required_line_size = 50+MAX_SENSOR_NAME_LEN+157+2;
     } else {
       required_line_size = JSON_SIZE_PER_ITEM+2;
     }
@@ -348,7 +350,7 @@ size_t SensorsData::generateJson(void*& buffer, size_t& buffer_size, RestRequest
     char* ptr = (char*)resize_buffer(required_buffer_size*sizeof(unsigned char), buffer, buffer_size);
     size_t len = 2;
     size_t total_len = 2;
-    ptr[0] = '{';
+    ptr[0] = requestType == RestRequestType::Brief ? '[' : '{';
     ptr[1] = '\n';
     ptr[2] = '\0';
     ptr += 2;
@@ -375,7 +377,7 @@ size_t SensorsData::generateJson(void*& buffer, size_t& buffer_size, RestRequest
     if (buffer_size-total_len > 3) {
       ptr = (char*)buffer;
       ptr[total_len++] = '\n';
-      ptr[total_len++] = '}';
+      ptr[total_len++] = requestType == RestRequestType::Brief ? ']' : '}';
       ptr[total_len] = '\0';
     }
     result = total_len;
