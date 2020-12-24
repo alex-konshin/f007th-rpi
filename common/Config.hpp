@@ -106,17 +106,17 @@ static const struct option long_options[] = {
 };
 
 #ifdef TEST_DECODING
-static const int DEFAULT_OPTIONS = VERBOSITY_INFO|VERBOSITY_PRINT_UNDECODED|VERBOSITY_PRINT_DETAILS;
+#define DEFAULT_OPTIONS (VERBOSITY_INFO|VERBOSITY_PRINT_UNDECODED|VERBOSITY_PRINT_DETAILS)
 #ifdef INCLUDE_HTTPD
 static const char* short_options = "c:g:s:Al:vVt:TCULd256780DI:WH:G:a:no";
 #else
 static const char* short_options = "c:g:s:Al:vVt:TCULd256780DI:WG:a:no";
 #endif
 #elif defined(INCLUDE_HTTPD)
-static const int DEFAULT_OPTIONS = 0;
+#define DEFAULT_OPTIONS 0
 static const char* short_options = "c:g:s:Al:vVt:TCULd256780DH:G:a:no";
 #else
-static const int DEFAULT_OPTIONS = 0;
+#define DEFAULT_OPTIONS 0
 static const char* short_options = "c:g:s:Al:vVt:TCULd256780DG:a:no";
 #endif
 
