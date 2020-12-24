@@ -25,11 +25,11 @@ const char* convert_time(time_t* data_time, char* buffer, size_t buffer_size, bo
   if (utc) { // UTC time zone
     struct tm* ptm = gmtime_r(data_time, &tm);
     if (ptm == NULL) return NULL;
-    strftime(buffer, buffer_size, "%FT%T%z", ptm); // ISO format
+    strftime(buffer, buffer_size, "%FT%TZ", ptm); // ISO format
   } else { // local time zone
     struct tm* ptm = localtime_r(data_time, &tm);
     if (ptm == NULL) return NULL;
-    strftime(buffer, buffer_size, "%Y-%m-%d %H:%M:%S %Z", ptm);
+    strftime(buffer, buffer_size, "%Y-%m-%d %H:%M:%S%z", ptm);
   }
   return buffer;
 }
@@ -44,6 +44,10 @@ void* resize_buffer(size_t required_buffer_size, void*& buffer, size_t& buffer_s
 }
 
 //-------------------------------------------------------------
+char* t2d(int t, char* buffer) {
+  uint32_t dummy = 0;
+  return t2d(t, buffer, dummy);
+}
 char* t2d(int t, char* buffer, uint32_t& length) {
   char* p = buffer+T2D_BUFFER_SIZE-1;
   *p = '\0';

@@ -692,7 +692,6 @@ public:
   uint8_t getRollingCode() { return protocol == NULL ? -1 : protocol->getRollingCode(this); }
 
 
-  size_t generateJson(int start, void*& buffer, size_t& buffer_size, int options);
 
   void printRawData(FILE* file) {
     if (protocol != NULL) protocol->printRawData(this, file);
@@ -748,8 +747,9 @@ typedef struct SensorDataStored : SensorData  {
   History humidityHistory;
 #endif
 
+  size_t generateJson(int start, void*& buffer, size_t& buffer_size, int options);
   size_t generateJsonLine(int start, void*& buffer, size_t& buffer_size, RestRequestType requestType, int options);
-  size_t generateJsonLineBrief(int start, void*& buffer, size_t& buffer_size, int options);
+  size_t generateJsonLineBrief(int start, void*& buffer, size_t& buffer_size, time_t current_time, int options);
 
 } SensorDataStored;
 
