@@ -2,7 +2,7 @@
 ## Raspberry Pi: Receiving data from temperature/humidity sensors with cheap RF receiver
 ###### Project source can be downloaded from [https://github.com/alex-konshin/f007th-rpi.git](https://github.com/alex-konshin/f007th-rpi.git)
 
-## [More information is available of the project Wiki](https://github.com/alex-konshin/f007th-rpi/wiki/) 
+## [More information is available in the project Wiki](https://github.com/alex-konshin/f007th-rpi/wiki/) 
 
 ### Author and Contributors
 Alex Konshin <akonshin@gmail.com>
