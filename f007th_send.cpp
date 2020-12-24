@@ -55,9 +55,8 @@ int main(int argc, char *argv[]) {
     response_buffer = (char*)malloc(SERVER_RESPONSE_BUFFER_SIZE*sizeof(char));
   }
 
-  fprintf(stderr, "Config options %d.\n", cfg.options);
   SensorsData sensorsData(cfg.options);
-  fprintf(stderr, "Config options %d.\n", cfg.options);
+  fprintf(stderr, "Config options %d.\n", cfg.options); // FIXME
 
   RFReceiver receiver(cfg.gpio);
   Log->setLogFile(log);
@@ -94,6 +93,7 @@ int main(int argc, char *argv[]) {
   }
 #endif
 
+  fprintf(stderr, "Config options %d.\n", cfg.options);
   if ((cfg.options&VERBOSITY_PRINT_STATISTICS) != 0)
     receiver.printStatisticsPeriodically(1000); // print statistics every second
 
