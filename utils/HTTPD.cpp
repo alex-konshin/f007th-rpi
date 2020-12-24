@@ -27,6 +27,10 @@
 
 #include "HTTPD.hpp"
 
+#define REST_API_VERSION "1.0"
+
+static const char* version_response_text = "{\"application_version\":\"" RF_RECEIVER_VERSION "\",\"api_version\":\"" REST_API_VERSION "\"}";
+
 #define request_params(request_name) REQUEST_ ## request_name ## _ARGS
 #define max_number_of_params(request_name) (sizeof(request_params(request_name))/sizeof(const char*))
 
@@ -348,7 +352,7 @@ static int process_request(
   size_t url_len = strlen(url);
   if (url_len > MAX_URL) return error_bad_request(connection);
 
-  void* buffer = __null;
+  void* buffer = NULL;
   size_t buffer_size = 0;
   size_t data_size = 0;
 
@@ -547,12 +551,12 @@ static int process_request(
 
     } else if (is_req("version", api_req, len)) {
 
-      response = MHD_create_response_from_buffer(strlen(RF_RECEIVER_VERSION)*sizeof(char), (void*)RF_RECEIVER_VERSION, MHD_RESPMEM_PERSISTENT);
-      MHD_add_response_header(response, "Content-Type", "text/plain");
-
+      response = MHD_create_response_from_buffer(strlen(version_response_text)*sizeof(char), (void*)version_response_text, MHD_RESPMEM_PERSISTENT);
+      MHD_add_response_header(response, "Content-Type", "application/json");
       int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
       MHD_destroy_response(response);
       return ret;
+
     } else {
       return error_bad_request(connection);
     }
