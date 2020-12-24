@@ -166,7 +166,7 @@
           chart.update();
         }
       };
-      xmlhttp.open("GET", '/api/temperature/'+sensor_id+'?scale=F&utc=1', true);
+      xmlhttp.open("GET", '/api/temperature/'+sensor_id+'?scale=F', true);
       xmlhttp.send();
     }
 
@@ -194,7 +194,7 @@
             var d = $.Deferred();
             
             $.ajax({
-              url: "/api/sensors",
+              url: "/api/sensors?format=brief",
               dataType: "json"
             }).done(function(response) {
               d.resolve(response);
