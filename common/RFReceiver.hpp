@@ -68,7 +68,7 @@
 class RFReceiver {
 
 public:
-  RFReceiver(int gpio);
+  RFReceiver(Config* cfg);
   ~RFReceiver();
 
   bool enableReceive();
@@ -131,6 +131,7 @@ private:
   static RFReceiver* first;
   static bool isLibInitialized;
 
+  Config* cfg;
   uint32_t nLastTime;
   int gpio;
   int lastLevel;

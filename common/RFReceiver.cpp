@@ -16,8 +16,9 @@ std::mutex receivers_chain_mutex;
 pthread_mutex_t receiversLock;
 
 
-RFReceiver::RFReceiver(int gpio) {
-  this->gpio = gpio;
+RFReceiver::RFReceiver(Config* cfg) {
+  this->cfg = cfg;
+  this->gpio = cfg->gpio;
   protocols = PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_TX7U|PROTOCOL_HG02832|PROTOCOL_WH2;
   isEnabled = false;
   isDecoderStarted = false;
@@ -878,7 +879,7 @@ void RFReceiver::raiseTimerEvent() {
   pthread_cond_broadcast(&messageReady);
   pthread_mutex_unlock(&messageQueueLock);
 
-  printStatistics();
+  if ((cfg->options&VERBOSITY_PRINT_STATISTICS) != 0) printStatistics();
 }
 
 bool RFReceiver::checkAndResetTimerEvent() {
@@ -906,9 +907,9 @@ void RFReceiver::setTimer(uint32_t millis) {
 #endif
 
   if (millis == 0)
-    printf("timer off\n");
+    Log->info("Stopped timer");
   else
-    printf("timer on %dms\n", millis);
+    Log->info("Started timer %dms", millis);
 }
 
 void RFReceiver::stopTimer() {

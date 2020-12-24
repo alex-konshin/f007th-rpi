@@ -56,9 +56,8 @@ int main(int argc, char *argv[]) {
   }
 
   SensorsData sensorsData(cfg.options);
-  fprintf(stderr, "Config options %d.\n", cfg.options); // FIXME
 
-  RFReceiver receiver(cfg.gpio);
+  RFReceiver receiver(&cfg);
   Log->setLogFile(log);
 #ifdef TEST_DECODING
   receiver.setInputLogFile(cfg.input_log_file_path);
@@ -93,9 +92,7 @@ int main(int argc, char *argv[]) {
   }
 #endif
 
-  fprintf(stderr, "Config options %d.\n", cfg.options);
-  if ((cfg.options&VERBOSITY_PRINT_STATISTICS) != 0)
-    receiver.printStatisticsPeriodically(1000); // print statistics every second
+  if ((cfg.options&VERBOSITY_PRINT_STATISTICS) != 0) receiver.printStatisticsPeriodically(1000); // print statistics every second
 
 #define RULE_MESSAGE_MAX_SIZE 4096
   char rule_message_buffer[RULE_MESSAGE_MAX_SIZE];
@@ -180,7 +177,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (receiver.checkAndResetTimerEvent()) {
-      receiver.printStatistics();
+      if ((cfg.options&VERBOSITY_PRINT_STATISTICS) != 0) receiver.printStatistics();
     }
   }
 
