@@ -55,7 +55,9 @@ int main(int argc, char *argv[]) {
     response_buffer = (char*)malloc(SERVER_RESPONSE_BUFFER_SIZE*sizeof(char));
   }
 
+  fprintf(stderr, "Config options %d.\n", cfg.options);
   SensorsData sensorsData(cfg.options);
+  fprintf(stderr, "Config options %d.\n", cfg.options);
 
   RFReceiver receiver(cfg.gpio);
   Log->setLogFile(log);
