@@ -22,6 +22,7 @@
    */
   const char* convert_time(time_t* data_time, char* buffer, size_t buffer_size, bool utc);
 
+  char* t2d(int t, char* buffer);
   char* t2d(int t, char* buffer, uint32_t& length);
   char* i2a(int n, char* buffer, uint32_t& length);
 

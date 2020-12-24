@@ -55,19 +55,16 @@ static const char* request_params(humidity_history)[] = {
 //  "to"
 };
 
-static const char* request_params(brief)[] = {
-#define REQ_BRIEF_PARAM_UTC 0
-  "utc",
-#define REQ_BRIEF_PARAM_CELSIUS 1
-  "celsius",
-};
-
 static const char* request_params(sensors)[] = {
 #define REQ_SENSORS_PARAM_UTC 0
   "utc",
 #define REQ_SENSORS_PARAM_CELSIUS 1
   "celsius",
+#define REQ_SENSORS_PARAM_FORMAT 2
+  "format",
 };
+
+enum class SensorsRequestFormat : int { full=0, brief=1 };
 
 // Max total length of request (without arguments)
 #define MAX_URL 256
@@ -524,22 +521,26 @@ static int process_request(
         if (!update_options(options, OPTION_UTC, params[REQ_SENSORS_PARAM_UTC])) return error_bad_request(connection);
         if (!update_options(options, OPTION_CELSIUS, params[REQ_SENSORS_PARAM_CELSIUS])) return error_bad_request(connection);
 
-        data_size = sensorsData->generateJson(buffer, buffer_size, RestRequestType::AllData, options); // current data from all defined sensors
-      } else {
-        return error_bad_request(connection);
-      }
+        SensorsRequestFormat requestFormat;
+        const char* format_value = params[REQ_SENSORS_PARAM_FORMAT];
+        if (format_value == NULL || *format_value == '\0' || strcmp(format_value, "0") == 0 || strcmp(format_value, "full") == 0) {
+          requestFormat = SensorsRequestFormat::full;
+        } else if (strcmp(format_value, "1") == 0 || strcmp(format_value, "brief") == 0) {
+          requestFormat = SensorsRequestFormat::brief;
+        } else {
+          return error_bad_request(connection);
+        }
 
-    } else if (is_req("brief", api_req, len)) {
-      if (ch == '\0') {
-        bool success = false;
-        int result = process_params(httpd, connection, p, request_params(brief), max_number_of_params(brief), params, success);
-        if (!success) return result;
-
-        int options = sensorsData->getOptions();
-        if (!update_options(options, OPTION_UTC, params[REQ_BRIEF_PARAM_UTC])) return error_bad_request(connection);
-        if (!update_options(options, OPTION_CELSIUS, params[REQ_BRIEF_PARAM_CELSIUS])) return error_bad_request(connection);
-
-        data_size = sensorsData->generateJson(buffer, buffer_size, RestRequestType::Brief, options);
+        switch(requestFormat) {
+        case SensorsRequestFormat::full:
+          data_size = sensorsData->generateJson(buffer, buffer_size, RestRequestType::AllData, options); // current data from all defined sensors
+          break;
+        case SensorsRequestFormat::brief:
+          data_size = sensorsData->generateJson(buffer, buffer_size, RestRequestType::Brief, options);
+          break;
+        default:
+          return error_bad_request(connection);
+        }
       } else {
         return error_bad_request(connection);
       }
