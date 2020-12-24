@@ -547,7 +547,7 @@ static int process_request(
 
     } else if (is_req("version", api_req, len)) {
 
-      response = MHD_create_response_from_buffer(2, (void*)RF_RECEIVER_VERSION, MHD_RESPMEM_PERSISTENT);
+      response = MHD_create_response_from_buffer(strlen(RF_RECEIVER_VERSION)*sizeof(char), (void*)RF_RECEIVER_VERSION, MHD_RESPMEM_PERSISTENT);
       MHD_add_response_header(response, "Content-Type", "text/plain");
 
       int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
