@@ -178,21 +178,21 @@
         if (sensor_id !== undefined) updateChartData(0, sensor_id);
       }
       );
-      
+
       var current_data = [];
-      
+
       $("#jsGrid").jsGrid({
         height: "auto",
         width: "500",
-        
+
         sorting: true,
         paging: false,
         autoload: true,
-        
+
         controller: {
           loadData: function() {
             var d = $.Deferred();
-            
+
             $.ajax({
               url: "/api/sensors?format=brief",
               dataType: "json"
@@ -214,10 +214,10 @@
         sensor_id = item.name;
         updateChartData(0, sensor_id);
       },
- 
+
       fields: [
           { title: "Name", name: "name", type: "text" },
-          { title: "\u2109", name: "temperature", type: "number", width: 50, align: "center", itemTemplate: function(value) { return (value/10).toFixed(1); } },
+          { title: "\u2109", name: "temperature", type: "number", width: 50, align: "center" },
           { title: "Humidity", name: "humidity", type: "number", width: 50, align: "center" },
           { title: "Battery", name: "battery_ok", type: "text", width: 50, align: "center", itemTemplate: function(value) { return value===undefined ? "-" : value ? "OK" : "Low"; } }
       ]
