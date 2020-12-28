@@ -14,8 +14,29 @@
 #define MAX_DURATION_TX7U 1500
 
 
-class ProtocolTX7U : public Protocol {
+static ProtocolDef def_tx7u = {
+  name : "tx6",
+  protocol: PROTOCOL_TX7U,
+  protocol_index: PROTOCOL_INDEX_TX7U,
+  variant: 0,
+  rolling_code_size: 7,
+  number_of_channels: 0,
+  channels_numbering_type: 0 // 0 => numbers, 1 => letters
+};
 
+class ProtocolTX7U : public Protocol {
+protected:
+  ProtocolDef* _getProtocolDef(const char* protocol_name) {
+    if (protocol_name != NULL) {
+      if (strcasecmp(def_tx7u.name, protocol_name) == 0
+       || strcasecmp("tx6", protocol_name) == 0
+       || strcasecmp("tx7", protocol_name) == 0
+       ) return &def_tx7u;
+    }
+    return NULL;
+  }
+
+public:
   ProtocolTX7U() : Protocol(PROTOCOL_TX7U, PROTOCOL_INDEX_TX7U, "TX7U") {
   }
   static ProtocolTX7U* instance;

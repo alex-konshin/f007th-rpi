@@ -269,7 +269,7 @@ static int download_file(struct MHD_Connection * connection, const char* filepat
   if (fd != -1) {
     struct stat file_stat;
     if (fstat(fd, &file_stat) != 0 || !S_ISREG(file_stat.st_mode)) {
-      close (fd);
+      close(fd);
       fd = -1;
     }
     filesize = file_stat.st_size;

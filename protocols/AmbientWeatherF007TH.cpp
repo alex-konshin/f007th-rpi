@@ -14,9 +14,36 @@
 #define MAX_DURATION_F007TH 1150
 #define MAX_HALF_DURATION 600
 
+static ProtocolDef def_f007th = {
+  name : "f007th",
+  protocol: PROTOCOL_F007TH,
+  protocol_index: PROTOCOL_INDEX_F007TH,
+  variant: 0,
+  rolling_code_size: 8,
+  number_of_channels: 8,
+  channels_numbering_type: 0 // 0 => numbers, 1 => letters
+};
+static ProtocolDef def_f007tp = {
+  name : "f007tp",
+  protocol: PROTOCOL_F007TH,
+  protocol_index: PROTOCOL_INDEX_F007TH,
+  variant: 1,
+  rolling_code_size: 8,
+  number_of_channels: 8,
+  channels_numbering_type: 0 // 0 => numbers, 1 => letters
+};
 
 class ProtocolF007TH : public Protocol {
+protected:
+  ProtocolDef* _getProtocolDef(const char* protocol_name) {
+    if (protocol_name != NULL) {
+      if (strcasecmp(def_f007th.name, protocol_name) == 0) return &def_f007th;
+      if (strcasecmp(def_f007tp.name, protocol_name) == 0) return &def_f007tp;
+    }
+    return NULL;
+  }
 
+public:
   ProtocolF007TH() : Protocol(PROTOCOL_F007TH, PROTOCOL_INDEX_F007TH, "F007TH") {
   }
 

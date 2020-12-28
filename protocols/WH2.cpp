@@ -17,8 +17,35 @@
 #define PWM_MEDIAN_WH2 1000
 #define MIN_SEQUENCE_WH2 95
 
+static ProtocolDef def_wh2 = {
+  name : "wh2",
+  protocol: PROTOCOL_WH2,
+  protocol_index: PROTOCOL_INDEX_WH2,
+  variant: 0x40,
+  rolling_code_size: 8,
+  number_of_channels: 0,
+  channels_numbering_type: 0 // 0 => numbers, 1 => letters
+};
+static ProtocolDef def_ft007th = {
+  name : "ft007th",
+  protocol: PROTOCOL_WH2,
+  protocol_index: PROTOCOL_INDEX_WH2,
+  variant: 0x41,
+  rolling_code_size: 8,
+  number_of_channels: 0,
+  channels_numbering_type: 0 // 0 => numbers, 1 => letters
+};
 
 class ProtocolWH2 : public Protocol {
+protected:
+  ProtocolDef* _getProtocolDef(const char* protocol_name) {
+    if (protocol_name != NULL) {
+      if (strcasecmp(def_wh2.name, protocol_name) == 0) return &def_wh2;
+      if (strcasecmp(def_ft007th.name, protocol_name) == 0) return &def_ft007th;
+    }
+    return NULL;
+  }
+
 public:
 
   ProtocolWH2() : Protocol(PROTOCOL_WH2, PROTOCOL_INDEX_WH2, "WH2") {

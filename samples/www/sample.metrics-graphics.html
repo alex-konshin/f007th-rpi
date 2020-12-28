@@ -12,11 +12,28 @@
 
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jsgrid/1.5.3/jsgrid.min.js"></script>
 
-  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+  <script src="https://d3js.org/d3.v6.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/metrics-graphics/2.15.6/metricsgraphics.css" integrity="sha512-xBx8bSVavzCp5rqVg0mQN87xm+np2vUDUAbBZkmJPrXQS0TqqG2PHXqdNJuTKpHYIaBgBVZUb1OCBdgl88SCpg==" crossorigin="anonymous" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/metrics-graphics/2.15.6/metricsgraphics.js" integrity="sha512-ZK0WjtDcWIgPGnc0ijTg6vGJIsTcMh46KgFKpnZiZWp8mhTXwqOAbJOKVE3tT4ru701KRakCCrFUre7tRn+oiw==" crossorigin="anonymous"></script>
+<!--
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/metrics-graphics/3.0-alpha3/metricsgraphics.css" integrity="sha512-WKRfYWEMPm8d1MxqUYEn8I/hODkPHrNypya8NX5ozDGVHXEnZUzhuk54yCr6xqsSgZ9Z30/EwWQa7hZZzFxjvQ==" crossorigin="anonymous" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/metrics-graphics/3.0-alpha3/metricsgraphics.min.js" integrity="sha512-ajcrSc3e0yOZ8tbLioR0G0rrcMvXoJku+UZfOXq2gtwbNLJGhbuzyxo/mAlxHfTegrN51YGvZXT/Gxp7NsIXXw==" crossorigin="anonymous"></script>
+ -->
+
+  <style>
+    canvas {
+      -moz-user-select: none;
+      -webkit-user-select: none;
+      -ms-user-select: none;
+    }
+  </style>
 </head>
 
 <body>
-  <div id="chart1" style="width:100%;height:800px;"></div>
+  <div style="width:1000px">
+    <canvas id="chart1"></canvas>
+  </div>
   <br>
   <br>
   <button id="update">update</button>
@@ -24,23 +41,37 @@
   <br>
   <div id="jsGrid"></div>
   <script>
+    var globals = {};
 
-    function unpack(rows, key) {
-      return rows.map(function(row) { return row[key]; });
-    }
+    globals.chart = null;
 
-    var layout = {
-      title: 'Temperature',
+    globals.chart_cfg = {
+      title: "Temperature",
+      data: [],
+      width: 1000,
+      height: 300,
+      right: 40,
+      target: '#chart1',
+      xAccessor: 't',
+      yAccessor: 'y',
+      //y_extended_ticks: true,
+      //brush: 'x'
     };
 
-    var globals = {};
-    globals.chart = null;
     globals.sensors = [];
-    globals.layout = layout;
 
     function redrawChart(chart_data,sensors) {
-      var chart = Plotly.react('chart1', chart_data, layout, {responsive: true});
-      globals.chart = chart;
+      var cfg = globals.chart_cfg;
+      cfg.data = chart_data;
+      cfg.legend = sensors;
+
+      var chart = globals.chart;
+      if (chart == null) {
+        chart = MG.data_graphic(cfg);
+        globals.chart = chart;
+      } else {
+        chart.redraw();
+      }
     };
 
     function refreshChart(sensors) {
@@ -49,18 +80,7 @@
       var countdown = sensors_count;
 
       function updateChartData(index, sensor_data) {
-        var sensor_id = sensors[index];
-        chart_data[index] = {
-          type: "scatter",
-          mode: "lines",
-          name: sensor_id,
-          x: unpack(sensor_data, 't'),
-          y: unpack(sensor_data, 'y'),
-          // see https://plotly.com/javascript/reference/scatter/
-          //hoverinfo: "y+name"
-          hovertemplate: "%{y}"
-          //line: {color: '#17BECF'}
-        };
+        chart_data[index] = MG.convert.date(sensor_data, 't', '%Y-%m-%d %H:%M:%S%Z');
         if (--countdown == 0) {
           redrawChart(chart_data, sensors);
         }
@@ -87,6 +107,15 @@
         }
       }
     }
+
+
+    document.getElementById('update').addEventListener(
+      'click',
+      function() {
+        $("#jsGrid").jsGrid("refresh");
+      }
+    );
+
 
     $("#jsGrid").jsGrid({
       height: "auto",
@@ -126,18 +155,7 @@
         { title: "Battery", name: "battery_ok", type: "text", width: 50, align: "center", itemTemplate: function(value) { return value===undefined ? "-" : value ? "OK" : "Low"; } }
       ]
     });
-
-    globals.jsGrid = $("#jsGrid").data("JSGrid");
-
-    document.getElementById('update').addEventListener(
-      'click',
-      function() {
-        globals.jsGrid.render();
-      }
-    );
   </script>
 </body>
 
 </html>
-
-

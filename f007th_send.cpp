@@ -20,10 +20,6 @@
 static bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer, char* response_buffer, FILE* log);
 
 
-const char* Config::getVersion() {
-  return RF_RECEIVER_VERSION;
-}
-
 int main(int argc, char *argv[]) {
 
   if ( argc==1 ) Config::help();

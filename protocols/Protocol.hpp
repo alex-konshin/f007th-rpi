@@ -57,16 +57,36 @@ typedef struct Statistics {
 
 extern Statistics* statistics;
 
+struct ProtocolDef {
+  const char *name;
+  uint8_t protocol;
+  uint8_t protocol_index;
+  uint8_t variant;
+  uint8_t rolling_code_size;
+  uint8_t number_of_channels;
+  uint8_t channels_numbering_type; // 0 => numbers, 1 => letters
+};
+
 //-------------------------------------------------------------
 class Protocol {
 protected:
   static const char* channel_names_numeric[];
+  virtual ProtocolDef* _getProtocolDef(const char* protocol_name) = 0;
 
 public:
   static Protocol* protocols[NUMBER_OF_PROTOCOLS];
 
   static void registerProtocol(Protocol* protocol) {
     protocols[protocol->protocol_index] = protocol;
+  }
+  static ProtocolDef* getProtocolDef(const char* protocol_name) {
+    if (protocol_name == NULL || *protocol_name == '\0') return NULL;
+    for (int protocol_index = 0; protocol_index<NUMBER_OF_PROTOCOLS; protocol_index++) {
+      Protocol* protocol = protocols[protocol_index];
+      ProtocolDef* def = protocol == NULL ? NULL : protocol->_getProtocolDef(protocol_name);
+      if (def != NULL) return def;
+    }
+    return NULL;
   }
 
   uint8_t protocol_bit;

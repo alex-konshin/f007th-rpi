@@ -13,12 +13,29 @@
 #define MIN_DURATION_00592TXR 140
 #define MAX_DURATION_00592TXR 660
 
+static ProtocolDef def_00592txr = {
+  name : "00592txr",
+  protocol: PROTOCOL_00592TXR,
+  protocol_index: PROTOCOL_INDEX_00592TXR,
+  variant: 0,
+  rolling_code_size: 8,
+  number_of_channels: 3,
+  channels_numbering_type: 1 // 0 => numbers, 1 => letters
+};
+
 class Protocol00592TXR : public Protocol {
 public:
   Protocol00592TXR() : Protocol(PROTOCOL_00592TXR, PROTOCOL_INDEX_00592TXR, "00592TXR") {
   }
 
   static Protocol00592TXR* instance;
+
+  ProtocolDef* _getProtocolDef(const char* protocol_name) {
+    if (protocol_name != NULL) {
+      if (strcasecmp(def_00592txr.name, protocol_name) == 0) return &def_00592txr;
+    }
+    return NULL;
+  }
 
   uint32_t getId(SensorData* data) {
     uint32_t channel_bits = (data->fields.channel>>6)&3;

@@ -115,10 +115,6 @@ char getHex(const char*& p, ErrorLogger* errorLogger) {
   return (char)n;
 }
 
-static inline bool isHex(char ch) {
-  return (ch>='0' && ch<='9') || (ch>='a' && ch<='f') || (ch>='A' && ch<='F');
-}
-
 //-------------------------------------------------------------
 const char* getWord(const char*& p, size_t& length) {
   length = 0;
@@ -451,12 +447,189 @@ const char* make_str(const char* str, size_t length) {
   if (str == NULL) return NULL;
   if (length == 0) return EMPTY_STRING;
   char* result = (char*)malloc((length+1)*sizeof(char));
-  strcpy(result, str);
+  memcpy(result, str, length*sizeof(char));
   result[length] = '\0';
   return result;
 }
 
+//-------------------------------------------------------------
+// Get the length of ancestor path.
+// The value of filepath MUST be absolute and normalized.
+// Returns 0 if the provided arguments are wrong.
+size_t getParentFolderPathLength(const char *filepath, int up, size_t len) {
+  char ch;
+  if (filepath == NULL || len == 0 || (ch=*filepath) == '\0' || ch !='/' || up < 0 || strlen(filepath) < len)  return 0;
+  if (up == 0) return len;
+  if (len == 1) return 0;
 
+  const char *ptr = filepath + len - 1; //ignore the last character
+  while (--ptr > filepath) {
+    if (*ptr == '/') {
+      if (--up <= 0) return (size_t) (ptr - filepath);
+    }
+  }
+  return up==1 ? 1 : 0;
+}
+
+//-------------------------------------------------------------
+// Get ancestor of provided filepath.
+// The value of filepath MUST be absolute and normalized.
+// Returns NULL if the provided arguments are wrong.
+// Returned value must be freed after use.
+const char* getParentFolderPath(const char *filepath, int up) {
+  char ch;
+  if (filepath == NULL || (ch=*filepath) == '\0' || ch !='/' || up < 0)  return NULL;
+  if (up == 0) return clone(filepath);
+  size_t len = strlen(filepath);
+  if (len == 1) return NULL; // filepath == "/"
+
+  const char *ptr = filepath + len - 1; //ignore the last character
+  while (--ptr > filepath) {
+    if (*ptr == '/') {
+      if (--up <= 0)
+        return make_str(filepath, (size_t) (ptr - filepath));
+    }
+  }
+  return up > 1 ? NULL : make_str("/", 1);
+}
+
+
+//-------------------------------------------------------------
+static size_t normalizeAndAppend(char* result, size_t baselen, const char* src, size_t srclen) {
+  char ch;
+  char* pr = result+baselen;
+
+  bool start_fn = true;
+  while (srclen > 0) {
+    if ((ch=*src) == '/') {
+      src++;
+      srclen--;
+      start_fn = true;
+      continue;
+    }
+
+    if (ch == '\\' || ch == '*' || ch == '?') return 0; // don't want to support weird cases
+    if (start_fn) {
+      if (ch == '.') {
+        if (srclen == 1) break;
+        // srclen >= 2
+        if ((ch=src[1]) == '/') { // ignoring "./"
+          src += 2;
+          srclen -= 2;
+          continue;
+        }
+        if (ch != '.') {
+          if (ch == '\\' || ch == '*' || ch == '?') return 0; // don't want to support weird cases
+          if (baselen != 1) {
+            *pr++ = '/';
+            baselen++;
+          }
+          *pr++ = '.';
+          *pr++ = ch;
+          baselen += 2;
+          src += 2;
+          srclen -= 2;
+          start_fn = false;
+          continue;
+        }
+        // "/.."
+
+        if (srclen == 2 ) { // trailing ".."
+          src += 2;
+          srclen = 0;
+        } else if ((ch=src[2]) == '/') { // "../"
+          src += 3;
+          srclen -= 3;
+        } else {
+          if (ch == '\\' || ch == '*' || ch == '?') return 0; // don't want to support weird cases
+          if (baselen != 1) {
+            *pr++ = '/';
+            baselen++;
+          }
+          *pr++ = '.';
+          *pr++ = '.';
+          *pr++ = ch;
+          baselen += 3;
+          src += 3;
+          srclen -= 3;
+          start_fn = false;
+          continue;
+        }
+
+        // "/../"
+        baselen = getParentFolderPathLength(result, 1, baselen);
+        if (baselen == 0)  return 0; // don't want to support weird cases
+        pr = result+baselen;
+        continue;
+      }
+      if (baselen != 1) {
+        *pr++ = '/';
+        baselen++;
+      }
+      start_fn = false;
+    }
+
+    *pr++ = ch;
+    baselen++;
+    src++;
+    srclen--;
+  }
+  *pr = '\0';
+
+  return baselen;
+}
+
+/**<!----------------------------------------------------------->
+ * Constructs file path from base directory and relative path.
+ * Path baseDirPath must be absolute unless relativePath is absolute.
+ */
+const char* buildFilePath(const char* baseDirPath, const char* relativePath) {
+
+  if (relativePath == NULL || *relativePath == '\0' ) relativePath = ".";
+
+  char* result;
+  size_t baselen;
+  size_t rellen = strlen(relativePath);
+  const char* prel = relativePath;
+
+  if (*relativePath == '/') {
+    if (rellen == 1) return clone(relativePath);
+    baselen = 1;
+    prel++;
+    rellen--;
+
+    result = (char*)malloc((rellen+2)*sizeof(char));
+    result[0] = '/';
+    result[1] = '\0';
+
+  } else {
+
+    if (baseDirPath == NULL || *baseDirPath != '/' ) return NULL; // baseDirPath must be absolute
+
+    baselen = strlen(baseDirPath);
+    result = (char*)malloc((baselen+rellen+2)*sizeof(char)); // base+/+rel+\0
+    result[0] = '/';
+    result[1] = '\0';
+
+    // copy and normalizing base path
+    baselen = normalizeAndAppend(result, 1, baseDirPath+1, baselen-1);
+    if (baselen == 0) { // invalid base path
+      free((void*)result);
+      return NULL;
+    }
+  }
+
+  if (rellen == 0 || (rellen == 1 && *relativePath == '.')) return result;
+
+  // append and normalizing relative path
+  baselen = normalizeAndAppend(result, baselen, prel, rellen);
+  if (baselen == 0) { // invalid relative path
+    free((void*)result);
+    return NULL;
+  }
+
+  return result;
+}
 
 //-------------------------------------------------------------
 /*

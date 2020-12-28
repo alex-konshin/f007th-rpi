@@ -9,6 +9,7 @@
 #define RECEIVEDMESSAGE_HPP_
 
 #include "SensorsData.hpp"
+#include "Config.hpp"
 
 #define SEND_DATA_BUFFER_SIZE 2048
 #define SERVER_RESPONSE_BUFFER_SIZE 8192

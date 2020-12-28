@@ -12,6 +12,9 @@
 #include <mosquittopp.h>
 #include <errno.h>
 
+#include "Logger.hpp"
+#include "../common/Config.hpp"
+
 class Config;
 
 class MqttPublisher: public mosqpp::mosquittopp {

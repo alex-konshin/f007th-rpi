@@ -15,7 +15,26 @@
 #define MIN_SEQUENCE_HG02832 87
 
 
+static ProtocolDef def_hg02832 = {
+  name : "hg02832",
+  protocol: PROTOCOL_HG02832,
+  protocol_index: PROTOCOL_INDEX_HG02832,
+  variant: 0,
+  rolling_code_size: 8,
+  number_of_channels: 3,
+  channels_numbering_type: 0 // 0 => numbers, 1 => letters
+};
+
 class ProtocolHG02832 : public Protocol {
+protected:
+  ProtocolDef* _getProtocolDef(const char* protocol_name) {
+    if (protocol_name != NULL) {
+      if (strcasecmp(def_hg02832.name, protocol_name) == 0) return &def_hg02832;
+    }
+    return NULL;
+  }
+
+public:
 
   ProtocolHG02832() : Protocol(PROTOCOL_HG02832, PROTOCOL_INDEX_HG02832, "HG02832") {
   }
