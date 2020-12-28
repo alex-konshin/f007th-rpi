@@ -500,6 +500,15 @@ public:
 
   unsigned getCount() { return count; }
 
+  void truncate() {
+    struct tm tm;
+    time_t now = time(NULL);
+    localtime_r(&now, &tm);
+    tm.tm_hour -= HISTORY_DEPTH_HOURS;
+    time_t from_time = mktime(&tm);
+    truncate(from_time);
+  }
+
   void truncate(time_t from) {
     chain_mutex.lock();
     HistoryListItem* record = first;
@@ -525,28 +534,50 @@ public:
     HistoryData* result = NULL;
     count = 0;
 
+    time_t truncate_time = 0;
+    if (from == 0) {
+      struct tm tm;
+      time_t now = time(NULL);
+      localtime_r(&now, &tm);
+      tm.tm_hour -= HISTORY_DEPTH_HOURS;
+      truncate_time = mktime(&tm);
+    }
+
     chain_mutex.lock();
 
     HistoryListItem* record = first;
-    if (from != 0)
-      while (record != NULL && record->data.time >= from) record = record->next;
     if (record != NULL) {
+      if (truncate_time != 0) {
+        // remove outdated history
+        while (record != NULL && record->data.time < truncate_time) {
+          HistoryListItem* next = record->next;
+          delete record;
+          first = record = next;
+          if ( record == NULL) last = NULL;
+          count--;
+        }
+      }
+      if (record != NULL && from != 0) {
+        while (record != NULL && record->data.time >= from) record = record->next;
+      }
 
-      HistoryListItem* r = record;
-      int result_size = 0;
-      do {
-        if (to != 0 && r->data.time > to) break;
-        result_size++;
-      } while ((r = r->next) != NULL);
-      if (result_size > 0) {
-        count = result_size;
-        HistoryData* pdata = result = (HistoryData*)calloc(result_size, sizeof(HistoryData));
-        r = record;
-        for (int index = 0; index<result_size; index++) {
-          pdata->time = r->data.time;
-          pdata->value = r->data.value;
-          pdata++;
-          r = r->next;
+      if (record != NULL) {
+        HistoryListItem* r = record;
+        int result_size = 0;
+        do {
+          if (to != 0 && r->data.time > to) break;
+          result_size++;
+        } while ((r = r->next) != NULL);
+        if (result_size > 0) {
+          count = result_size;
+          HistoryData* pdata = result = (HistoryData*)calloc(result_size, sizeof(HistoryData));
+          r = record;
+          for (int index = 0; index<result_size; index++) {
+            pdata->time = r->data.time;
+            pdata->value = r->data.value;
+            pdata++;
+            r = r->next;
+          }
         }
       }
     }
@@ -557,6 +588,7 @@ public:
 
   size_t generateJson(time_t from, time_t to, void*& buffer, size_t& buffer_size, ValueConversion convertion, bool x10, bool time_UTC) {
     unsigned count = 0;
+
     // Take all requested items safely first then generate JSON
     HistoryData* pdata = get(from, to, count);
     if (pdata == NULL || count == 0) return 0;
