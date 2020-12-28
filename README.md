@@ -26,7 +26,7 @@ Note that rolling code is changed when you replace batteries.
 You can assign action to some events. Actions may be changed accordingly to specified schedule.
 
 ### Supported receivers
-The data is received with cheap RF 433.92MHz receivers like [RXB6](http://www.jmrth.com/en/images/proimages/RXB6_en_v3.pdf), [SeeedStudio RF-R-ASK](https://www.seeedstudio.com/433MHz-ASK%26amp%3BOOK-Super-heterodyne-Receiver-module-p-2205.html), RX-RM-5V, etc.
+The data is received with cheap RF 433.92MHz receivers like [RXB6](https://cdn.instructables.com/ORIG/FM6/PYJR/JUMXMMGB/FM6PYJRJUMXMMGB.pdf), [SeeedStudio RF-R-ASK](https://www.seeedstudio.com/433MHz-ASK%26amp%3BOOK-Super-heterodyne-Receiver-module-p-2205.html), RX-RM-5V, etc.
 It is tested with RXB6 and SeeedStudio RF-R-ASK.
 * [Example of wiring RXB6 to Raspberry Pi](https://github.com/alex-konshin/f007th-rpi/wiki/Example-of-wiring-RXB6-to-Raspberry-Pi)
 
