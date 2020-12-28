@@ -783,8 +783,10 @@ private:
 
     items_mutex.unlock();
 #ifdef INCLUDE_HTTPD
-    if (new_item->hasTemperature()) new_item->temperatureHistory.add(data_time, new_item->getRawTemperature());
-    if (new_item->hasHumidity()) new_item->humidityHistory.add(data_time, new_item->getHumidity());
+    if (new_item->def != NULL) {
+      if (new_item->hasTemperature()) new_item->temperatureHistory.add(data_time, new_item->getRawTemperature());
+      if (new_item->hasHumidity()) new_item->humidityHistory.add(data_time, new_item->getHumidity());
+    }
 #endif
     return new_item;
   }
