@@ -299,6 +299,7 @@ private:
 
 public:
   uint32_t id;
+  unsigned index;
   const char* name;
   const char* quoted;
   const char* influxdb_quoted;
@@ -344,6 +345,7 @@ public:
     if (name_len <= 0 || name == NULL) return SENSOR_NAME_MISSING;
     if (name_len > SENSOR_NAME_MAX_LEN) return SENSOR_NAME_TOO_LONG;
 
+    unsigned new_index = 0;
     SensorDef** pdef = &sensorDefs;
     SensorDef* def = sensorDefs;
     while (def != NULL) {
@@ -355,6 +357,7 @@ public:
         result = def;
         return SENSOR_DEF_DUP_NAME;
       }
+      new_index++;
       pdef = &(def->next);
       def = def->next;
     }
@@ -407,6 +410,7 @@ public:
     def->next = NULL;
     def->rules = NULL;
     def->data = NULL;
+    def->index = new_index;
     *pdef = def;
     result = def;
     return SENSOR_DEF_WAS_ADDED;
@@ -792,11 +796,16 @@ private:
       return NULL;
     }
     new_item->copyFrom(data);
-    if (new_item->def == NULL) new_item->def = SensorDef::find(data->getId());
+
+    SensorDef* def = new_item->def;
+    if (def == NULL) {
+      def = SensorDef::find(data->getId());
+      if (def != NULL) new_item->def = def;
+    }
 
     items_mutex.lock();
 
-    int index = size;
+    int new_index = size;
     int new_size = size+1;
     if (new_size > capacity) {
       int new_capacity = capacity + 8;
@@ -810,7 +819,21 @@ private:
       capacity = new_capacity;
     }
 
-    items[index] = new_item;
+    if (def != NULL && new_index > 0) {
+      // Insert new item accordingly to the order of sensor definitions in configuration file.
+      // Then any REST requests will return data with respect of the order of definitions in configuration file.
+
+      unsigned def_index = def->index;
+      // Bubble insert from the end of the array.
+      do {
+        SensorDataStored* item = items[new_index-1];
+        SensorDef* item_def = item->def;
+        if (item_def != NULL && item_def->index <= def_index) break;
+        items[new_index] = item;
+      } while (--new_index > 0);
+    }
+
+    items[new_index] = new_item;
     size = new_size;
 
     items_mutex.unlock();
