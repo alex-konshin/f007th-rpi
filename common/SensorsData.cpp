@@ -161,12 +161,46 @@ uint32_t MessageInsert::formatMessage(char* buffer, uint32_t buffer_size, const 
 }
 
 static bool check_buffer(size_t remain, int len, const char* caller) {
-  if (len >= 0 && remain > (size_t)len) return true;
+  if (len >= 0 && remain > (size_t)len+1) return true;
   Log->error("Buffer overflow (%s)", caller);
   return false;
 }
 
-size_t SensorDataStored::generateJson(int start, void*& buffer, size_t& buffer_size, int options) {
+void SensorData::print(FILE* file, int options) {
+  uint32_t features = getFeatures();
+
+  if (def != NULL && def->name != NULL) {
+    fprintf(file, "  name              = %s\n", def->name);
+  }
+  fprintf(file, "  type              = %s\n", getSensorTypeLongName());
+
+  if ((features&(FEATURE_CHANNEL|FEATURE_ROLLING_CODE)) != 0) {
+    if ((features&FEATURE_CHANNEL) != 0) {
+      const char* channel = getChannelName();
+      if (channel != NULL) fprintf(file, "  channel           = %s\n", channel);
+    }
+    if ((features&FEATURE_ROLLING_CODE) != 0) {
+      fprintf(file, "  rolling code      = %02x\n", getRollingCode());
+    }
+  } else if ((features&FEATURE_ID32) != 0) {
+    fprintf(file, "  id                = %08x\n", getId());
+  }
+
+  if ((features&FEATURE_TEMPERATURE) != 0) {
+    int temperature = (options&OPTION_CELSIUS) != 0 ? getTemperatureCx10() : getTemperatureFx10();
+    char t2d_buffer[T2D_BUFFER_SIZE];
+    fprintf(file, "  temperature       = %s%c\n", t2d(temperature, t2d_buffer), (options&OPTION_CELSIUS) != 0 ? 'C' : 'F');
+  }
+  if ((features&FEATURE_HUMIDITY) != 0) {
+    fprintf(file, "  humidity          = %d%%\n", getHumidity());
+  }
+  if ((features&FEATURE_BATTERY_STATUS) != 0) {
+    fprintf(file, "  battery           = %s\n", getBatteryStatus() ? "OK" :"Bad");
+  }
+}
+
+size_t SensorData::generateJsonContent(int start, void*& buffer, size_t& buffer_size, int options) {
+  uint32_t features = getFeatures();
 
   char* ptr = (char*)buffer+start;
   size_t remain = buffer_size-start;
@@ -179,57 +213,161 @@ size_t SensorDataStored::generateJson(int start, void*& buffer, size_t& buffer_s
     len = snprintf(ptr, remain, "{\"time\":\"%s\",\"type\":\"%s\"", timestr, getSensorTypeName() );
   else
     len = snprintf(ptr, remain, "{\"type\":\"%s\"", getSensorTypeName() );
-  if (!check_buffer(remain, len, "SensorData::generateJson")) return start;
+  if (!check_buffer(remain, len, "SensorData::generateJson")) return 0;
 
-  const char* channel = getChannelName();
-  if (channel != NULL) {
-    len += snprintf(ptr+len, remain-len, ",\"channel\":\"%s\"", channel);
-    if (!check_buffer(remain, len, "SensorData::generateJson")) return start;
+  if ((features&(FEATURE_CHANNEL|FEATURE_ROLLING_CODE)) != 0) {
+    if ((features&FEATURE_CHANNEL) != 0) {
+      const char* channel = getChannelName();
+      if (channel != NULL) {
+        len += snprintf(ptr+len, remain-len, ",\"channel\":\"%s\"", channel);
+        if (!check_buffer(remain, len, "SensorData::generateJson")) return 0;
+      }
+    }
+    if ((features&FEATURE_ROLLING_CODE) != 0) {
+      len += snprintf(ptr+len, remain-len, ",\"rolling_code\":%d", getRollingCode());
+      if (!check_buffer(remain, len, "SensorData::generateJson")) return 0;
+    }
+  } else if ((features&FEATURE_ID32) != 0) {
+    len += snprintf(ptr+len, remain-len, ",\"id\":\"%08x\"", getId());
+    if (!check_buffer(remain, len, "SensorData::generateJson")) return 0;
   }
-  len += snprintf(ptr+len, remain-len, ",\"rolling_code\":%d", getRollingCode());
-  if (!check_buffer(remain, len, "SensorData::generateJson")) return start;
   if (def != NULL && def->quoted != NULL) {
     len += snprintf(ptr+len, remain-len, ",\"name\":%s", def->quoted);
-    if (!check_buffer(remain, len, "SensorData::generateJson")) return start;
+    if (!check_buffer(remain, len, "SensorData::generateJson")) return 0;
   }
-  bool hasT = hasTemperature();
-  if (hasT) {
+  if ((features&FEATURE_TEMPERATURE) != 0) {
     len += snprintf(ptr+len, remain-len, ",\"temperature\":%d", getTemperature10((options&OPTION_CELSIUS) != 0));
-    if (!check_buffer(remain, len, "SensorData::generateJson")) return start;
+    if (!check_buffer(remain, len, "SensorData::generateJson")) return 0;
   }
-  bool hasH = hasHumidity();
-  if (hasH) {
+  if ((features&FEATURE_HUMIDITY) != 0) {
     len += snprintf(ptr+len, remain-len, ",\"humidity\":%d", getHumidity());
-    if (!check_buffer(remain, len, "SensorData::generateJson")) return start;
+    if (!check_buffer(remain, len, "SensorData::generateJson")) return 0;
   }
-  if (hasBatteryStatus()) {
+  if ((features&FEATURE_BATTERY_STATUS) != 0) {
     len += snprintf(ptr+len, remain-len, ",\"battery_ok\":%s", getBatteryStatus() ? "true" :"false");
-    if (!check_buffer(remain, len, "SensorData::generateJson")) return start;
+    if (!check_buffer(remain, len, "SensorData::generateJson")) return 0;
   }
+
+  return (size_t)len;
+}
+
+size_t SensorData::generateJson(int start, void*& buffer, size_t& buffer_size, int options) {
+  size_t required_buffer_size = start + JSON_SIZE_PER_ITEM_ALLDATA + 2;
+  char* ptr = (char*)resize_buffer(required_buffer_size, buffer, buffer_size)+start;
+  if (buffer == NULL) {
+    Log->error("Out of memory (%s)", "SensorData::generateJson");
+    return 0;
+  }
+
+  size_t size = generateJsonContent(start, buffer, buffer_size, options);
+
+  size_t remain = buffer_size-start-size;
+  if (remain < size+2) {
+    Log->error("Buffer overflow (%s)", "SensorData::generateJson");
+    return 0;
+  }
+  *(ptr+size) = '}';
+  size++;
+  *(ptr+size) = '\0';
+
+  return size;
+}
+
+size_t SensorData::generateInfluxData(int start, void*& buffer, size_t& buffer_size, int changed, int options) {
+  uint32_t features = getFeatures();
+
+  char t2d_buffer[T2D_BUFFER_SIZE];
+#define ID_BUFFER_SIZE 512
+  char id[ID_BUFFER_SIZE];
+  int len;
+  size_t remain = ID_BUFFER_SIZE;
+
+  len = snprintf(id, sizeof(id), "type=%s", getSensorTypeName());
+  if ((features&(FEATURE_CHANNEL|FEATURE_ROLLING_CODE)) != 0) {
+    if ((features&FEATURE_CHANNEL) != 0) {
+      len += snprintf(id+len, remain-len, ",channel=%d", getChannelNumber());
+      if (!check_buffer(remain, len, "SensorData::generateInfluxData")) return 0;
+    }
+    if ((features&FEATURE_ROLLING_CODE) != 0) {
+      len += snprintf(id+len, remain-len, ",rolling_code=%d", getRollingCode());
+      if (!check_buffer(remain, len, "SensorData::generateInfluxData")) return 0;
+    }
+  } else if ((features&FEATURE_ID32) != 0) {
+    len += snprintf(id+len, remain-len, ",id=%08x", getId());
+    if (!check_buffer(remain, len, "SensorData::generateInfluxData")) return 0;
+  }
+  if (def != NULL && def->influxdb_quoted != NULL) {
+    len += snprintf(id+len, remain-len, ",name=%s", def->influxdb_quoted);
+    if (!check_buffer(remain, len, "SensorData::generateInfluxData")) return 0;
+  }
+
+  size_t required_buffer_size = start + (40+len)*3 + 2;
+  char* ptr = (char*)resize_buffer(required_buffer_size, buffer, buffer_size)+start;
+  if (buffer == NULL) {
+    Log->error("Out of memory (%s required_buffer_size=%ld)", "SensorData::generateInfluxData", required_buffer_size);
+    return 0;
+  }
+
+  remain = buffer_size - start;
+  if ((features&FEATURE_TEMPERATURE) != 0 && (changed&TEMPERATURE_IS_CHANGED) != 0) {
+    int t = (options&OPTION_CELSIUS) != 0 ? getTemperatureCx10() : getTemperatureFx10();
+    int len = snprintf(ptr, remain, "temperature,%s value=%s\n", id, t2d(t, t2d_buffer));
+    if (!check_buffer(remain, len, "SensorData::generateInfluxData")) return 0;
+    remain -= len;
+    ptr += len;
+  }
+  if ((features&FEATURE_HUMIDITY) != 0 && (changed&HUMIDITY_IS_CHANGED) != 0) {
+    int len = snprintf(ptr, remain, "humidity,%s value=%d\n", id, getHumidity());
+    if (!check_buffer(remain, len, "SensorData::generateInfluxData")) return 0;
+    remain -= len;
+    ptr += len;
+  }
+  if ((features&FEATURE_BATTERY_STATUS) != 0 && (changed&BATTERY_STATUS_IS_CHANGED) != 0) {
+    int len = snprintf(ptr, remain, "sensor_battery_status,%s value=%s\n", id, getBatteryStatus() ? "true" :"false");
+    if (!check_buffer(remain, len, "SensorData::generateInfluxData")) return 0;
+    remain -= len;
+    ptr += len;
+  }
+
+  if ((options&VERBOSITY_INFO) != 0) {
+    fputs((char*)buffer, stderr);
+    fputc('\n', stderr);
+  }
+
+  return buffer_size - remain;
+}
+
+size_t SensorDataStored::generateJsonEx(int start, void*& buffer, size_t& buffer_size, int options) {
+
+  size_t size = generateJsonContent(start, buffer, buffer_size, options);
+  char* ptr = (char*)buffer+start;
+  size_t remain = buffer_size-start-size;
+
 #ifdef INCLUDE_HTTPD
-  if (hasT) {
+  uint32_t features = getFeatures();
+  if ((features&FEATURE_TEMPERATURE) != 0) {
     unsigned count = temperatureHistory.getCount();
     if (count != 0) {
-      len += snprintf(ptr+len, remain-len, ",\"t_hist\":%d", count);
-      if (!check_buffer(remain, len, "SensorDataStored::generateJsonLineBrief")) return 0;
+      size += snprintf(ptr+size, remain-size, ",\"t_hist\":%d", count);
+      if (!check_buffer(remain, size, "SensorDataStored::generateJsonLineBrief")) return 0;
     }
   }
-  if (hasH) {
+  if ((features&FEATURE_HUMIDITY) != 0) {
     unsigned count = humidityHistory.getCount();
     if (count != 0) {
-      len += snprintf(ptr+len, remain-len, ",\"h_hist\":%d", count);
+      size += snprintf(ptr+size, remain-size, ",\"h_hist\":%d", count);
     }
   }
 #endif
-  if (remain<(size_t)len+2) {
+  if (remain < size+2) {
     Log->error("Buffer overflow (%s)", "SensorData::generateJson");
-    return start;
+    return 0;
   }
-  *(ptr+len) = '}';
-  len++;
-  *(ptr+len) = '\0';
+  *(ptr+size) = '}';
+  size++;
+  *(ptr+size) = '\0';
 
-  return (size_t)len;
+  return size;
 }
 
 size_t SensorDataStored::generateJsonLine(int start, void*& buffer, size_t& buffer_size, RestRequestType requestType, int options) {
@@ -433,7 +571,7 @@ size_t SensorsData::generateJsonAllData(SensorDataStored** items, int nItems, vo
       ptr += 2;
       total_len += 2;
     }
-    len = sensorData->generateJson(total_len, buffer, buffer_size, options);
+    len = sensorData->generateJsonEx(total_len, buffer, buffer_size, options);
     if (len > 0) {
       total_len += len;
       ptr += len;

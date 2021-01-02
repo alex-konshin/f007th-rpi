@@ -39,6 +39,9 @@
 
   int16_t readInt(const char*& p);
   uint32_t getUnsigned(const char*& p, ErrorLogger* errorLogger);
+  uint32_t getUnsignedHex(const char*& p, ErrorLogger* errorLogger);
+
+  bool str2bool(const char* str, ErrorLogger* errorLogger);
 
   const char* clone(const char* str);
   const char* make_str(const char* str, size_t length);

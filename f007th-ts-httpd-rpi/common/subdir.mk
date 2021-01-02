@@ -6,19 +6,19 @@
 CPP_SRCS += \
 ../common/Config.cpp \
 ../common/ConfigParser.cpp \
-../common/RFReceiver.cpp \
+../common/Receiver.cpp \
 ../common/SensorsData.cpp 
 
 OBJS += \
 ./common/Config.o \
 ./common/ConfigParser.o \
-./common/RFReceiver.o \
+./common/Receiver.o \
 ./common/SensorsData.o 
 
 CPP_DEPS += \
 ./common/Config.d \
 ./common/ConfigParser.d \
-./common/RFReceiver.d \
+./common/Receiver.d \
 ./common/SensorsData.d 
 
 

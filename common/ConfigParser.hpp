@@ -70,6 +70,7 @@ public:
 void errorMissingArg(const char* command, const char* argname, ConfigParser* errorLogger);
 void errorInavidArg(const char* str, const char* argname, ConfigParser* errorLogger);
 void errorInavidArg(const char* str, const char* p, const char* argname, ConfigParser* errorLogger);
+void errorInavidValueOfArg(const char* arg_name, const char* value, ConfigParser* parser);
 
 bool convertDecimalArg(const char* str, int& result, int scale, bool allow_negative, const char* argname, ConfigParser* errorLogger);
 bool convertDecimalArg(const char* str, const char*& p, int& result, int scale, bool allow_negative, char stop_char, const char* argname, ConfigParser* errorLogger);

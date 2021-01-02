@@ -7,7 +7,7 @@
  * @author Alex Konshin <akonshin@gmail.com>
  */
 
-#include "common/RFReceiver.hpp"
+#include "common/Receiver.hpp"
 #include <curl/curl.h>
 
 #include "common/SensorsData.hpp"
@@ -17,7 +17,7 @@
 #include "utils/HTTPD.hpp"
 #endif
 
-static bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer, char* response_buffer, FILE* log);
+static bool send(ReceivedMessage& message, Config& cfg, int changed, void*& data_buffer, size_t& buffer_size, char* response_buffer, FILE* log);
 
 
 int main(int argc, char *argv[]) {
@@ -44,7 +44,12 @@ int main(int argc, char *argv[]) {
   fprintf(stderr, "Log file is \"%s\".\n", real_log_path);
 
   char* response_buffer = NULL;
-  char* data_buffer = (char*)malloc(SEND_DATA_BUFFER_SIZE*sizeof(char));
+  size_t buffer_size = SEND_DATA_BUFFER_SIZE*sizeof(char);
+  void* data_buffer = malloc(buffer_size);
+  if (data_buffer == NULL) {
+    fprintf(stderr, "Out of memory\n");
+    exit(1);
+  }
 
   if (cfg.server_type!=ServerType::STDOUT && cfg.server_type!=ServerType::NONE) {
     curl_global_init(CURL_GLOBAL_ALL);
@@ -53,14 +58,12 @@ int main(int argc, char *argv[]) {
 
   SensorsData sensorsData(cfg.options);
 
-  RFReceiver receiver(&cfg);
+  Receiver receiver(&cfg);
   Log->setLogFile(log);
 #ifdef TEST_DECODING
   receiver.setInputLogFile(cfg.input_log_file_path);
   receiver.setWaitAfterReading(cfg.wait_after_reading);
 #endif
-
-  if (cfg.protocols != 0) receiver.setProtocols(cfg.protocols);
 
   ReceivedMessage message;
 
@@ -93,30 +96,25 @@ int main(int argc, char *argv[]) {
 #define RULE_MESSAGE_MAX_SIZE 4096
   char rule_message_buffer[RULE_MESSAGE_MAX_SIZE];
 
-  if ((cfg.options&VERBOSITY_INFO) != 0) fputs("Receiving data...\n", stderr);
+  if ((cfg.options&(VERBOSITY_INFO|VERBOSITY_DEBUG)) != 0) fputs("Receiving data...\n", stderr);
   while(!receiver.isStopped()) {
     bool got_data = receiver.waitForMessage(message);
     if (receiver.isStopped()) break;
     if (got_data) {
-
-      bool is_message_printed = false;
-
-      if ((cfg.options&VERBOSITY_DEBUG) != 0 || ((cfg.options&VERBOSITY_PRINT_UNDECODED) != 0 && message.isUndecoded())) {
-        message.print(stdout, cfg.options);
-        is_message_printed = true;
-        FILE* log_file = NULL;
-        if (message.print(log, cfg.options)) log_file = log;
-        Protocol::printManchesterBits(message, stdout, log_file);
-      } else if ((cfg.options&VERBOSITY_INFO) != 0) {
-        message.print(stdout, cfg.options);
-        is_message_printed = true;
-        if (message.print(log, cfg.options)) fflush(log);
-      }
       if (message.isEmpty()) {
         fputs("ERROR: Missing data.\n", stderr);
-      } else if (message.isUndecoded()) {
-        if ((cfg.options&VERBOSITY_INFO) != 0)
-          fprintf(stderr, "Could not decode the received data (error %04x).\n", message.getDecodingStatus());
+        continue;
+      }
+
+      bool is_message_printed = false;
+      bool verbose = (cfg.options&(VERBOSITY_INFO|VERBOSITY_DEBUG)) != 0;
+
+      if (verbose || ((cfg.options&VERBOSITY_PRINT_UNDECODED) != 0 && message.isUndecoded())) {
+        message.print(stdout, log, cfg.options);
+        is_message_printed = true;
+      }
+      if (message.isUndecoded()) {
+        if (verbose) fputs("Could not decode the received data.\n", stderr);
       } else {
         bool isValid = message.isValid();
         int changed = isValid ? message.update(sensorsData, cfg.max_unchanged_gap) : 0;
@@ -127,13 +125,13 @@ int main(int argc, char *argv[]) {
           if (changed != 0) {
             if (cfg.server_type == ServerType::STDOUT) {
               if (!is_message_printed) // already printed
-                message.print(stdout, cfg.options);
+                message.print(stdout, NULL, cfg.options);
             } else if (cfg.server_type != ServerType::NONE) {
-              if (!send(message, cfg, changed, data_buffer, response_buffer, log) && (cfg.options&VERBOSITY_INFO) != 0)
+              if (!send(message, cfg, changed, data_buffer, buffer_size, response_buffer, log) && verbose)
                 Log->info("No data was sent to server.");
             }
           } else {
-            if ((cfg.options&VERBOSITY_INFO) != 0) {
+            if (verbose) {
               if (cfg.server_type == ServerType::STDOUT) {
                 if (!isValid)
                   fputs("Data is corrupted.\n", stderr);
@@ -228,16 +226,16 @@ static size_t write_callback(void *ptr, size_t size, size_t nmemb, struct PutDat
   return size;
 }
 
-bool send(ReceivedMessage& message, Config& cfg, int changed, char* data_buffer, char* response_buffer, FILE* log) {
+bool send(ReceivedMessage& message, Config& cfg, int changed, void*& data_buffer, size_t& buffer_size, char* response_buffer, FILE* log) {
   bool verbose = (cfg.options&VERBOSITY_PRINT_DETAILS) != 0;
   if (verbose) fputs("===> called send()\n", stderr);
 
-  data_buffer[0] = '\0';
-  int data_size;
+  *(char*)data_buffer = '\0';
+  ssize_t data_size;
   if (cfg.server_type == ServerType::InfluxDB) {
-    data_size = message.influxDB(data_buffer, SEND_DATA_BUFFER_SIZE, changed, cfg.options);
+    data_size = message.influxDB(data_buffer, buffer_size, changed, cfg.options);
   } else {
-    data_size = message.json(data_buffer, SEND_DATA_BUFFER_SIZE, cfg.options);
+    data_size = message.json(data_buffer, buffer_size, cfg.options);
   }
   if (data_size <= 0) {
     if (verbose) fputs("===> return from send() without sending because output data was not generated\n", stderr);

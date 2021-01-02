@@ -388,6 +388,7 @@ int16_t readInt(const char*& p) {
 }
 
 //-------------------------------------------------------------
+// Input can be decimal numeber or hex number refixed with "0x".
 uint32_t getUnsigned(const char*& p, ErrorLogger* errorLogger) {
   if (skipBlanks(p) == NULL) errorLogger->error("Missed unsigned integer argument");
 
@@ -430,6 +431,43 @@ uint32_t getUnsigned(const char*& p, ErrorLogger* errorLogger) {
   }
   p = NULL;
   return result;
+}
+
+//-------------------------------------------------------------
+// Input can be prefixed with "0x".
+uint32_t getUnsignedHex(const char*& p, ErrorLogger* errorLogger) {
+  if (skipBlanks(p) == NULL) errorLogger->error("Missed hex integer argument");
+
+  uint32_t result = getHex(*p, errorLogger); // must be at least one hex digit
+  if (result == 0 && *(p+1) == 'x') {
+    p += 2;
+    result = getHex(*p, errorLogger); // must be at least one hex digit
+  }
+  char ch;
+  for ( int i=0; i<7; i++) {
+    ch = *++p;
+    if (ch == ' ' || ch == '\t' ) return result;
+    if (ch == '\0' || ch == '#' || ch == '\r' || ch == '\n' ) {
+      p = NULL;
+      return result;
+    }
+    result <<= 4;
+    result |= getHex(ch, errorLogger);
+  }
+  ch = *++p;
+  if (ch == ' ' || ch == '\t' ) return result;
+  if (ch != '\0' && ch != '#' && ch != '\r' && ch != '\n' ) errorLogger->error("Invalid hex integer number");
+  p = NULL;
+  return result;
+}
+
+//-------------------------------------------------------------
+bool str2bool(const char* str, ErrorLogger* errorLogger) {
+  if (str == NULL) errorLogger->error("Missed unsigned boolean argument");
+  if (strcmp(str,"1") == 0 || strcasecmp(str,"y") == 0 || strcasecmp(str,"yes") == 0 || strcasecmp(str,"true") == 0 ) return true;
+  if (strcmp(str,"0") == 0 || strcasecmp(str,"n") == 0 || strcasecmp(str,"no") == 0 || strcasecmp(str,"false") == 0 ) return false;
+  errorLogger->error("Invalid value \"%s\" of boolean argument. Valid values are: 0, 1, y, n, yes, no, true, false.", str);
+  return false;
 }
 
 //-------------------------------------------------------------
