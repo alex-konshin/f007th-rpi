@@ -32,12 +32,13 @@
 #endif // NDEBUG
 #endif //ASSERT
 
+#define VIRTUAL { fprintf(stderr, "PROGRAM ERROR: Calling pure virtual method defined in line %d of %s.",__LINE__,__FILE__); fflush(stderr); exit(2); }
+
 
 class ErrorLogger {
 protected:
 
   unsigned flags = 0;
-  char buffer[BUFFER_SIZE];
 
 public:
   ErrorLogger() {
@@ -50,8 +51,9 @@ public:
   virtual ~ErrorLogger() {}
 
   virtual void error_vargs(const char* fmt, va_list vargs) {
-    format_message("ERROR: ", fmt, vargs);
-    output(stderr);
+    char buffer[BUFFER_SIZE];
+    format_message(buffer, "ERROR: ", fmt, vargs);
+    output(buffer, stderr);
   }
 
   virtual void error(const char* fmt, ...) {
@@ -69,21 +71,22 @@ public:
   }
 
 protected:
-  void add_time() {
-    struct tm tm;
+  void add_time(char* buffer) {
     time_t data_time = time(NULL);
-
+    struct tm tm;
     if ((flags&LOGGER_FLAG_TIME_UTC) != 0) { // UTC time zone
-      strftime(buffer, BUFFER_SIZE, "%FT%T%z ", gmtime_r(&data_time, &tm)); // ISO format
+      struct tm* ptm = gmtime_r(&data_time, &tm);
+      if (ptm != NULL) strftime(buffer, BUFFER_SIZE, "%FT%TZ ", ptm); // ISO format
     } else { // local time zone
-      strftime(buffer, BUFFER_SIZE, "%Y-%m-%d %H:%M:%S %Z ", localtime_r(&data_time, &tm));
+      struct tm* ptm = localtime_r(&data_time, &tm);
+      if (ptm != NULL) strftime(buffer, BUFFER_SIZE, "%Y-%m-%d %H:%M:%S%z ", ptm);
     }
   }
 
-  void format_message(const char* prefix, const char* fmt, va_list vargs) {
+  void format_message(char* buffer, const char* prefix, const char* fmt, va_list vargs) {
     buffer[0] = '\0';
     if (fmt != NULL) {
-      if ((flags&LOGGER_FLAG_TIME) != 0) add_time();
+      if ((flags&LOGGER_FLAG_TIME) != 0) add_time(buffer);
 
       if (prefix != NULL) strcat(buffer, prefix);
       int len = strlen(buffer);
@@ -92,7 +95,7 @@ protected:
     }
   }
 
-  void output(FILE* log) {
+  void output(char* buffer, FILE* log) {
     int len = strlen(buffer);
     if (len != 0) {
       fputs(buffer, log);
@@ -138,10 +141,11 @@ public:
 
   void info_vargs(const char* fmt, va_list vargs) {
     if ((flags&LOGGER_FLAG_STDERR) != 0 || logFile != NULL) {
-      format_message(NULL, fmt, vargs);
-      if ((flags&LOGGER_FLAG_STDERR) != 0) output(stderr);
+      char buffer[BUFFER_SIZE];
+      format_message(buffer, NULL, fmt, vargs);
+      if ((flags&LOGGER_FLAG_STDERR) != 0) output(buffer, stderr);
       if (logFile != NULL) {
-        output(logFile);
+        output(buffer, logFile);
         fflush(logFile);
       }
     }
@@ -158,9 +162,10 @@ public:
 
   void log_vargs(const char* fmt, va_list vargs) {
     if (logFile != NULL) {
-      format_message(NULL, fmt, vargs);
+      char buffer[BUFFER_SIZE];
+      format_message(buffer, NULL, fmt, vargs);
       if (logFile != NULL) {
-        output(logFile);
+        output(buffer, logFile);
         fflush(logFile);
       }
     }
@@ -177,10 +182,11 @@ public:
 
   void warning_vargs(const char* fmt, va_list vargs) {
     if ((flags&LOGGER_FLAG_STDERR) != 0 || logFile != NULL) {
-      format_message("WARNING: ", fmt, vargs);
-      if ((flags&LOGGER_FLAG_STDERR) != 0) output(stderr);
+      char buffer[BUFFER_SIZE];
+      format_message(buffer, "WARNING: ", fmt, vargs);
+      if ((flags&LOGGER_FLAG_STDERR) != 0) output(buffer, stderr);
       if (logFile != NULL) {
-        output(logFile);
+        output(buffer, logFile);
         fflush(logFile);
       }
     }
@@ -197,10 +203,11 @@ public:
 
   void error_vargs(const char* fmt, va_list vargs) {
     if ((flags&LOGGER_FLAG_STDERR) != 0 || logFile != NULL) {
-      format_message("ERROR: ", fmt, vargs);
-      if ((flags&LOGGER_FLAG_STDERR) != 0) output(stderr);
+      char buffer[BUFFER_SIZE];
+      format_message(buffer, "ERROR: ", fmt, vargs);
+      if ((flags&LOGGER_FLAG_STDERR) != 0) output(buffer, stderr);
       if (logFile != NULL) {
-        output(logFile);
+        output(buffer, logFile);
         fflush(logFile);
       }
     }

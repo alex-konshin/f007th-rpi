@@ -1,10 +1,10 @@
 /*
-  RFReceiver
+  Receiver
 
   Copyright (c) 2017 Alex Konshin
 */
-#ifndef _RFReceiver_h
-#define _RFReceiver_h
+#ifndef _Receiver_h
+#define _Receiver_h
 
 #define RaspberryPi
 
@@ -65,11 +65,11 @@
 #define DEFAULT_PIN 27
 #endif
 
-class RFReceiver {
+class Receiver {
 
 public:
-  RFReceiver(Config* cfg);
-  ~RFReceiver();
+  Receiver(Config* cfg);
+  ~Receiver();
 
   bool enableReceive();
   void disableReceive();
@@ -123,12 +123,20 @@ private:
   void endOfSequence();
   void decoder();
   void startDecoder();
+  void initMessageQueue();
   void resetReceiverBuffer();
+
+#ifdef INCLUDE_POLLSTER
+  static void* pollsterThreadFunction(void *context);
+  void startPollster();
+  void pollster();
+  void pollW1();
+#endif
 
   void addBit(bool bit);
 
-  RFReceiver* next;
-  static RFReceiver* first;
+  Receiver* next;
+  static Receiver* first;
   static bool isLibInitialized;
 
   Config* cfg;
@@ -136,7 +144,7 @@ private:
   int gpio;
   int lastLevel;
 
-  unsigned protocols;
+  uint32_t protocols;
   unsigned long min_duration;
   unsigned long max_duration;
 
@@ -173,20 +181,36 @@ private:
   // output queue
   pthread_mutex_t messageQueueLock;
   pthread_cond_t messageReady;
+#ifdef INCLUDE_POLLSTER
+  pthread_mutex_t pollsterLock;
+  pthread_cond_t pollsterCondition;
+#endif
 
   ReceivedData* firstMessage;
   ReceivedData** lastMessagePtr;
 
-  // decoder thread and synchronization
-
-  pthread_t decoderThreadId;
   //pthread_mutex_t sequencePoolLock;
   //pthread_cond_t sequenceReadyForDecoding;
+
+  pthread_t decoderThreadId;
+
+#ifdef INCLUDE_POLLSTER
+  pthread_t pollsterThreadId;
+
+  char* line_buffer = NULL;
+  size_t line_buffer_len = 0;
+
+  bool isPollsterInitialized;
+  bool isPollsterStarted;
+  volatile bool stopPollster;
+#endif
 
   // control
 
   bool isEnabled;
+  bool isPollsterEnabled;
   bool isDecoderStarted;
+  bool isMessageQueueInitialized;
   bool stopDecoder;
   bool stopMessageReader;
   volatile bool stopped;

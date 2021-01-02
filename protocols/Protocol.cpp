@@ -7,12 +7,21 @@
 
 #include "Protocol.hpp"
 #include "../common/SensorsData.hpp"
-#include "../common/RFReceiver.hpp"
+#include "../common/Receiver.hpp"
 
 const char* Protocol::channel_names_numeric[] = {"0", "1", "2", "3", "4", "5", "6", "7", "8"};
 Protocol* Protocol::protocols[NUMBER_OF_PROTOCOLS];
+uint32_t Protocol::registered_protocols = 0;
+uint32_t Protocol::rf_protocols = 0;
 
 Statistics* statistics = new Statistics();
+
+Protocol* ProtocolDef::getProtocol() {
+  return Protocol::protocols[protocol_index];
+}
+uint32_t ProtocolDef::getFeatures() {
+  return Protocol::protocols[protocol_index]->features;
+}
 
 void Protocol::copyFields(SensorData* to, SensorData* from) {
   to->data_time = from->data_time;
@@ -118,32 +127,6 @@ bool Protocol::decodeManchester(ReceivedData* message, int startIndex, int endIn
 
   } while ( ++intervalIndex<(iSubSequenceSize-1) );
 
-  return true;
-}
-
-bool Protocol::printManchesterBits(ReceivedMessage& message, FILE* file, FILE* file2) {
-  // FIXME rewrite it
-  Protocol* protocol = protocols[PROTOCOL_INDEX_F007TH];
-  if ( protocol == NULL || (message.data->detailedDecodingStatus[PROTOCOL_INDEX_F007TH] & 7)!=0 ) return false;
-  if ((message.data->protocol_tried_manchester&(1<<protocol->protocol_index)) == 0) return false;
-
-  // Manchester decoding was successful. Print bits...
-  uint16_t decodingStatus = message.data->decodingStatus;
-  Bits bits(message.data->iSequenceSize+1);
-  if (protocol->decodeManchester(message.data, bits)) {
-    fprintf(file, "  Manchester decoding was successful\n");
-    if (file2 != NULL) {
-      fprintf(file2, "  Manchester decoding was successful\n");
-      fflush(file2);
-    }
-
-    ReceivedMessage::printBits(file, &bits);
-    if (file2 != NULL) {
-      ReceivedMessage::printBits(file2, &bits);
-      fflush(file2);
-    }
-  }
-  message.data->decodingStatus = decodingStatus;
   return true;
 }
 

@@ -37,7 +37,8 @@ ConfigParser::~ConfigParser() {
 
 //-------------------------------------------------------------
 void ConfigParser::print_error_vargs(const char* fmt, va_list vargs) {
-  format_message(NULL, fmt, vargs);
+  char buffer[BUFFER_SIZE];
+  format_message(buffer, NULL, fmt, vargs);
   fprintf(stderr, "ERROR: %s (line #%d of file \"%s\").\n", buffer, linenum, configFilePath);
 }
 
@@ -722,3 +723,8 @@ void errorInavidArg(const char* str, const char* p, const char* argname, ConfigP
   errorLogger->error("Invalid value \"%s\" of argument \"%s\"", str, argname);
 }
 
+void errorInavidValueOfArg(const char* arg_name, const char* value, ConfigParser* parser) {
+  if (parser != NULL) errorInavidArg(value, "arg_name", parser);
+  fprintf(stderr, "ERROR: Invalid value of argument --%s=\"%s\".\n", arg_name, value);
+  exit(1);
+}

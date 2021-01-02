@@ -13,6 +13,7 @@
 #define PROTOCOL_WH2       4
 #define PROTOCOL_HG02832   8
 #define PROTOCOL_F007TH    16
+#define PROTOCOL_DS18B20   32
 #define PROTOCOL_ALL       (unsigned)(-1)
 
 #define PROTOCOL_INDEX_00592TXR  0
@@ -20,11 +21,23 @@
 #define PROTOCOL_INDEX_WH2       2
 #define PROTOCOL_INDEX_HG02832   3
 #define PROTOCOL_INDEX_F007TH    4
-#define NUMBER_OF_PROTOCOLS      5
+#define PROTOCOL_INDEX_DS18B20   5
+#define NUMBER_OF_PROTOCOLS      6
+
+#define MAX_PROTOCOL_NAME_LEN   16
 
 #define METRIC_TEMPERATURE       1
 #define METRIC_HUMIDITY          2
 #define METRIC_BATTERY_STATUS    4
+
+#define FEATURE_RF                   1
+#define FEATURE_CHANNEL              2
+#define FEATURE_ROLLING_CODE         4
+#define FEATURE_ID32                 8
+#define FEATURE_TEMPERATURE         16
+#define FEATURE_TEMPERATURE_CELSIUS 32
+#define FEATURE_HUMIDITY            64
+#define FEATURE_BATTERY_STATUS     128
 
 #define MIN_PERIOD 900
 #define MAX_PERIOD 1150
@@ -34,6 +47,7 @@
 #include <stdio.h>
 
 #include "../utils/Bits.hpp"
+#include "../utils/Logger.hpp"
 
 struct SensorData;
 struct ReceivedData;
@@ -56,15 +70,19 @@ typedef struct Statistics {
 } Statistics;
 
 extern Statistics* statistics;
+class Protocol;
 
 struct ProtocolDef {
   const char *name;
-  uint8_t protocol;
+  uint32_t protocol_bit;
   uint8_t protocol_index;
   uint8_t variant;
   uint8_t rolling_code_size;
   uint8_t number_of_channels;
   uint8_t channels_numbering_type; // 0 => numbers, 1 => letters
+
+  Protocol* getProtocol();
+  uint32_t getFeatures();
 };
 
 //-------------------------------------------------------------
@@ -74,11 +92,11 @@ protected:
   virtual ProtocolDef* _getProtocolDef(const char* protocol_name) = 0;
 
 public:
-  static Protocol* protocols[NUMBER_OF_PROTOCOLS];
 
-  static void registerProtocol(Protocol* protocol) {
-    protocols[protocol->protocol_index] = protocol;
-  }
+  static Protocol* protocols[NUMBER_OF_PROTOCOLS];
+  static uint32_t registered_protocols;
+  static uint32_t rf_protocols;
+
   static ProtocolDef* getProtocolDef(const char* protocol_name) {
     if (protocol_name == NULL || *protocol_name == '\0') return NULL;
     for (int protocol_index = 0; protocol_index<NUMBER_OF_PROTOCOLS; protocol_index++) {
@@ -89,14 +107,28 @@ public:
     return NULL;
   }
 
-  uint8_t protocol_bit;
+  static void initialize() {
+    registered_protocols = 0;
+    rf_protocols = 0;
+    for (int protocol_index = 0; protocol_index<NUMBER_OF_PROTOCOLS; protocol_index++) {
+      Protocol* protocol = protocols[protocol_index];
+      registered_protocols |= protocol->protocol_bit;
+      if ((protocol->features&FEATURE_RF) != 0) rf_protocols |= protocol->protocol_bit;
+    }
+  }
+
+  uint32_t protocol_bit;
   uint8_t protocol_index;
   const char* protocol_class;
+  uint32_t features;
 
-  Protocol(uint8_t protocol_bit, uint8_t protocol_index, const char* protocol_class) : protocol_bit(protocol_bit), protocol_index(protocol_index), protocol_class(protocol_class) {
-    registerProtocol(this);
+  Protocol(uint8_t protocol_bit, uint8_t protocol_index, const char* protocol_class, uint32_t features) : protocol_bit(protocol_bit), protocol_index(protocol_index), protocol_class(protocol_class), features(features) {
+    protocols[protocol_index] = this;
   }
   virtual ~Protocol() {}
+
+  // WARNING: can be called with data==NULL
+  virtual uint32_t getFeatures(SensorData* data) { return features; }
 
   virtual uint32_t getId(SensorData* data) = 0;
   virtual int getChannel(SensorData* data) { return -1; }
@@ -110,8 +142,8 @@ public:
   virtual bool isRawTemperatureCelsius() { return false; }
   virtual int getRawTemperature(SensorData* data) { return getTemperature10(data, isRawTemperatureCelsius()); };
   virtual int getTemperature10(SensorData* data, bool celsius);
-  virtual int getTemperatureCx10(SensorData* data) = 0;
-  virtual int getTemperatureFx10(SensorData* data) = 0;
+  virtual int getTemperatureCx10(SensorData* data) VIRTUAL;
+  virtual int getTemperatureFx10(SensorData* data) VIRTUAL;
 
   virtual bool hasHumidity(SensorData* data) { return false; }
   virtual int getHumidity(SensorData* data) { return 0; }
@@ -123,17 +155,17 @@ public:
     return metrics;
   }
 
-  virtual const char* getSensorTypeName(SensorData* data) = 0;
-  virtual const char* getSensorTypeLongName(SensorData* data) = 0;
-  virtual uint8_t getRollingCode(SensorData* data) = 0;
+  virtual const char* getSensorTypeName(SensorData* data) VIRTUAL;
+  virtual const char* getSensorTypeLongName(SensorData* data) VIRTUAL;
+  virtual uint8_t getRollingCode(SensorData* data) { return -1; };
 
-  virtual bool equals(SensorData* s, SensorData* p) = 0;
-  virtual bool sameId(SensorData* s, int channel, uint8_t rolling_code = -1) = 0;
+  virtual bool equals(SensorData* s, SensorData* p) VIRTUAL;
+  //virtual bool sameId(SensorData* s, int channel, uint8_t rolling_code = -1) VIRTUAL;
   virtual void copyFields(SensorData* to, SensorData* from);
-  virtual int update(SensorData* sensorData, SensorData* p, time_t data_time, time_t max_unchanged_gap) = 0;
+  virtual int update(SensorData* sensorData, SensorData* p, time_t data_time, time_t max_unchanged_gap) VIRTUAL;
 
-  virtual void printRawData(SensorData* sensorData, FILE* file) = 0;
-
+  virtual void printRawData(SensorData* sensorData, FILE* file) VIRTUAL;
+  virtual void printUndecoded(ReceivedData* message, FILE* out, FILE* log, int cfg_options) {}
 
   static void setLimits(unsigned protocol_mask, unsigned long& min_sequence_length, unsigned long& max_duration, unsigned long& min_duration) {
     max_duration = 0;
@@ -157,7 +189,6 @@ public:
   virtual bool decode(ReceivedData* message) { return false; }
 
   virtual bool decodeManchester(ReceivedData* message, Bits& bitSet) { return false; }
-  static bool printManchesterBits(ReceivedMessage& message, FILE* file, FILE* file2);
 protected:
   static bool decodeManchester(ReceivedData* message, Bits& bitSet, int min_duration, int max_half_duration);
   static bool decodeManchester(ReceivedData* message, int startIndex, int endIndex, Bits& bitSet, int max_half_duration);

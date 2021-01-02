@@ -8,7 +8,7 @@
 #ifndef CONFIG_HPP_
 #define CONFIG_HPP_
 
-#define RF_RECEIVER_VERSION "5.0"
+#define RF_RECEIVER_VERSION "5.1"
 
 #define VERBOSITY_DEBUG            1
 #define VERBOSITY_INFO             2
@@ -66,6 +66,15 @@
 #define MAX_SENSOR_NAME_LEN 64
 
 //-------------------------------------------------------------
+#ifdef INCLUDE_POLLSTER
+#ifdef TEST_DECODING
+#define W1_DEVICES_PATH "/mnt/s/Projects/f007th-rpi/test_data/devices"
+#else
+#define W1_DEVICES_PATH "/sys/bus/w1/devices"
+#endif
+#define W1_DEVICES_PATH_LEN sizeof(W1_DEVICES_PATH)
+#endif
+//-------------------------------------------------------------
 #ifdef INCLUDE_HTTPD
 
 #ifdef USE_GPIO_TS
@@ -90,15 +99,15 @@ enum class ServerType : int {NONE, STDOUT, REST, InfluxDB};
 //-------------------------------------------------------------
 struct CmdArgDef {
   const char* name;
-#define arg_required 1
-  uint8_t flags; // arg_required
+#define arg_required 128
+  uint8_t flags; // arg_required + arg_index
 };
 
 class Config;
 class ConfigParser;
 
-typedef void (Config::*CommanExecutor)(const char** argv, ConfigParser* configParser);
-#define execute_command(cmd_def,argv,configParser) (this->*((cmd_def)->command_executor))(argv,configParser)
+typedef void (Config::*CommanExecutor)(const char** argv, int number_of_unnamed_args, ConfigParser* configParser);
+#define execute_command(cmd_def,argv,number_of_unnamed_args,configParser) (this->*((cmd_def)->command_executor))(argv,number_of_unnamed_args,configParser)
 
 struct CommandDef {
   struct CommandDef* next;
@@ -133,10 +142,11 @@ public:
   const char* server_url = NULL;
   int gpio = DEFAULT_PIN;
   ServerType server_type = ServerType::NONE;
-  unsigned protocols = 0;
+  uint32_t protocols = 0;
   time_t max_unchanged_gap = 0L;
   const char* auth_header = NULL;
 
+  bool protocols_set_explicitly = true;
   bool changes_only = true;
   bool type_is_set = false;
 
@@ -158,6 +168,9 @@ public:
   const char* mqtt_password = NULL;
   uint16_t mqtt_keepalive = 60;
 #endif
+#ifdef INCLUDE_POLLSTER
+  bool w1_enable = false;
+#endif
 
   std::vector<AbstractRuleWithSchedule*> rules;
   UnresolvedReferenceToRule* unresolved_references_to_rules = NULL;
@@ -172,7 +185,9 @@ public:
   static void help();
 
   void process_args (int argc, char *argv[]);
-  bool process_cmdline_option( int c, const char* option, const char* optarg );
+  bool process_cmdline_option( int c, const char* option, const char* optarg, ConfigParser* parser);
+
+  void enableProtocols(const char* list, ConfigParser* parser);
 
 private:
 
@@ -180,20 +195,23 @@ private:
   void readConfig(const char* configFileRelativePath);
   void adjust_unnamed_args(const char** argv, int& number_of_unnamed_args, int max_num_of_unnamed_args, const struct CmdArgDef* arg_defs);
 
-  void command_config(const char** argv, ConfigParser* errorLogger);
-  void command_sensor(const char** argv, ConfigParser* errorLogger);
+  void command_config(const char** argv, int number_of_unnamed_args, ConfigParser* errorLogger);
+  void command_sensor(const char** argv, int number_of_unnamed_args, ConfigParser* errorLogger);
+#ifdef INCLUDE_POLLSTER
+  void command_w1(const char** argv, int number_of_unnamed_args, ConfigParser* errorLogger);
+#endif
 
 #ifdef INCLUDE_HTTPD
-  void command_httpd(const char** argv, ConfigParser* errorLogger);
+  void command_httpd(const char** argv, int number_of_unnamed_args, ConfigParser* errorLogger);
 #endif
 
 #ifdef INCLUDE_MQTT
-  void command_mqtt_broker(const char** argv, ConfigParser* errorLogger);
-  void command_mqtt_rule(const char** argv, ConfigParser* errorLogger);
-  void command_mqtt_bounds_rule(const char** argv, ConfigParser* errorLogger);
+  void command_mqtt_broker(const char** argv, int number_of_unnamed_args, ConfigParser* errorLogger);
+  void command_mqtt_rule(const char** argv, int number_of_unnamed_args, ConfigParser* errorLogger);
+  void command_mqtt_bounds_rule(const char** argv, int number_of_unnamed_args, ConfigParser* errorLogger);
 #endif
 
-  void command_action_rule(const char** argv, ConfigParser* errorLogger);
+  void command_action_rule(const char** argv, int number_of_unnamed_args, ConfigParser* errorLogger);
 
   void parseListOfRuleLocks(RuleLock** last_ptr, bool lock, const char* str, const char* argname, ConfigParser* errorLogger);
   void resolveReferencesToRules();

@@ -7,7 +7,7 @@
 
 #include "Protocol.hpp"
 #include "../common/SensorsData.hpp"
-#include "../common/RFReceiver.hpp"
+#include "../common/Receiver.hpp"
 
 // Ambient Weather F007TH
 #define MIN_DURATION_F007TH 380
@@ -16,7 +16,7 @@
 
 static ProtocolDef def_f007th = {
   name : "f007th",
-  protocol: PROTOCOL_F007TH,
+  protocol_bit: PROTOCOL_F007TH,
   protocol_index: PROTOCOL_INDEX_F007TH,
   variant: 0,
   rolling_code_size: 8,
@@ -25,7 +25,7 @@ static ProtocolDef def_f007th = {
 };
 static ProtocolDef def_f007tp = {
   name : "f007tp",
-  protocol: PROTOCOL_F007TH,
+  protocol_bit: PROTOCOL_F007TH,
   protocol_index: PROTOCOL_INDEX_F007TH,
   variant: 1,
   rolling_code_size: 8,
@@ -44,8 +44,8 @@ protected:
   }
 
 public:
-  ProtocolF007TH() : Protocol(PROTOCOL_F007TH, PROTOCOL_INDEX_F007TH, "F007TH") {
-  }
+  ProtocolF007TH() : Protocol(PROTOCOL_F007TH, PROTOCOL_INDEX_F007TH, "F007TH",
+      FEATURE_RF | FEATURE_CHANNEL | FEATURE_ROLLING_CODE | FEATURE_TEMPERATURE | FEATURE_HUMIDITY | FEATURE_BATTERY_STATUS ) {}
 
   uint32_t getId(SensorData* data) {
     uint32_t variant = data->u32.hi==1 ? 1 : 0; // 0 = F007TH, 1 = F007TP
@@ -84,12 +84,12 @@ public:
   bool equals(SensorData* s, SensorData* p) {
     return (p->protocol == s->protocol) && ((p->nF007TH ^ s->nF007TH) & SENSOR_UID_MASK) == 0 && p->u32.hi == s->u32.hi; // u32.hi -- F007TP flag
   }
-
+/*
   bool sameId(SensorData* s, int channel, uint8_t rolling_code = -1) {
     if (rolling_code != -1 && rolling_code != getRollingCode(s) ) return false;
     return channel == getChannel(s);
   }
-
+*/
   int update(SensorData* sensorData, SensorData* p, time_t data_time, time_t max_unchanged_gap) {
     uint32_t nF007TH = sensorData->nF007TH;
     uint32_t item = p->nF007TH;
@@ -216,6 +216,29 @@ public:
     return true;
   }
 
+  void printUndecoded(ReceivedData* message, FILE *out, FILE *log, int cfg_options) {
+    if ((message->detailedDecodingStatus[PROTOCOL_INDEX_F007TH] & 7)!=0 ) return;
+
+    uint16_t savedDecodingStatus = message->decodingStatus;
+    Bits bits(message->iSequenceSize+1);
+    bool is_manchester_successful = decodeManchester(message, bits);
+    message->decodingStatus = savedDecodingStatus;
+    if (is_manchester_successful) {
+
+      FILE* file = out;
+      FILE* file2 = log;
+      do {
+        fprintf(file, "  Manchester decoding was successful\n");
+        ReceivedMessage::printBits(file, &bits);
+
+        // Repeat for log file
+        file = file2;
+        file2 = NULL;
+      } while (file != NULL);
+    }
+  }
+
 };
 
-ProtocolF007TH* ProtocolF007TH::instance = new ProtocolF007TH();
+ProtocolF007TH *ProtocolF007TH::instance = new ProtocolF007TH();
+
