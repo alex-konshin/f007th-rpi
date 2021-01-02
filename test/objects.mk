@@ -4,5 +4,5 @@
 
 USER_OBJS :=
 
-LIBS := -lrt -lmicrohttpd -lcurl
+LIBS := -lrt -lcurl -lmicrohttpd -lmosquitto -lmosquittopp
 

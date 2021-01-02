@@ -26,7 +26,7 @@ CPP_DEPS += \
 common/%.o: ../common/%.cpp
 	@echo 'Building file: $<'
 	@echo 'Invoking: Cross G++ Compiler'
-	C:\Windows\Sysnative\wsl.exe g++ -DTEST_DECODING -DINCLUDE_HTTPD -DINCLUDE_MQTT -DRPI -DINCLUDE_POLLSTER -O0 -g3 -Wall -c -fmessage-length=0 -pthread -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@)" -o "$@" "$<"
+	C:\Windows\Sysnative\wsl.exe g++ -std=c++0x -std=c++11 -DTEST_DECODING -DINCLUDE_HTTPD -DINCLUDE_MQTT -DRPI -DINCLUDE_POLLSTER -O0 -g3 -Wall -c -fmessage-length=0 -pthread -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@)" -o "$@" "$<"
 	@echo 'Finished building: $<'
 	@echo ' '
 

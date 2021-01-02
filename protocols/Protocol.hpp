@@ -112,8 +112,10 @@ public:
     rf_protocols = 0;
     for (int protocol_index = 0; protocol_index<NUMBER_OF_PROTOCOLS; protocol_index++) {
       Protocol* protocol = protocols[protocol_index];
-      registered_protocols |= protocol->protocol_bit;
-      if ((protocol->features&FEATURE_RF) != 0) rf_protocols |= protocol->protocol_bit;
+      if (protocol != NULL) {
+        registered_protocols |= protocol->protocol_bit;
+        if ((protocol->features&FEATURE_RF) != 0) rf_protocols |= protocol->protocol_bit;
+      }
     }
   }
 
