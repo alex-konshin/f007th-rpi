@@ -1,9 +1,11 @@
 /*
- * Config.cpp
+ * Config.hpp
  *
  * Created on: January 11, 2020
  * @author Alex Konshin <akonshin@gmail.com>
  */
+
+#define RF_RECEIVER_VERSION "5.0"
 
 #include <stdio.h>
 #include <stdlib.h>
