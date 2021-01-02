@@ -1,10 +1,10 @@
 /*
-  Receiver
+  RFReceiver
 
   Copyright (c) 2017 Alex Konshin
 */
-#ifndef _Receiver_h
-#define _Receiver_h
+#ifndef _RFReceiver_h
+#define _RFReceiver_h
 
 #define RaspberryPi
 
@@ -65,11 +65,11 @@
 #define DEFAULT_PIN 27
 #endif
 
-class Receiver {
+class RFReceiver {
 
 public:
-  Receiver(Config* cfg);
-  ~Receiver();
+  RFReceiver(Config* cfg);
+  ~RFReceiver();
 
   bool enableReceive();
   void disableReceive();
@@ -123,20 +123,12 @@ private:
   void endOfSequence();
   void decoder();
   void startDecoder();
-  void initMessageQueue();
   void resetReceiverBuffer();
-
-#ifdef INCLUDE_POLLSTER
-  static void* pollsterThreadFunction(void *context);
-  void startPollster();
-  void pollster();
-  void pollW1();
-#endif
 
   void addBit(bool bit);
 
-  Receiver* next;
-  static Receiver* first;
+  RFReceiver* next;
+  static RFReceiver* first;
   static bool isLibInitialized;
 
   Config* cfg;
@@ -144,7 +136,7 @@ private:
   int gpio;
   int lastLevel;
 
-  uint32_t protocols;
+  unsigned protocols;
   unsigned long min_duration;
   unsigned long max_duration;
 
@@ -181,36 +173,20 @@ private:
   // output queue
   pthread_mutex_t messageQueueLock;
   pthread_cond_t messageReady;
-#ifdef INCLUDE_POLLSTER
-  pthread_mutex_t pollsterLock;
-  pthread_cond_t pollsterCondition;
-#endif
 
   ReceivedData* firstMessage;
   ReceivedData** lastMessagePtr;
 
-  //pthread_mutex_t sequencePoolLock;
-  //pthread_cond_t sequenceReadyForDecoding;
+  // decoder thread and synchronization
 
   pthread_t decoderThreadId;
-
-#ifdef INCLUDE_POLLSTER
-  pthread_t pollsterThreadId;
-
-  char* line_buffer = NULL;
-  size_t line_buffer_len = 0;
-
-  bool isPollsterInitialized;
-  bool isPollsterStarted;
-  volatile bool stopPollster;
-#endif
+  //pthread_mutex_t sequencePoolLock;
+  //pthread_cond_t sequenceReadyForDecoding;
 
   // control
 
   bool isEnabled;
-  bool isPollsterEnabled;
   bool isDecoderStarted;
-  bool isMessageQueueInitialized;
   bool stopDecoder;
   bool stopMessageReader;
   volatile bool stopped;

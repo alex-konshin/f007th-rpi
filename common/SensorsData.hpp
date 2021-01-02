@@ -690,7 +690,6 @@ public:
     return (protocol<<24) | ((variant&255)<<16) | (channel_bits<<8) | (rolling_code&255);
   }
 
-  uint32_t getFeatures() { return protocol == NULL ? -1 : protocol->getFeatures(this); }
   int getChannel() { return protocol == NULL ? -1 : protocol->getChannel(this); }
   int getChannelNumber() { return protocol == NULL ? -1 : protocol->getChannelNumber(this); }
   const char* getChannelName() { return protocol == NULL ? NULL : protocol->getChannelName(this); }
@@ -717,11 +716,7 @@ public:
   // random number that is changed when battery is changed
   uint8_t getRollingCode() { return protocol == NULL ? -1 : protocol->getRollingCode(this); }
 
-  size_t generateJsonContent(int start, void*& buffer, size_t& buffer_size, int options);
-  size_t generateJson(int start, void*& buffer, size_t& buffer_size, int options);
-  size_t generateInfluxData(int start, void*& buffer, size_t& buffer_size, int changed, int options);
 
-  void print(FILE* file, int options);
 
   void printRawData(FILE* file) {
     if (protocol != NULL) protocol->printRawData(this, file);
@@ -777,7 +772,7 @@ typedef struct SensorDataStored : SensorData  {
   History humidityHistory;
 #endif
 
-  size_t generateJsonEx(int start, void*& buffer, size_t& buffer_size, int options); // includes history counts
+  size_t generateJson(int start, void*& buffer, size_t& buffer_size, int options);
   size_t generateJsonLine(int start, void*& buffer, size_t& buffer_size, RestRequestType requestType, int options);
   size_t generateJsonLineBrief(int start, void*& buffer, size_t& buffer_size, time_t current_time, int options);
 
@@ -905,7 +900,7 @@ public:
   inline int getSize() { return size; }
 
   int getOptions() { return options; }
-/*
+
   SensorDataStored* getData(Protocol* protocol, int channel, uint8_t rolling_code = -1) {
     if (protocol == NULL) return NULL;
     SensorDataStored* result = NULL;
@@ -920,7 +915,7 @@ public:
     items_mutex.unlock();
     return result;
   }
-*/
+
   SensorDataStored* find(SensorData* sensorData) {
     SensorDataStored* result = NULL;
     Protocol* protocol = sensorData->protocol;

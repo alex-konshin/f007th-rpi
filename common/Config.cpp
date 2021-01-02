@@ -31,7 +31,6 @@
 static const struct option long_options[] = {
     { "config", required_argument, NULL, 'c' },
     { "gpio", required_argument, NULL, 'g' },
-    { "protocols", required_argument, NULL, 'p' },
     { "send-to", required_argument, NULL, 's' },
     { "server-type", required_argument, NULL, 't' },
     { "no-server", no_argument, NULL, 'n' },
@@ -45,6 +44,12 @@ static const struct option long_options[] = {
     { "more_verbose", no_argument, NULL, 'V' },
     { "statistics", no_argument, NULL, 'T' },
     { "debug", no_argument, NULL, 'd' },
+    { "any-protocol", no_argument, NULL, '0' },
+    { "f007th", no_argument, NULL, '7' },
+    { "00592txr", no_argument, NULL, '5' },
+    { "tx6", no_argument, NULL, '6' },
+    { "hg02832", no_argument, NULL, '8' },
+    { "wh2", no_argument, NULL, '2' },
     { "DEBUG", no_argument, NULL, 'D' },
 #ifdef TEST_DECODING
     { "input-log", required_argument, NULL, 'I' },
@@ -61,15 +66,17 @@ static const struct option long_options[] = {
 
 #ifdef TEST_DECODING
 #ifdef INCLUDE_HTTPD
-static const char* short_options = "c:g:p:s:Al:vVt:TCULdDI:WH:G:a:no";
+static const char* short_options = "c:g:s:Al:vVt:TCULd256780DI:WH:G:a:no";
 #else
-static const char* short_options = "c:g:p:s:Al:vVt:TCULdDI:WG:a:no";
+static const char* short_options = "c:g:s:Al:vVt:TCULd256780DI:WG:a:no";
 #endif
 #elif defined(INCLUDE_HTTPD)
-static const char* short_options = "c:g:p:s:Al:vVt:TCULdDH:G:a:no";
+static const char* short_options = "c:g:s:Al:vVt:TCULd256780DH:G:a:no";
 #else
-static const char* short_options = "c:g:p:s:Al:vVt:TCULdDG:a:no";
+static const char* short_options = "c:g:s:Al:vVt:TCULd256780DG:a:no";
 #endif
+
+#define arg_required 1
 
 #define command_def(name, max_num_of_unnamed_args) \
   static const int command_ ## name ## _max_num_of_unnamed_args = max_num_of_unnamed_args; \
@@ -86,21 +93,12 @@ command_def(sensor, 4) = {
 #define CMD_SENSOR_PROTOCOL 0
   { "protocol", arg_required },
 #define CMD_SENSOR_CHANNEL 1
-  { "ch", 0 }, // it may be required - depending on protocol
+  { "ch", 0 },
 #define CMD_SENSOR_RC 2
-  { "rc", arg_required }, // it may be required - depending on protocol
+  { "rc", arg_required },
 #define CMD_SENSOR_NAME 3
-  { "name", arg_required }, // it is required but is checked explicitly
-#define CMD_SENSOR_ID 4
-  { "id", 0 }, // it may be required - depending on protocol
+  { "name", arg_required },
 };
-
-#ifdef INCLUDE_POLLSTER
-command_def(w1, 1) = {
-#define CMD_W1_ENABLE_DS18B20 0
-  { "enable_DS18B20", 0 },
-};
-#endif
 
 #ifdef INCLUDE_HTTPD
 command_def(httpd, 1) = {
@@ -275,25 +273,18 @@ const char* const VALID_OPTIONS =
 Config::Config() {
   options = DEFAULT_OPTIONS;
   init_command_defs();
-  protocols_set_explicitly = false;
 }
 Config::Config(int options) {
   this->options = options;
   init_command_defs();
-  protocols_set_explicitly = false;
 }
 Config::~Config() {}
 
 //-------------------------------------------------------------
 void Config::init_command_defs() {
-  Protocol::initialize();
-
   add_command_def(config);
   add_command_def(sensor);
   add_command_def(action_rule);
-#ifdef INCLUDE_POLLSTER
-  add_command_def(w1);
-#endif
 #ifdef INCLUDE_HTTPD
   add_command_def(httpd);
 #endif
@@ -330,8 +321,8 @@ void Config::printHelpAndExit(const char* version) {
 #else
     "Receive data from thermometers then print it to stdout or send it to a remote server.\n"
 #endif
-    ,stderr
-  );
+      ,stderr
+    );
   fprintf(stderr, "Version %s\n\n", version);
   fputs( VALID_OPTIONS, stderr );
   fflush(stderr);
@@ -345,42 +336,17 @@ void Config::help() {
 }
 
 //-------------------------------------------------------------
-void Config::process_args(int argc, char *argv[]) {
+void Config::process_args (int argc, char *argv[]) {
+
   while (1) {
     int c = getopt_long(argc, argv, short_options, long_options, NULL);
     if (c == -1) break;
 
     const char* option = argv[optind];
-    if (!process_cmdline_option(c, option, optarg, NULL)) {
+    if (!process_cmdline_option(c, option, optarg)) {
       fprintf(stderr, "ERROR: Unknown option \"%s\".\n", option);
       Config::help();
     }
-  }
-
-  if (!protocols_set_explicitly) {
-    // if no protocols are specified explicitly the enable all RF protocols
-    protocols |= Protocol::rf_protocols;
-  }
-
-  if (protocols == 0) {
-    fputs("ERROR: No protocols are enabled.\n", stderr);
-    exit(1);
-  } else if ((options&(VERBOSITY_DEBUG|VERBOSITY_INFO)) != 0 ) {
-    bool first = true;
-    fputs("Enabled protocols:", stderr);
-    for (int protocol_index = 0; protocol_index<NUMBER_OF_PROTOCOLS; protocol_index++) {
-      Protocol* protocol = Protocol::protocols[protocol_index];
-      if ((protocols&protocol->protocol_bit) != 0) {
-        if (first) {
-          first = false;
-        } else {
-          fputc(',', stderr);
-        }
-        fputc(',', stderr);
-        fputs(protocol->protocol_class, stderr);
-      }
-    }
-    fputc('\n', stderr);
   }
 
 #ifdef INCLUDE_MQTT
@@ -425,7 +391,7 @@ void Config::process_args(int argc, char *argv[]) {
 }
 
 //-------------------------------------------------------------
-bool Config::process_cmdline_option( int c, const char* option, const char* optarg, ConfigParser* parser) {
+bool Config::process_cmdline_option( int c, const char* option, const char* optarg ) {
   long long_value;
 
   switch (c) {
@@ -552,10 +518,24 @@ bool Config::process_cmdline_option( int c, const char* option, const char* opta
     options |= VERBOSITY_INFO | VERBOSITY_PRINT_JSON | VERBOSITY_PRINT_CURL | VERBOSITY_PRINT_UNDECODED | VERBOSITY_PRINT_DETAILS;
     break;
 
-  case 'p':
-    enableProtocols(optarg, parser);
+  case '2': // WH2
+    protocols |= PROTOCOL_WH2;
     break;
-
+  case '5': // AcuRite 00592TXR
+    protocols |= PROTOCOL_00592TXR;
+    break;
+  case '6': // LaCrosse TX3/TX6/TX7
+    protocols |= PROTOCOL_TX7U;
+    break;
+  case '7': // Ambient Weather F007TH
+    protocols |= PROTOCOL_F007TH;
+    break;
+  case '8': // Auriol HG02832
+    protocols |= PROTOCOL_HG02832;
+    break;
+  case '0': // any protocol
+    protocols |= PROTOCOL_ALL;
+    break;
   case 'D': // print undecoded messages
     options |= VERBOSITY_PRINT_UNDECODED;
     changes_only = false;
@@ -584,47 +564,6 @@ bool Config::process_cmdline_option( int c, const char* option, const char* opta
     return false;
   }
   return true;
-}
-
-/*-------------------------------------------------------------
- * Enable specified protocols.
- * Argument is comma-separated list of protocol names.
- */
-void Config::enableProtocols(const char* list, ConfigParser* parser) {
-  if (list == NULL || *list == '\0') return;
-
-  const char* p = list;
-  while (skipBlanks(p) != NULL) {
-    char ch = *p;
-    if (ch == ',') {
-      p++;
-      continue;
-    }
-    const char* name_start = p;
-    while ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_' || ch == '-') {
-      p++;
-    }
-    if (ch != '\0' && strchr(", \t\n\r", ch) == NULL) errorInavidValueOfArg("protocols", list, parser);
-    if (p != name_start) {
-      ProtocolDef* def = NULL;
-
-      size_t len = p-name_start;
-      if (len <= MAX_PROTOCOL_NAME_LEN) {
-        char protocol_name[MAX_PROTOCOL_NAME_LEN+1];
-        strncpy(protocol_name, name_start, len);
-        protocol_name[len] = '\0';
-        def = Protocol::getProtocolDef(protocol_name);
-      }
-      if (def == NULL) {
-        const char* protocol_name = make_str(name_start, len);
-        if (parser != NULL) parser->error("Unknown protocol \"%s\"", protocol_name);
-        fprintf(stderr, "ERROR: Unknown protocol \"%s\".\n", protocol_name);
-        exit(1);
-      }
-      protocols |= (uint32_t)def->protocol_bit;
-      protocols_set_explicitly = true;
-    }
-  }
 }
 
 /*-------------------------------------------------------------
@@ -709,7 +648,7 @@ void Config::readConfig(ConfigParser& configParser, const char* baseFilePath, co
         const char* value = argv[i];
         if (value == NULL) {
           const struct CmdArgDef* arg_def = &cmd_def->args[i];
-          if ((arg_def->flags & arg_required) != 0) {
+          if ((arg_def->flags && arg_required) != 0) {
             if (arg_def->name != NULL)
               configParser.error("Missing argument \"%s\" of command \"%s\"", arg_def->name, cmd_def->name);
             configParser.error("Missing argument #%d of command \"%s\"", i+1, cmd_def->name);
@@ -732,7 +671,7 @@ void Config::readConfig(ConfigParser& configParser, const char* baseFilePath, co
 #endif
 
       // execute the command
-      execute_command(cmd_def, argv, number_of_unnamed_args, &configParser);
+      execute_command(cmd_def, argv, &configParser);
 
       for (int i = 0; i<cmd_def->max_args; i++) {
         const char* value = argv[i];
@@ -760,7 +699,7 @@ void Config::readConfig(ConfigParser& configParser, const char* baseFilePath, co
 
       //fprintf(stderr, ">>> option \"%s\": val='%c' optarg=\"%s\"\n", struct_opt->name, struct_opt->val, optarg );
 
-      if (!process_cmdline_option(struct_opt->val, struct_opt->name, optarg, &configParser))
+      if (!process_cmdline_option(struct_opt->val, struct_opt->name, optarg))
         configParser.error("Unexpected error when processing option \"%s\"('%c') ", struct_opt->name, struct_opt->val);
       continue;
     }
@@ -786,7 +725,7 @@ void Config::adjust_unnamed_args(const char** argv, int& number_of_unnamed_args,
     int max_index_missing = -1;
     for (int i = max_num_of_unnamed_args-1; i>=number_of_unnamed_args; i--) {
       const struct CmdArgDef* ad = &arg_defs[i];
-      if ((ad->flags & arg_required)!=0) {
+      if ((ad->flags && arg_required)!=0) {
         max_index_missing = i;
         break;
       }
@@ -794,7 +733,7 @@ void Config::adjust_unnamed_args(const char** argv, int& number_of_unnamed_args,
     if (max_index_missing>0) { // there are missing required positional arguments
       for (int i = 0; i<number_of_unnamed_args; i++) {
         const struct CmdArgDef* ad = &arg_defs[i];
-        if ((ad->flags & arg_required)==0) {
+        if ((ad->flags && arg_required)==0) {
           memmove(argv+i+1, argv+i, (number_of_unnamed_args-i)*sizeof(char*));
           argv[i] = NULL;
           if (++number_of_unnamed_args >= max_index_missing) break;
@@ -808,7 +747,7 @@ void Config::adjust_unnamed_args(const char** argv, int& number_of_unnamed_args,
  * Command "config":
  *   config <file_path>
  */
-void Config::command_config(const char** argv, int number_of_unnamed_args, ConfigParser* parser) {
+void Config::command_config(const char** argv, ConfigParser* parser) {
   const char* currentConfigPath = parser->configFilePath;
 
   const char* config_file_path = argv[CMD_CONFIG_FILE];
@@ -828,84 +767,45 @@ void Config::command_config(const char** argv, int number_of_unnamed_args, Confi
  * Command "sensor":
  *   sensor <protocol> [<channel>] <rolling_code> <name>
  */
-void Config::command_sensor(const char** argv, int number_of_unnamed_args, ConfigParser* errorLogger) {
+void Config::command_sensor(const char** argv, ConfigParser* errorLogger) {
   const char* protocol_name = argv[CMD_SENSOR_PROTOCOL];
-  ProtocolDef* protocol_def = Protocol::getProtocolDef(protocol_name);
+  const struct ProtocolDef* protocol_def = Protocol::getProtocolDef(protocol_name);
   if ( protocol_def == NULL ) errorLogger->error("Unrecognized sensor protocol");
-  //protocol_name = protocol_def->name;
-  //Protocol* protocol = protocol_def->getProtocol();
-  uint32_t features = protocol_def->getFeatures();
-
-  const char* rc_str = argv[CMD_SENSOR_RC];
-  const char* channel_str = argv[CMD_SENSOR_CHANNEL];
-  const char* id_str = argv[CMD_SENSOR_ID];
-
-  uint32_t sensor_id = 0;
-  uint8_t channel_number = 0;
-  uint32_t rolling_code = 0;
-
-  if ((features&(FEATURE_CHANNEL|FEATURE_ROLLING_CODE)) != 0) {
-    if (id_str != NULL) errorLogger->error("Argument \"id\" is not allowed for protocol \"%s\"", protocol_name);
-
-
-    if ((features&FEATURE_CHANNEL) == 0) {
-      if (channel_str != NULL) errorLogger->error("Argument \"ch\" is not allowed for protocol \"%s\"", protocol_name);
-    } else {
-      if (protocol_def->number_of_channels == 0) errorLogger->error("Program error - number_of_channels should not be zero for protocol \"%s\"", protocol_name);
-      if (channel_str == NULL) errorLogger->error("Missed channel in the descriptor of sensor");
-      if (strlen(channel_str) != 1) errorLogger->error("Invalid value \"%s\" of channel argument in the descriptor of sensor", channel_str);
-      char ch = *channel_str;
-      channel_number = 255;
-      switch (protocol_def->channels_numbering_type) {
-      case 0:
-        if (ch>='0' && ch<='9') channel_number = ch-'0';
-        break;
-      case 1:
-        if (ch>='a' && ch<='c') channel_number = ch-'a'+1;
-        else if (ch>='A' && ch<='C') channel_number = ch-'A'+1;
-        break;
-      default:
-        errorLogger->error("Program error - invalid value %d of channels_numbering_type for protocol_bit %s", protocol_def->channels_numbering_type, protocol_name);
-      }
-      if (channel_number<=0 || channel_number>protocol_def->number_of_channels)
-        errorLogger->error("Invalid channel '%c' in the descriptor of sensor", ch);
-    }
-
-    if ((features&FEATURE_ROLLING_CODE) == 0) {
-      if (rc_str != NULL) errorLogger->error("Argument \"rc\" is not allowed for protocol \"%s\"", protocol_name);
-    } else {
-      if (rc_str == NULL) errorLogger->error("Missed rolling code in the descriptor of sensor");
-      const char* p = rc_str;
-      rolling_code = getUnsigned(p, errorLogger);
-      if (p != NULL && skipBlanks(p) != NULL) errorLogger->error("The value of argument \"rc\" must be unsigned decimal or hex (prefixed with \"0x\") integer number");
-      if (rolling_code >= (1U<<protocol_def->rolling_code_size))
-        errorLogger->error("Invalid value %d for rolling code in the descriptor of sensor", rolling_code);
-    }
-
-    sensor_id = SensorData::getId(protocol_def->protocol_bit, protocol_def->variant, channel_number, rolling_code);
-
-  } else if ((features&FEATURE_ID32) != 0) {
-    if (protocol_def->number_of_channels != 0) errorLogger->error("Program error - number_of_channels must be zero for protocol \"%s\"", protocol_name);
-    if (channel_str != NULL) errorLogger->error("Argument \"ch\" is not allowed for protocol \"%s\"", protocol_name);
-    if (rc_str != NULL && (id_str != NULL || number_of_unnamed_args<=CMD_SENSOR_RC)) // named argument "rc" is not allowed
-      errorLogger->error("Argument \"rolling_code\" is not allowed for protocol \"%s\"", protocol_name);
-    if (id_str == NULL) {
-      if (rc_str == NULL) errorLogger->error("Missed argument \"id\" in the descriptor of sensor");
-      id_str = rc_str;
-    }
-    const char* p = id_str;
-    sensor_id = getUnsignedHex(p, errorLogger);
-    if (p != NULL && skipBlanks(p) != NULL) errorLogger->error("The value of argument \"id\" must be hex integer number");
-
-  } else {
-    errorLogger->error("Program error - incorrect set of features for protocol \"%s\"", protocol_name);
-  }
-
-  if (sensor_id == 0) errorLogger->error("Invalid descriptor of sensor");
 
   const char* name = argv[CMD_SENSOR_NAME];
+
+  protocol_name = protocol_def->name;
+  uint8_t channel_number = 0;
+  if (protocol_def->number_of_channels != 0) {
+    const char* channel_str = argv[CMD_SENSOR_CHANNEL];
+    if (channel_str == NULL) errorLogger->error("Missed channel in the descriptor of sensor");
+    if (strlen(channel_str) != 1) errorLogger->error("Invalid value \"%s\" of channel argument in the descriptor of sensor", channel_str);
+    char ch = *channel_str;
+    channel_number = 255;
+    switch (protocol_def->channels_numbering_type) {
+    case 0:
+      if (ch>='0' && ch<='9') channel_number = ch-'0';
+      break;
+    case 1:
+      if (ch>='a' && ch<='c') channel_number = ch-'a'+1;
+      else if (ch>='A' && ch<='C') channel_number = ch-'A'+1;
+      break;
+    default:
+      errorLogger->error("Program error - invalid value %d of channels_numbering_type for protocol %s", protocol_def->channels_numbering_type, protocol_def->name);
+    }
+    if (channel_number<=0 || channel_number>protocol_def->number_of_channels)
+      errorLogger->error("Invalid channel '%c' in the descriptor of sensor", ch);
+  }
+
+  const char* rc_str = argv[CMD_SENSOR_RC];
+  if (rc_str == NULL) errorLogger->error("Missed rolling code in the descriptor of sensor");
+  uint32_t rolling_code = getUnsigned(rc_str, errorLogger);
+  if (rolling_code >= (1U<<protocol_def->rolling_code_size))
+    errorLogger->error("Invalid value %d for rolling code in the descriptor of sensor", rolling_code);
+  uint32_t sensor_id = SensorData::getId(protocol_def->protocol, protocol_def->variant, channel_number, rolling_code);
+  if (sensor_id == 0) errorLogger->error("Invalid descriptor of sensor");
+
   size_t name_len = name == NULL ? 0 : strlen(name);
-  if (name_len == 0) errorLogger->error("The name of the sensor must be specified");
   if (name_len > MAX_SENSOR_NAME_LEN) errorLogger->error("The name of the sensor is too long (max length is %d", MAX_SENSOR_NAME_LEN);
 
   SensorDef* def = NULL;
@@ -931,47 +831,10 @@ void Config::command_sensor(const char** argv, int number_of_unnamed_args, Confi
     errorLogger->error("Programming error - unrecognized error code from SensorDef::add()");
   }
 #ifndef NDEBUG
-  if ((features&(FEATURE_CHANNEL|FEATURE_ROLLING_CODE)) != 0) {
-    if ((features&(FEATURE_CHANNEL|FEATURE_ROLLING_CODE)) == FEATURE_ROLLING_CODE)
-      fprintf(stderr, "command \"sensor\" in line #%d of file \"%s\": rolling_code=%d id=%08x name=%s ixdb_name=%s\n",
-        errorLogger->linenum, errorLogger->configFilePath, rolling_code, sensor_id, def->quoted, def->influxdb_quoted);
-    else
-      fprintf(stderr, "command \"sensor\" in line #%d of file \"%s\": channel=%d rolling_code=%d id=%08x name=%s ixdb_name=%s\n",
-        errorLogger->linenum, errorLogger->configFilePath, channel_number, rolling_code, sensor_id, def->quoted, def->influxdb_quoted);
-  } else {
-    fprintf(stderr, "command \"sensor\" in line #%d of file \"%s\": id=%08x name=%s ixdb_name=%s\n",
-      errorLogger->linenum, errorLogger->configFilePath, sensor_id, def->quoted, def->influxdb_quoted);
-  }
+  fprintf(stderr, "command \"sensor\" in line #%d of file \"%s\": channel=%d rolling_code=%d id=%08x name=%s ixdb_name=%s\n",
+      errorLogger->linenum, errorLogger->configFilePath, channel_number, rolling_code, sensor_id, def->quoted, def->influxdb_quoted);
 #endif
 }
-
-#ifdef INCLUDE_POLLSTER
-/*-------------------------------------------------------------
- * Command "w1":
- *   w1 <gpio>
- */
-void Config::command_w1(const char** argv, int number_of_unnamed_args, ConfigParser* parser) {
-
-  const char* enable_DS18B20_str = argv[CMD_W1_ENABLE_DS18B20];
-  if (enable_DS18B20_str != NULL) {
-    if (str2bool(enable_DS18B20_str, parser)) {
-      if (access(W1_DEVICES_PATH, F_OK|R_OK|X_OK) != 0) {
-        parser->error("The directory \"" W1_DEVICES_PATH "\" that should contain W1 devices does not exist or not accessible.\nHave you enabled 1-wire devices?");
-      }
-      //Protocol* ds18b20 = Protocol::protocols[PROTOCOL_INDEX_DS18B20];
-      //protocols |= ds18b20->protocol_bit;
-      protocols |= PROTOCOL_DS18B20;
-      w1_enable = true;
-    }
-
-  }
-
-#ifndef NDEBUG
-  fprintf(stderr, "command \"w1\" in line #%d of file \"%s\": enable_DS18B20=%s\n",
-      parser->linenum, parser->configFilePath, enable_DS18B20_str);
-#endif
-}
-#endif
 
 
 #ifdef INCLUDE_HTTPD
@@ -979,7 +842,7 @@ void Config::command_w1(const char** argv, int number_of_unnamed_args, ConfigPar
  * Command "httpd":
  *   httpd <port> [<www_root>]
  */
-void Config::command_httpd(const char** argv, int number_of_unnamed_args, ConfigParser* parser) {
+void Config::command_httpd(const char** argv, ConfigParser* parser) {
 
   const char* port_str = argv[CMD_HTTPD_PORT];
   const char* www_root = argv[CMD_HTTPD_WWW_ROOT];
@@ -1014,7 +877,7 @@ void Config::command_httpd(const char** argv, int number_of_unnamed_args, Config
  * TODO Options "protocol", "certificate", "tls_insecure", "tls_version" are not implemented yet.
  *
  */
-void Config::command_mqtt_broker(const char** argv, int number_of_unnamed_args, ConfigParser* errorLogger) {
+void Config::command_mqtt_broker(const char** argv, ConfigParser* errorLogger) {
   const char* host = argv[CMD_MQTT_BROKER_HOST];
   if (host == NULL) host = "localhost";
   mqtt_broker_host = clone(host);
@@ -1052,7 +915,7 @@ void Config::command_mqtt_broker(const char** argv, int number_of_unnamed_args, 
  * Command "mqtt_rule':
  *   mqtt_rule id=cool_high sensor="Room 1" metric=F hi=75 topic=/hvac/cooling message=on  unlock=cool_low
  */
-void Config::command_mqtt_rule(const char** argv, int number_of_unnamed_args, ConfigParser* errorLogger) {
+void Config::command_mqtt_rule(const char** argv, ConfigParser* errorLogger) {
   const char* sensor_name = argv[CMD_MQTT_RULE_SENSOR];
   if (sensor_name == NULL || *sensor_name == '\0')  errorMissingArg("mqtt_rule", "sensor", errorLogger);
 
@@ -1143,7 +1006,7 @@ void Config::command_mqtt_rule(const char** argv, int number_of_unnamed_args, Co
  * Command "mqtt_bounds_rule':
  *   mqtt_bounds_rule id=cool sensor="Room 1" metric=F topic=hvac/cooling msg_hi=on msg_lo=off bounds=72.5..74.5[22:00]72..75[8:00]
  */
-void Config::command_mqtt_bounds_rule(const char** argv, int number_of_unnamed_args, ConfigParser* errorLogger) {
+void Config::command_mqtt_bounds_rule(const char** argv, ConfigParser* errorLogger) {
   const char* sensor_name = argv[CMD_MQTT_BOUNDS_RULE_SENSOR];
   if (sensor_name == NULL || *sensor_name == '\0')  errorMissingArg("mqtt_bounds_rule", "sensor", errorLogger);
   SensorDef* sensor_def = SensorDef::find(sensor_name);
@@ -1263,7 +1126,7 @@ void Config::command_mqtt_bounds_rule(const char** argv, int number_of_unnamed_a
  * Command "action_rule':
  *   action_rule id=cool sensor="Room 1" metric=F cmd_hi=on cmd_lo=off bounds=72.5..74.5[22:00]72..75[8:00]
  */
-void Config::command_action_rule(const char** argv, int number_of_unnamed_args, ConfigParser* errorLogger) {
+void Config::command_action_rule(const char** argv, ConfigParser* errorLogger) {
   const char* sensor_name = argv[CMD_ACTION_RULE_SENSOR];
   if (sensor_name == NULL || *sensor_name == '\0')  errorMissingArg("action_rule", "sensor", errorLogger);
   SensorDef* sensor_def = SensorDef::find(sensor_name);

@@ -4,21 +4,15 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 CPP_SRCS += \
-../common/Config.cpp \
-../common/ConfigParser.cpp \
-../common/Receiver.cpp \
+../common/RFReceiver.cpp \
 ../common/SensorsData.cpp 
 
 OBJS += \
-./common/Config.o \
-./common/ConfigParser.o \
-./common/Receiver.o \
+./common/RFReceiver.o \
 ./common/SensorsData.o 
 
 CPP_DEPS += \
-./common/Config.d \
-./common/ConfigParser.d \
-./common/Receiver.d \
+./common/RFReceiver.d \
 ./common/SensorsData.d 
 
 

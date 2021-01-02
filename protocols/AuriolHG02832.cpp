@@ -7,7 +7,7 @@
 
 #include "Protocol.hpp"
 #include "../common/SensorsData.hpp"
-#include "../common/Receiver.hpp"
+#include "../common/RFReceiver.hpp"
 
 // Auriol HG02832
 #define MIN_DURATION_HG02832 150
@@ -17,7 +17,7 @@
 
 static ProtocolDef def_hg02832 = {
   name : "hg02832",
-  protocol_bit: PROTOCOL_HG02832,
+  protocol: PROTOCOL_HG02832,
   protocol_index: PROTOCOL_INDEX_HG02832,
   variant: 0,
   rolling_code_size: 8,
@@ -36,8 +36,8 @@ protected:
 
 public:
 
-  ProtocolHG02832() : Protocol(PROTOCOL_HG02832, PROTOCOL_INDEX_HG02832, "HG02832",
-      FEATURE_RF | FEATURE_CHANNEL | FEATURE_ROLLING_CODE | FEATURE_TEMPERATURE | FEATURE_TEMPERATURE_CELSIUS | FEATURE_HUMIDITY | FEATURE_BATTERY_STATUS ) {}
+  ProtocolHG02832() : Protocol(PROTOCOL_HG02832, PROTOCOL_INDEX_HG02832, "HG02832") {
+  }
 
   uint32_t getId(SensorData* data) {
     uint32_t channel_bits = (data->u32.low>>12)&3;
@@ -78,12 +78,12 @@ public:
   bool equals(SensorData* s, SensorData* p) {
     return (p->protocol == s->protocol) && (((p->u32.low^s->u32.low)&0xff003000) == 0); // compare rolling code and channel
   }
-/*
+
   bool sameId(SensorData* s, int channel, uint8_t rolling_code = -1) {
     if (rolling_code != -1 && (s->u32.low>>24) != rolling_code) return false;
     return ((s->u32.low>>12)&3)+1 == (uint8_t)channel;
   }
-*/
+
   int update(SensorData* sensorData, SensorData* item, time_t data_time, time_t max_unchanged_gap) {
     uint32_t new_w = sensorData->u32.low;
     uint32_t w = item->u32.low;
@@ -126,7 +126,7 @@ public:
   bool decode(ReceivedData* message) {
     message->decodingStatus = 0;
     message->decodedBits = 0;
-    message->sensorData.protocol = NULL;
+    message->sensorData.protocol = 0;
 
     int iSequenceSize = message->iSequenceSize;
     if (iSequenceSize < 87) {
