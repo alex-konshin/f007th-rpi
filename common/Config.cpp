@@ -368,7 +368,7 @@ void Config::process_args(int argc, char *argv[]) {
     fputs("Enabled protocols:", stderr);
     for (int protocol_index = 0; protocol_index<NUMBER_OF_PROTOCOLS; protocol_index++) {
       Protocol* protocol = Protocol::protocols[protocol_index];
-      if ((protocols&protocol->protocol_bit) != 0) {
+      if (protocol != NULL && (protocols&protocol->protocol_bit) != 0) {
         if (first) {
           first = false;
         } else {

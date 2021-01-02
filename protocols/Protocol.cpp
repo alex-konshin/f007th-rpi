@@ -20,7 +20,12 @@ Protocol* ProtocolDef::getProtocol() {
   return Protocol::protocols[protocol_index];
 }
 uint32_t ProtocolDef::getFeatures() {
-  return Protocol::protocols[protocol_index]->features;
+  Protocol* protocol = getProtocol();
+  if (protocol == NULL) {
+    fprintf(stderr, "Program error - protocol \"%s\" is not initialized", name);
+    exit(2);
+  }
+  return protocol->features;
 }
 
 void Protocol::copyFields(SensorData* to, SensorData* from) {
