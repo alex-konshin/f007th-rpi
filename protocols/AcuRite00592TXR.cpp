@@ -7,7 +7,7 @@
 
 #include "Protocol.hpp"
 #include "../common/SensorsData.hpp"
-#include "../common/RFReceiver.hpp"
+#include "../common/Receiver.hpp"
 
 // AcuRite 00592TXR - 200...600
 #define MIN_DURATION_00592TXR 140
@@ -15,7 +15,7 @@
 
 static ProtocolDef def_00592txr = {
   name : "00592txr",
-  protocol: PROTOCOL_00592TXR,
+  protocol_bit: PROTOCOL_00592TXR,
   protocol_index: PROTOCOL_INDEX_00592TXR,
   variant: 0,
   rolling_code_size: 8,
@@ -25,8 +25,8 @@ static ProtocolDef def_00592txr = {
 
 class Protocol00592TXR : public Protocol {
 public:
-  Protocol00592TXR() : Protocol(PROTOCOL_00592TXR, PROTOCOL_INDEX_00592TXR, "00592TXR") {
-  }
+  Protocol00592TXR() : Protocol(PROTOCOL_00592TXR, PROTOCOL_INDEX_00592TXR, "00592TXR",
+    FEATURE_RF | FEATURE_CHANNEL | FEATURE_ROLLING_CODE | FEATURE_TEMPERATURE | FEATURE_TEMPERATURE_CELSIUS | FEATURE_HUMIDITY | FEATURE_BATTERY_STATUS ) {}
 
   static Protocol00592TXR* instance;
 
@@ -89,12 +89,12 @@ public:
   bool equals(SensorData* s, SensorData* p) {
     return (p->protocol == s->protocol) && (p->fields.rolling_code == s->fields.rolling_code) && (p->fields.channel == s->fields.channel);
   }
-
+/*
   bool sameId(SensorData* s, int channel, uint8_t rolling_code = -1) {
     if (rolling_code != -1 && s->fields.rolling_code != rolling_code) return false;
     return s->fields.channel == channel;
   }
-
+*/
   int update(SensorData* sensorData, SensorData* item, time_t data_time, time_t max_unchanged_gap) {
     sensorData->def = item->def;
     time_t gap = data_time - item->data_time;
@@ -129,7 +129,7 @@ public:
   bool decode(ReceivedData* message) {
     message->decodingStatus = 0;
     message->decodedBits = 0;
-    message->sensorData.protocol = 0;
+    message->sensorData.protocol = NULL;
 
     int iSequenceSize = message->iSequenceSize;
     if (iSequenceSize < 121 || iSequenceSize > 200) {

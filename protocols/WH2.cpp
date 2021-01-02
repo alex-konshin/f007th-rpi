@@ -7,7 +7,7 @@
 
 #include "Protocol.hpp"
 #include "../common/SensorsData.hpp"
-#include "../common/RFReceiver.hpp"
+#include "../common/Receiver.hpp"
 
 // Fine Offset Electronics WH2
 #define MIN_LO_DURATION_WH2 810
@@ -19,7 +19,7 @@
 
 static ProtocolDef def_wh2 = {
   name : "wh2",
-  protocol: PROTOCOL_WH2,
+  protocol_bit: PROTOCOL_WH2,
   protocol_index: PROTOCOL_INDEX_WH2,
   variant: 0x40,
   rolling_code_size: 8,
@@ -28,7 +28,7 @@ static ProtocolDef def_wh2 = {
 };
 static ProtocolDef def_ft007th = {
   name : "ft007th",
-  protocol: PROTOCOL_WH2,
+  protocol_bit: PROTOCOL_WH2,
   protocol_index: PROTOCOL_INDEX_WH2,
   variant: 0x41,
   rolling_code_size: 8,
@@ -48,8 +48,8 @@ protected:
 
 public:
 
-  ProtocolWH2() : Protocol(PROTOCOL_WH2, PROTOCOL_INDEX_WH2, "WH2") {
-  }
+  ProtocolWH2() : Protocol(PROTOCOL_WH2, PROTOCOL_INDEX_WH2, "WH2",
+      FEATURE_RF | FEATURE_ROLLING_CODE | FEATURE_TEMPERATURE | FEATURE_TEMPERATURE_CELSIUS | FEATURE_HUMIDITY ) {}
 
   static ProtocolWH2* instance;
 
@@ -88,11 +88,11 @@ public:
   bool equals(SensorData* s, SensorData* p) {
     return (p->protocol == s->protocol) && (((p->u32.low^s->u32.low)&0x0ff00000) == 0); // compare rolling code
   }
-
+/*
   bool sameId(SensorData* s, int channel, uint8_t rolling_code = -1) {
     return rolling_code == -1 || ((s->u32.low >> 20)&255) == rolling_code;
   }
-
+*/
   int update(SensorData* sensorData, SensorData* p, time_t data_time, time_t max_unchanged_gap) {
     uint32_t new_w = sensorData->u32.low;
     uint32_t w = p->u32.low;
@@ -134,7 +134,7 @@ public:
   bool decode(ReceivedData* message) {
     message->decodingStatus = 0;
     message->decodedBits = 0;
-    message->sensorData.protocol = 0;
+    message->sensorData.protocol = NULL;
 
     int iSequenceSize = message->iSequenceSize;
     if (iSequenceSize < MIN_SEQUENCE_WH2) {

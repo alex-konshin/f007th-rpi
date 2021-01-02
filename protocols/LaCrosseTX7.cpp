@@ -7,7 +7,7 @@
 
 #include "Protocol.hpp"
 #include "../common/SensorsData.hpp"
-#include "../common/RFReceiver.hpp"
+#include "../common/Receiver.hpp"
 
 // LaCrosse TX-6U/TX-7U
 #define MIN_DURATION_TX7U 400
@@ -16,7 +16,7 @@
 
 static ProtocolDef def_tx7u = {
   name : "tx6",
-  protocol: PROTOCOL_TX7U,
+  protocol_bit: PROTOCOL_TX7U,
   protocol_index: PROTOCOL_INDEX_TX7U,
   variant: 0,
   rolling_code_size: 7,
@@ -37,9 +37,17 @@ protected:
   }
 
 public:
-  ProtocolTX7U() : Protocol(PROTOCOL_TX7U, PROTOCOL_INDEX_TX7U, "TX7U") {
-  }
+  ProtocolTX7U() : Protocol(PROTOCOL_TX7U, PROTOCOL_INDEX_TX7U, "TX7U", FEATURE_RF | FEATURE_ROLLING_CODE | FEATURE_TEMPERATURE | FEATURE_TEMPERATURE_CELSIUS | FEATURE_HUMIDITY ) {}
+
   static ProtocolTX7U* instance;
+
+  uint32_t getFeatures(SensorData* data) {
+    if (data == NULL) return features;
+    uint32_t features = FEATURE_RF | FEATURE_ROLLING_CODE;
+    if (hasTemperature(data)) features |= FEATURE_TEMPERATURE | FEATURE_TEMPERATURE_CELSIUS;
+    if (hasHumidity(data)) features |= FEATURE_HUMIDITY;
+    return features;
+  }
 
   uint32_t getId(SensorData* data) {
     uint32_t rolling_code = data->u32.low >> 25;
@@ -83,11 +91,11 @@ public:
   bool equals(SensorData* s, SensorData* p) {
     return (p->protocol == s->protocol) && ((p->u64>>25)&0x7f) == ((s->u64>>25)&0x7f);
   }
-
+/*
   bool sameId(SensorData* s, int channel, uint8_t rolling_code = -1) {
     return rolling_code == -1 || ((s->u32.low >> 25)&0x7f) == rolling_code;
   }
-
+*/
   void copyFields(SensorData* to, SensorData* from) {
     // TX7U sends temperature and humidity in separate sequences.
     // As result we need to merge them in stored data
@@ -171,7 +179,7 @@ public:
   bool decode(ReceivedData* message) {
     message->decodingStatus = 0;
     message->decodedBits = 0;
-    message->sensorData.protocol = 0;
+    message->sensorData.protocol = NULL;
 
     int iSequenceSize = message->iSequenceSize;
     if (iSequenceSize < 87 || iSequenceSize > 240) {

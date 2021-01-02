@@ -1,30 +1,42 @@
 /*
-  RFReceiver
+  Receiver
 
   Copyright (c) 2017 Alex Konshin
 */
 
-#include "RFReceiver.hpp"
+#include "Receiver.hpp"
 #include "../protocols/Protocol.hpp"
 #include "Config.hpp"
 #include <mutex>
 
-bool RFReceiver::isLibInitialized = false;
-RFReceiver* RFReceiver::first = NULL;
+#ifdef INCLUDE_POLLSTER
+#include "dirent.h"
+#include <sys/types.h>
+#endif
+
+bool Receiver::isLibInitialized = false;
+Receiver* Receiver::first = NULL;
 std::mutex receivers_chain_mutex;
 
 pthread_mutex_t receiversLock;
 
 
-RFReceiver::RFReceiver(Config* cfg) {
+Receiver::Receiver(Config* cfg) {
   this->cfg = cfg;
   this->gpio = cfg->gpio;
-  protocols = PROTOCOL_F007TH|PROTOCOL_00592TXR|PROTOCOL_TX7U|PROTOCOL_HG02832|PROTOCOL_WH2;
+  protocols = cfg->protocols;
   isEnabled = false;
+  isMessageQueueInitialized = false;
   isDecoderStarted = false;
   stopDecoder = false;
   stopMessageReader = false;
   stopped = false;
+#ifdef INCLUDE_POLLSTER
+  isPollsterEnabled = cfg->w1_enable;
+  isPollsterStarted = false;
+  isPollsterInitialized = false;
+  stopPollster = false;
+#endif
 #ifdef TEST_DECODING
   inputLogFilePath = NULL;
   inputLogFileStream = NULL;
@@ -49,16 +61,26 @@ RFReceiver::RFReceiver(Config* cfg) {
   first = this;
   receivers_chain_mutex.unlock();
 }
-RFReceiver::~RFReceiver() {
+Receiver::~Receiver() {
   stop();
-  pthread_mutex_destroy(&messageQueueLock);
+  if (isMessageQueueInitialized) {
+    isMessageQueueInitialized = false;
+    pthread_mutex_destroy(&messageQueueLock);
+  }
+
+#ifdef INCLUDE_POLLSTER
+  if (isPollsterInitialized) {
+    isPollsterInitialized = false;
+    pthread_mutex_destroy(&pollsterLock);
+  }
+#endif
 }
 
-void RFReceiver::setProtocols(unsigned protocols) {
+void Receiver::setProtocols(unsigned protocols) {
   this->protocols = protocols;
 }
 
-void RFReceiver::initLib() {
+void Receiver::initLib() {
 #ifdef TEST_DECODING
   if (!isLibInitialized) {
     isLibInitialized = true;
@@ -67,8 +89,8 @@ void RFReceiver::initLib() {
   }
 #elif defined(USE_GPIO_TS)
   if (!isLibInitialized) {
-    Log->log("RFReceiver " RF_RECEIVER_VERSION " (with gpio-ts kernel module).");
-    if( access( "/sys/class/gpio-ts", F_OK|R_OK|X_OK ) == -1 ) {
+    Log->log("Receiver " RF_RECEIVER_VERSION " (with gpio-ts kernel module).");
+    if ( access("/sys/class/gpio-ts", F_OK|R_OK|X_OK ) == -1) {
       Log->error("Kernel module gpio-ts is not loaded.");
       exit(1);
     }
@@ -79,7 +101,7 @@ void RFReceiver::initLib() {
   }
 #else
   if (!isLibInitialized) {
-    Log->log("RFReceiver " RF_RECEIVER_VERSION " (with pigpio library).");
+    Log->log("Receiver " RF_RECEIVER_VERSION " (with pigpio library).");
     //unsigned version = gpioVersion();
     //printf("pigpio version is %d.\n", version);
     //gpioCfgMemAlloc(PI_MEM_ALLOC_PAGEMAP);
@@ -94,7 +116,7 @@ void RFReceiver::initLib() {
 #endif
 }
 
-void RFReceiver::closeLib() {
+void Receiver::closeLib() {
   if (isLibInitialized) {
 #if !defined(USE_GPIO_TS) && !defined(TEST_DECODING)
     gpioTerminate();
@@ -103,14 +125,14 @@ void RFReceiver::closeLib() {
   }
 }
 
-void RFReceiver::closeAll() {
+void Receiver::closeAll() {
   do {
     receivers_chain_mutex.lock();
-    RFReceiver* p = RFReceiver::first;
+    Receiver* p = Receiver::first;
     if (p != NULL) {
-      RFReceiver* next = p->next;
+      Receiver* next = p->next;
       p->next = NULL;
-      RFReceiver::first = next;
+      Receiver::first = next;
     }
     receivers_chain_mutex.unlock();
     if (p == NULL) break;
@@ -122,12 +144,12 @@ void RFReceiver::closeAll() {
 
 
 #if defined(USE_GPIO_TS)||defined(TEST_DECODING)
-void RFReceiver::signalHandler(int signum) {
+void Receiver::signalHandler(int signum) {
 
   switch(signum) {
   case SIGUSR1: {
     receivers_chain_mutex.lock();
-    RFReceiver* p = first;
+    Receiver* p = first;
     while (p != NULL) {
       p->printDebugStatistics();
       p = p->next;
@@ -151,36 +173,36 @@ void RFReceiver::signalHandler(int signum) {
   case SIGINT:
     printf("\nGot Ctrl-C. Terminating...\n");
     Log->log("Got Ctrl-C. Terminating...");
-    RFReceiver::closeAll();
+    Receiver::closeAll();
     //exit(0);
     break;
 
   case SIGTERM:
     printf("\nTerminating...\n");
     Log->log("Terminating...");
-    RFReceiver::closeAll();
+    Receiver::closeAll();
     //exit(0);
     break;
 
   default:
     printf("\nUnhandled signal %d. Terminating...\n", signum);
     Log->log("Unhandled signal %d. Terminating...", signum);
-    RFReceiver::closeAll();
+    Receiver::closeAll();
     exit(1);
   }
 }
 #else
 // Handle Ctrl-C
-void RFReceiver::processCtrlBreak(int signum, void *userdata) {
-  //RFReceiver* receiver = (RFReceiver*)userdata;
+void Receiver::processCtrlBreak(int signum, void *userdata) {
+  //Receiver* receiver = (Receiver*)userdata;
   //receiver->stop();
   printf("\nGot Ctrl-C. Terminating...\n");
-  RFReceiver::closeAll();
+  Receiver::closeAll();
   exit(0);
 }
 #endif
 
-void RFReceiver::close() {
+void Receiver::close() {
   disableReceive();
 
 #ifdef TEST_DECODING
@@ -190,9 +212,9 @@ void RFReceiver::close() {
   }
 #endif
 
-  RFReceiver** pp = &first;
+  Receiver** pp = &first;
   receivers_chain_mutex.lock();
-  RFReceiver* p = first;
+  Receiver* p = first;
   while (p != NULL && p != this) {
     pp = &(p->next);
     p = p->next;
@@ -208,7 +230,7 @@ void RFReceiver::close() {
   }
 }
 
-bool RFReceiver::enableReceive() {
+bool Receiver::enableReceive() {
   if (!isEnabled) {
     resetReceiverBuffer();
     initLib();
@@ -267,12 +289,16 @@ bool RFReceiver::enableReceive() {
       exit(2);
     }
 #endif
+
+#ifdef INCLUDE_POLLSTER
+    if (isPollsterEnabled) startPollster();
+#endif
     isEnabled = true;
   }
   return true;
 }
 
-void RFReceiver::disableReceive() {
+void Receiver::disableReceive() {
   if (isEnabled) {
 #ifdef TEST_DECODING
     // do nothing for now
@@ -295,10 +321,18 @@ void RFReceiver::disableReceive() {
   }
 }
 
-void RFReceiver::stop() {
+void Receiver::stop() {
   if (stopped) return;
   Log->info("Stopping...");
   stopped = true;
+#ifdef INCLUDE_POLLSTER
+  stopPollster = true;
+  if (isPollsterStarted) {
+    pthread_mutex_lock(&pollsterLock);
+    pthread_cond_broadcast(&pollsterCondition);
+    pthread_mutex_unlock(&pollsterLock);
+  }
+#endif
   if (isLibInitialized && isEnabled) {
     pause();
     stopTimer();
@@ -306,23 +340,29 @@ void RFReceiver::stop() {
     close();
     if (isDecoderStarted) {
       isDecoderStarted = false;
-      pthread_mutex_lock(&messageQueueLock);
-      pthread_cond_broadcast(&messageReady);
-      pthread_mutex_unlock(&messageQueueLock);
+      stopDecoder = true;
+      // TODO ???
     }
+  }
+  if (isMessageQueueInitialized) {
+    // notify all message processors
+    pthread_mutex_lock(&messageQueueLock);
+    pthread_cond_broadcast(&messageReady);
+    pthread_mutex_unlock(&messageQueueLock);
   }
 }
 
-bool RFReceiver::isStopped() {
+bool Receiver::isStopped() {
   return stopped;
 }
 
-void RFReceiver::pause() {
+void Receiver::pause() {
   if (isEnabled) disableReceive();
   stopDecoder = true;
+  // stopPollster = true; // FIXME
 }
 
-void RFReceiver::resetReceiverBuffer() {
+void Receiver::resetReceiverBuffer() {
   iPoolWrite = 0;
   iPoolRead = 0;
   iSequenceWrite = 0;
@@ -334,11 +374,11 @@ void RFReceiver::resetReceiverBuffer() {
 }
 
 #ifdef TEST_DECODING
-void RFReceiver::setWaitAfterReading(bool waitAfterReading) {
+void Receiver::setWaitAfterReading(bool waitAfterReading) {
   this->waitAfterReading = waitAfterReading;
 }
 
-void RFReceiver::setInputLogFile(const char* inputLogFilePath) {
+void Receiver::setInputLogFile(const char* inputLogFilePath) {
   if (inputLogFilePath == NULL) {
     Log->error("Input log file is not specified.");
     exit(1);
@@ -351,7 +391,7 @@ void RFReceiver::setInputLogFile(const char* inputLogFilePath) {
   this->inputLogFilePath = inputLogFilePath;
 }
 
-int RFReceiver::readSequences() {
+int Receiver::readSequences() {
   char* line = NULL;
   size_t bufsize = 0;
   ssize_t bytesread;
@@ -454,7 +494,7 @@ int RFReceiver::readSequences() {
 #define N_ITEMS 512
 
 // returns: 1 - sequence is ready, 0 - timeout, (-1) - error reading
-int RFReceiver::readSequences() {
+int Receiver::readSequences() {
   struct timeval timeout;
   fd_set fdset;
   int rv;
@@ -567,12 +607,12 @@ int RFReceiver::readSequences() {
 
 #else // use pigpio
 
-void RFReceiver::interruptCallback(int gpio, int level, uint32_t tick, void* userdata) {
-  RFReceiver* receiver = (RFReceiver*)userdata;
+void Receiver::interruptCallback(int gpio, int level, uint32_t tick, void* userdata) {
+  Receiver* receiver = (Receiver*)userdata;
   receiver->handleInterrupt(level, tick);
 }
 
-void RFReceiver::handleInterrupt(int level, uint32_t time) {
+void Receiver::handleInterrupt(int level, uint32_t time) {
   statistics->interrupted++;
 
   uint32_t duration = time - nLastTime;
@@ -719,20 +759,19 @@ void RFReceiver::handleInterrupt(int level, uint32_t time) {
 #endif
 
 
-void* RFReceiver::decoderThreadFunction(void *context) {
-     ((RFReceiver*)context)->decoder();
+void* Receiver::decoderThreadFunction(void *context) {
+     ((Receiver*)context)->decoder();
     return NULL;
 }
 
-void RFReceiver::startDecoder() {
+void Receiver::startDecoder() {
   //DBG("startDecoder()");
   if (!isDecoderStarted) {
     isDecoderStarted = true;
     //pthread_mutex_init(&sequencePoolLock, NULL);
     //pthread_cond_init(&sequenceReadyForDecoding, NULL);
 
-    pthread_mutex_init(&messageQueueLock, NULL);
-    pthread_cond_init(&messageReady, NULL);
+    initMessageQueue();
 
     int rc = pthread_create(&decoderThreadId, NULL, decoderThreadFunction, (void*)this);
     if (rc != 0) {
@@ -742,8 +781,8 @@ void RFReceiver::startDecoder() {
   }
 }
 
-void RFReceiver::decoder() {
-  Log->log("Decoder thread has been started.\n");
+void Receiver::decoder() {
+  Log->log("Decoder thread has been started");
   while (!stopDecoder) {
 #if defined(USE_GPIO_TS) || defined(TEST_DECODING)
 
@@ -772,24 +811,17 @@ void RFReceiver::decoder() {
     ReceivedData* message = createNewMessage();
     if (message == NULL) continue;
 
-    message->sensorData.protocol = 0;
-    message->decodedBits = 0;
-    message->decodingStatus = 0x8000;
-    memset(message->detailedDecodingStatus, 0x8000, sizeof(uint16_t)*NUMBER_OF_PROTOCOLS);
-    memset(message->detailedDecodedBits, 0x8000, sizeof(uint16_t)*NUMBER_OF_PROTOCOLS);
-
     bool decoded = false;
     for (int protocol_index = 0; protocol_index<NUMBER_OF_PROTOCOLS; protocol_index++) {
       Protocol* protocol = Protocol::protocols[protocol_index];
-      if (protocol != NULL && (protocol->protocol_bit&protocols) != 0) {
-        //DBG("  calling Protocol%s::decode()", protocol->protocol_class);
+      if (protocol != NULL && (protocol->protocol_bit&protocols) != 0 && (protocol->getFeatures(NULL)&FEATURE_RF) != 0) {
+        message->decodingStatus = 0;
         decoded = protocol->decode(message);
         message->detailedDecodingStatus[protocol_index] = message->decodingStatus;
         message->detailedDecodedBits[protocol_index] = message->decodedBits;
         if (decoded) break;
       }
     }
-
     // TODO do not queue the message if it is not decoded and no need to print undecoded messages.
 
     // put new message into output queue
@@ -803,7 +835,185 @@ void RFReceiver::decoder() {
   isDecoderStarted = false;
 }
 
-ReceivedData* RFReceiver::createNewMessage() {
+
+#ifdef INCLUDE_POLLSTER
+void* Receiver::pollsterThreadFunction(void *context) {
+  ((Receiver*)context)->pollster();
+  return NULL;
+}
+
+void Receiver::startPollster() {
+  //DBG("Receiver::startPollster()");
+  if (isPollsterEnabled && !isPollsterStarted) {
+
+    pthread_mutex_init(&pollsterLock, NULL);
+    isPollsterInitialized = true;
+    pthread_cond_init(&pollsterCondition, NULL);
+
+    initMessageQueue();
+
+    isPollsterStarted = true;
+    int rc = pthread_create(&pollsterThreadId, NULL, pollsterThreadFunction, (void*)this);
+    if (rc != 0) {
+      printf("Error code %d from pthread_create()\n", rc);
+      exit(3);
+    }
+  }
+}
+
+// Pollster thread
+void Receiver::pollster() {
+  Log->log("Pollster thread has been started");
+
+  unsigned waittime = 15; // Poll interval in seconds TODO calculate
+
+  struct timespec timeToWait;
+
+  while (!stopPollster) {
+    pollW1();
+
+    clock_gettime(CLOCK_REALTIME, &timeToWait);
+    timeToWait.tv_sec += waittime;
+
+    int rc = pthread_cond_timedwait(&pollsterCondition, &pollsterLock, &timeToWait);
+    //DBG("Receiver::pollster() pthread_cond_timedwait() => %d", rc);
+    if (rc == 0) {
+      if (stopPollster || stopped) break;
+      continue;
+    }
+    if (rc != ETIMEDOUT) {
+      printf("Error code %d from pthread_cond_timedwait()\n", rc);
+      break;
+    }
+  }
+  Log->log("Pollster thread has been stopped");
+  isDecoderStarted = false;
+}
+
+static uint32_t get_W1_id(const char* p) {
+  uint32_t result = 0;
+  for(int i=0; i<8; i++) {
+    result <<= 4;
+    char ch = *p++;
+    if (ch >= '0' && ch <= '9') {
+      result |= ch-'0';
+    } else if (ch >= 'a' && ch <= 'f') {
+      result |= ch-'a'+10;
+    } else return 0;
+  }
+  return result;
+}
+
+
+struct ReceivedDataDS18B20 : public ReceivedData {
+  char name[16];
+};
+
+// Poll DS18B20 devices
+void Receiver::pollW1() {
+
+  Protocol* protocol = Protocol::protocols[PROTOCOL_INDEX_DS18B20];
+  if (protocol == NULL || (protocol->protocol_bit&protocols) == 0) return;
+
+  ReceivedDataDS18B20* messages = NULL;
+  ReceivedDataDS18B20** last_msg_ptr = &messages;
+
+  struct dirent *ep;
+  DIR* dirp = opendir(W1_DEVICES_PATH);
+  if (dirp != NULL) {
+    while ((ep = readdir(dirp)) != NULL) {
+      // Ex: 28-000004ce62c7
+      const char* name = ep->d_name;
+      if (*name == '.') continue;
+      size_t namelen = strlen(name);
+      if (namelen != 15 || strncmp(name, "28-0000", 7) != 0) continue;
+      uint32_t id = get_W1_id(name+7);
+      if (id == 0) continue;
+
+      ReceivedDataDS18B20* message = (ReceivedDataDS18B20*)malloc(sizeof(ReceivedDataDS18B20));
+      memset((void*)message, 0, sizeof(ReceivedData));
+      memcpy(message->name, name, 15*sizeof(char));
+
+      message->sensorData.u32.hi = id;
+      message->sensorData.protocol = protocol;
+      message->sensorData.def = NULL;
+      *last_msg_ptr = message;
+      last_msg_ptr = (ReceivedDataDS18B20**)&message->next;
+    }
+    (void)closedir(dirp);
+  }
+
+  if (messages != NULL) {
+    char filepath[W1_DEVICES_PATH_LEN+26]; // /sys/bus/w1/devices/28-000004ce62c7/w1_slave
+    strcpy(filepath, W1_DEVICES_PATH);
+    char* name_p = filepath+strlen(W1_DEVICES_PATH);
+    *name_p++ = '/';
+
+    ReceivedDataDS18B20* message = messages;
+    while (message != NULL) {
+      uint16_t decodingStatus = 1;
+      strcpy(name_p, message->name);
+      strcpy(name_p+15, "/w1_slave");
+        decodingStatus = 1;
+      FILE* file = fopen(filepath, "r");
+      if (file != NULL) {
+        ssize_t bytesread;
+        // 3e 01 4b 46 7f ff 02 10 6c : crc=6c YES
+        // 3e 01 4b 46 7f ff 02 10 6c t=19875
+        decodingStatus = 2;
+        if((bytesread=getline(&line_buffer, &line_buffer_len, file)) != -1 && bytesread >= 39 && strncmp(line_buffer+36, "YES", 3) == 0) {
+          decodingStatus = 3;
+          if((bytesread=getline(&line_buffer, &line_buffer_len, file)) != -1 && bytesread >= 30 && strncmp(line_buffer+27, "t=", 2) == 0) {
+            decodingStatus = 4;
+            const char* p = line_buffer+29;
+            long n = 0;
+            char ch = *p++;
+            if (ch>='0' && ch<='9') {
+              do {
+                n = n*10+(ch-'0');
+                ch = *p++;
+              } while (ch>='0' && ch<='9');
+              if (ch == '\0' || ch == '\n' || ch == '\r') {
+                message->sensorData.u32.low = (uint32_t)n;
+                decodingStatus = 0;
+              }
+            }
+          }
+        }
+        fclose(file);
+      } else {
+        message->decodingStatus |= 1;
+        //DBG("Receiver::pollW1() Could not open file\"%s\".", filepath);
+      }
+      message->decodingStatus = decodingStatus;
+      message->detailedDecodingStatus[PROTOCOL_INDEX_DS18B20] = decodingStatus;
+      message = (ReceivedDataDS18B20*)message->next;
+    }
+
+    // Put new messages into output queue
+    pthread_mutex_lock(&messageQueueLock);
+
+    *lastMessagePtr = messages;
+    lastMessagePtr = (ReceivedData**)last_msg_ptr;
+
+    pthread_cond_broadcast(&messageReady);
+    pthread_mutex_unlock(&messageQueueLock);
+  }
+}
+
+#endif
+
+
+void Receiver::initMessageQueue() {
+  //DBG("Receiver::initMessageQueue");
+  if (!isMessageQueueInitialized) {
+    pthread_mutex_init(&messageQueueLock, NULL);
+    pthread_cond_init(&messageReady, NULL);
+    isMessageQueueInitialized = true;
+  }
+}
+
+ReceivedData* Receiver::createNewMessage() {
   if (iSequenceReady == iSequenceWrite) return NULL;
 
   int index = iSequenceReady;
@@ -833,21 +1043,24 @@ ReceivedData* RFReceiver::createNewMessage() {
   iPoolRead = (iCurrentSequenceStart+iCurrentSequenceSize)&(POOL_SIZE-1);
 
   message->sensorData.u64 = 0LL;
-  message->sensorData.protocol = 0;
+  message->sensorData.protocol = NULL;
   message->sensorData.def = NULL;
   message->decodingStatus = 0;
+  message->protocol_tried_manchester = 0;
   message->decodedBits = 0;
+  memset(message->detailedDecodingStatus, 0x8000, sizeof(uint16_t)*NUMBER_OF_PROTOCOLS);
+  memset(message->detailedDecodedBits, 0x8000, sizeof(uint16_t)*NUMBER_OF_PROTOCOLS);
 
   message->next = NULL;
 
   return message;
 }
 
-void RFReceiver::destroyMessage(ReceivedData* message) {
+void Receiver::destroyMessage(ReceivedData* message) {
   free((void*)message);
 }
 
-bool RFReceiver::waitForMessage(ReceivedMessage& message) {
+bool Receiver::waitForMessage(ReceivedMessage& message) {
   ReceivedData* data = NULL;
 
   pthread_mutex_lock(&messageQueueLock);
@@ -864,16 +1077,16 @@ bool RFReceiver::waitForMessage(ReceivedMessage& message) {
   return data != NULL;
 }
 
-bool RFReceiver::available() {
+bool Receiver::available() {
   return firstMessage != NULL;
 }
 
-void RFReceiver::timerHandler(void *context) {
-  RFReceiver* receiver = (RFReceiver*)context;
+void Receiver::timerHandler(void *context) {
+  Receiver* receiver = (Receiver*)context;
   receiver->raiseTimerEvent();
 }
 
-void RFReceiver::raiseTimerEvent() {
+void Receiver::raiseTimerEvent() {
   timerEvent = 1;
   pthread_mutex_lock(&messageQueueLock);
   pthread_cond_broadcast(&messageReady);
@@ -882,11 +1095,11 @@ void RFReceiver::raiseTimerEvent() {
   if ((cfg->options&VERBOSITY_PRINT_STATISTICS) != 0) printStatistics();
 }
 
-bool RFReceiver::checkAndResetTimerEvent() {
+bool Receiver::checkAndResetTimerEvent() {
   return __sync_lock_test_and_set(&timerEvent, 0) != 0;
 }
 
-void RFReceiver::setTimer(uint32_t millis) {
+void Receiver::setTimer(uint32_t millis) {
   if (uCurrentStatisticsTimer == millis) return; // ignore repeated calls
 
   if (millis != 0) {
@@ -912,15 +1125,15 @@ void RFReceiver::setTimer(uint32_t millis) {
     Log->info("Started timer %dms", millis);
 }
 
-void RFReceiver::stopTimer() {
+void Receiver::stopTimer() {
   setTimer(0);
 }
 
-void RFReceiver::printStatisticsPeriodically(uint32_t millis) {
+void Receiver::printStatisticsPeriodically(uint32_t millis) {
   setTimer(millis);
 }
 
-void RFReceiver::printStatistics() {
+void Receiver::printStatistics() {
 #ifdef TEST_DECODING
   Log->info("statistics(%d): sequences=%ld dropped=%ld overflow=%ld\n",
       gpio, statistics->sequences, statistics->dropped, statistics->sequence_pool_overflow);
@@ -933,7 +1146,7 @@ void RFReceiver::printStatistics() {
       statistics->sequences, statistics->skipped, statistics->dropped, statistics->corrected, statistics->sequence_pool_overflow);
 #endif
 }
-void RFReceiver::printDebugStatistics() {
+void Receiver::printDebugStatistics() {
 #ifdef TEST_DECODING
 
 #elif defined(USE_GPIO_TS)
