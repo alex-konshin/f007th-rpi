@@ -46,7 +46,7 @@ all: f007th-rpi_send
 f007th-rpi_send: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: Cross G++ Linker'
-	arm-linux-gnueabihf-g++ -pthread -o "f007th-rpi_send" $(OBJS) $(USER_OBJS) $(LIBS)
+	g++ -pthread -o "f007th-rpi_send" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 
