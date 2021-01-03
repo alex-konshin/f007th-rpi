@@ -46,7 +46,7 @@ all: f007th-send
 f007th-send: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: Cross G++ Linker'
-	g++ -pthread -o "f007th-send" $(OBJS) $(USER_OBJS) $(LIBS)
+	g++ -pthread -fno-stack-protector -U_FORTIFY_SOURCE -o "f007th-send" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 

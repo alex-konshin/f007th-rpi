@@ -126,7 +126,7 @@ bool ConfigParser::open_file(const char* baseFilePath, const char* configFileRel
   if (baseFilePath == NULL || *baseFilePath == '\0') {
     configFilePath = realpath(configFileRelativePath, NULL);
     if (configFilePath == NULL) {
-      fprintf(stderr, "ERROR: Configuration file \"%s\" does not exist.\n", configFilePath);
+      fprintf(stderr, "ERROR: Configuration file \"%s\" does not exist.\n", configFileRelativePath);
       return false;
     }
   } else {
