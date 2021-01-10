@@ -37,9 +37,17 @@ protected:
   }
 
 public:
+  static ProtocolTX7U* instance;
+
   ProtocolTX7U() : Protocol(PROTOCOL_TX7U, PROTOCOL_INDEX_TX7U, "TX7U", FEATURE_RF | FEATURE_ROLLING_CODE | FEATURE_TEMPERATURE | FEATURE_TEMPERATURE_CELSIUS | FEATURE_HUMIDITY ) {}
 
-  static ProtocolTX7U* instance;
+  uint64_t getId(SensorData* data) {
+    uint64_t rolling_code = (data->u32.low >> 25) & 255UL;
+    return ((uint64_t)protocol_index<<48) | rolling_code;
+  }
+  uint64_t getId(ProtocolDef *protocol_def, uint8_t channel, uint16_t rolling_code) {
+    return ((uint64_t)protocol_index<<48) | (((uint64_t)protocol_def->variant&0x0ffff)<<16) | (rolling_code&255UL);
+  }
 
   uint32_t getFeatures(SensorData* data) {
     if (data == NULL) return features;
@@ -47,11 +55,6 @@ public:
     if (hasTemperature(data)) features |= FEATURE_TEMPERATURE | FEATURE_TEMPERATURE_CELSIUS;
     if (hasHumidity(data)) features |= FEATURE_HUMIDITY;
     return features;
-  }
-
-  uint32_t getId(SensorData* data) {
-    uint32_t rolling_code = data->u32.low >> 25;
-    return (protocol_bit<<24) | rolling_code;
   }
 
   int getMetrics(SensorData* data) {
@@ -86,7 +89,7 @@ public:
   const char* getSensorTypeLongName(SensorData* data) { return "LaCrosse TX3/TX6/TX7"; }
 
   // random number that is changed when battery is changed
-  uint8_t getRollingCode(SensorData* data) { return (data->u32.low >> 25); }
+  uint16_t getRollingCode(SensorData* data) { return (data->u32.low >> 25); }
 
   bool equals(SensorData* s, SensorData* p) {
     return (p->protocol == s->protocol) && ((p->u64>>25)&0x7f) == ((s->u64>>25)&0x7f);
@@ -176,6 +179,18 @@ public:
   #define TX7U_1_MIN 400
   #define TX7U_1_MAX 650
 
+  static bool check_bit(bool expected_bit, int16_t* pSequence, int& failIndex) {
+    int16_t item = pSequence[failIndex];
+    if (expected_bit) {
+      if (item<=TX7U_1_MIN || item>=TX7U_1_MAX) return false;
+    } else {
+      if (item<=TX7U_0_MIN || item>=TX7U_0_MAX) return false;
+    }
+    item = pSequence[++failIndex];
+    if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) return false;
+    return true;
+  }
+
   bool decode(ReceivedData* message) {
     message->decodingStatus = 0;
     message->decodedBits = 0;
@@ -196,56 +211,25 @@ public:
     int dataStartIndex = -1;
     bool good_start = false;
     for ( int index = 0; index<(iSequenceSize-86); index++ ) {
-      // bit[0] == 0
       failIndex = index;
-      item = pSequence[failIndex];
-      if (item<=TX7U_0_MIN || item>=TX7U_0_MAX) continue;
-      item = pSequence[++failIndex];
-      if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
-
-      // bit[1] == 0
-      item = pSequence[++failIndex];
-      if (item<=TX7U_0_MIN || item>=TX7U_0_MAX) continue;
-      item = pSequence[++failIndex];
-      if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
-
-      // bit[2] == 0
-      item = pSequence[++failIndex];
-      if (item<=TX7U_0_MIN || item>=TX7U_0_MAX) continue;
-      item = pSequence[++failIndex];
-      if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
+      if (!check_bit(false, pSequence, failIndex)) continue; // bit[0] == 0
+      failIndex++;
+      if (!check_bit(false, pSequence, failIndex)) continue; // bit[1] == 0
+      failIndex++;
+      if (!check_bit(false, pSequence, failIndex)) continue; // bit[2] == 0
+      failIndex++;
+      if (!check_bit(false, pSequence, failIndex)) continue; // bit[3] == 0
 
       good_start = true;
 
-      // bit[3] == 0
-      item = pSequence[++failIndex];
-      if (item<=TX7U_0_MIN || item>=TX7U_0_MAX) continue;
-      item = pSequence[++failIndex];
-      if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
-
-      // bit[4] == 1
-      item = pSequence[++failIndex];
-      if (item<=TX7U_1_MIN || item>=TX7U_1_MAX) continue;
-      item = pSequence[++failIndex];
-      if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
-
-      // bit[5] == 0
-      item = pSequence[++failIndex];
-      if (item<=TX7U_0_MIN || item>=TX7U_0_MAX) continue;
-      item = pSequence[++failIndex];
-      if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
-
-      // bit[6] == 1
-      item = pSequence[++failIndex];
-      if (item<=TX7U_1_MIN || item>=TX7U_1_MAX) continue;
-      item = pSequence[++failIndex];
-      if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) continue;
-
-      // bit[7] == 0
-      item = pSequence[++failIndex];
-      if (item<=TX7U_0_MIN || item>=TX7U_0_MAX) continue;
-      item = pSequence[++failIndex];
-      if (item>TX7U_LOW_MIN && item<TX7U_LOW_MAX) {
+      failIndex++;
+      if (!check_bit(true, pSequence, failIndex)) continue;  // bit[4] == 1
+      failIndex++;
+      if (!check_bit(false, pSequence, failIndex)) continue; // bit[5] == 0
+      failIndex++;
+      if (!check_bit(true, pSequence, failIndex)) continue;  // bit[6] == 1
+      failIndex++;
+      if (check_bit(false, pSequence, failIndex)) {          // bit[7] == 0
         dataStartIndex = index;
         break;
       }

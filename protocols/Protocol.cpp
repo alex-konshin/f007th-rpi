@@ -28,6 +28,15 @@ uint32_t ProtocolDef::getFeatures() {
   return protocol->features;
 }
 
+uint64_t ProtocolDef::getId(uint8_t channel, uint16_t rolling_code) {
+  Protocol* protocol = getProtocol();
+  if (protocol == NULL) {
+    fprintf(stderr, "Program error - protocol \"%s\" is not initialized", name);
+    exit(2);
+  }
+  return protocol->getId(this, channel, rolling_code);
+}
+
 void Protocol::copyFields(SensorData* to, SensorData* from) {
   to->data_time = from->data_time;
   to->u64 = from->u64;

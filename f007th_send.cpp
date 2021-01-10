@@ -27,21 +27,37 @@ int main(int argc, char *argv[]) {
   Config cfg(DEFAULT_OPTIONS);
   cfg.process_args(argc, argv);
 
-  if (cfg.log_file_path == NULL || cfg.log_file_path[0]=='\0') {
-#ifdef TEST_DECODING
-    cfg.log_file_path = "f007th-test-decoding.log";
-#else
-    cfg.log_file_path = "f007th-send.log";
-#endif
+  FILE* log;
+  { // setup log file
+    const char* log_file_path;
+    if (cfg.log_file_path == NULL || cfg.log_file_path[0]=='\0') {
+
+  #ifdef TEST_DECODING
+      log_file_path = "f007th-test-decoding.log";
+  #else
+      log_file_path = "f007th-send.log";
+  #endif
+      cfg.log_file_path = log_file_path = realpath(log_file_path, NULL);
+    } else {
+      log_file_path = cfg.log_file_path;
+    }
+    log = openFileForWriting(cfg.log_file_path, "a");
+    if (log == NULL) {
+      fprintf(stderr, "Failed to open log file \"%s\".\n", cfg.log_file_path);
+      exit(1);
+    }
+    fprintf(stderr, "Log file is \"%s\".\n", cfg.log_file_path);
   }
 
-  FILE* log = fopen(cfg.log_file_path, "w+");
-  if (log == NULL) {
-    fprintf(stderr, "Failed to open log file \"%s\".\n", cfg.log_file_path);
-    exit(1);
+  FILE* dump_file = NULL;
+  if ((cfg.options&DUMP_SEQS_TO_FILE) != 0 && cfg.dump_file_path != NULL && *cfg.dump_file_path != '\0') {
+    dump_file = openFileForWriting(cfg.dump_file_path, "w");
+    if (dump_file == NULL) {
+      fprintf(stderr, "Failed to open dump file \"%s\" for writing.\n", cfg.dump_file_path);
+      exit(1);
+    }
+    fprintf(stderr, "Dump file is \"%s\".\n", cfg.dump_file_path);
   }
-  const char* real_log_path = realpath(cfg.log_file_path, NULL);
-  fprintf(stderr, "Log file is \"%s\".\n", real_log_path);
 
   char* response_buffer = NULL;
   size_t buffer_size = SEND_DATA_BUFFER_SIZE*sizeof(char);
@@ -108,6 +124,11 @@ int main(int argc, char *argv[]) {
 
       bool is_message_printed = false;
       bool verbose = (cfg.options&(VERBOSITY_INFO|VERBOSITY_DEBUG)) != 0;
+
+      if (dump_file != NULL && (cfg.options&DUMP_SEQS_TO_FILE) != 0) { // write the received sequence (if any) to the dump file
+        message.printInputSequence(dump_file);
+        fflush(dump_file);
+      }
 
       if (verbose || ((cfg.options&VERBOSITY_PRINT_UNDECODED) != 0 && message.isUndecoded())) {
         message.print(stdout, log, cfg.options);
@@ -186,6 +207,7 @@ int main(int argc, char *argv[]) {
   if ((cfg.options&VERBOSITY_INFO) != 0) fputs("\nExiting...\n", stderr);
 
   // finally
+  if (dump_file != NULL) fclose(dump_file);
   free(data_buffer);
   if (response_buffer != NULL) free(response_buffer);
   Log->log("Exiting...");

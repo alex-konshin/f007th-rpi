@@ -8,8 +8,9 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
 #include <time.h>
+#include <sys/stat.h>
+#include <errno.h>
 
 #include "Utils.hpp"
 
@@ -667,6 +668,53 @@ const char* buildFilePath(const char* baseDirPath, const char* relativePath) {
   }
 
   return result;
+}
+
+
+/**<!----------------------------------------------------------->
+ * Make directory with all missing ancestor directories.
+ * WARNING: No check of permissions for existing directories.
+ * Returns 0 if the directory already exists or operation was successful.
+ */
+int mkdirs(const char *path, const mode_t mode) {
+  struct stat sb;
+  if (stat(path, &sb) == 0) {
+    if (!S_ISDIR(sb.st_mode)) return ENOTDIR;
+    return 0;
+  }
+  const char* parent_dir = getParentFolderPath(path, 1);
+  if (parent_dir != NULL) { // make parent directories
+    int rc = mkdirs(parent_dir, mode);
+    free((void*)parent_dir);
+    if (rc != 0) return rc;
+  }
+  int rc = mkdir(path, mode);
+  if (rc == 0) return 0;
+  rc = errno;
+  if (rc == EEXIST) {
+    if (stat(path, &sb) == 0) {
+      if (S_ISDIR (sb.st_mode)) return 0;
+      return EEXIST;
+    }
+  }
+  return rc;
+}
+
+/**<!----------------------------------------------------------->
+ * Open file for writing and create all missing ancestor directories.
+ * WARNING: No check of permissions for existing directories.
+ * Returns NULL if operation failed.
+ */
+FILE* openFileForWriting(const char* filepath, const char* mode) {
+  const char* parent_dir = getParentFolderPath(filepath, 1);
+  if (parent_dir != NULL) {
+    // make parent directories
+    int rc = mkdirs(parent_dir, 0777);
+    free((void*)parent_dir);
+    if (rc != 0) return NULL;
+  }
+  if (mode == NULL || *mode == '\0') mode = "a";
+  return fopen(filepath, mode);
 }
 
 //-------------------------------------------------------------

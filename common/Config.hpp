@@ -17,6 +17,7 @@
 #define VERBOSITY_PRINT_UNDECODED 16
 #define VERBOSITY_PRINT_JSON      32
 #define VERBOSITY_PRINT_CURL      64
+#define DUMP_SEQS_TO_FILE        128
 
 #define OPTION_CELSIUS           256
 #define OPTION_UTC               512
@@ -139,6 +140,7 @@ private:
 
 public:
   const char* log_file_path = NULL;
+  const char* dump_file_path = NULL;
   const char* server_url = NULL;
   int gpio = DEFAULT_PIN;
   ServerType server_type = ServerType::NONE;
@@ -196,6 +198,9 @@ private:
   void adjust_unnamed_args(const char** argv, int& number_of_unnamed_args, int max_num_of_unnamed_args, const struct CmdArgDef* arg_defs);
 
   void command_config(const char** argv, int number_of_unnamed_args, ConfigParser* errorLogger);
+  void command_log(const char** argv, int number_of_unnamed_args, ConfigParser* errorLogger);
+  void command_dump(const char** argv, int number_of_unnamed_args, ConfigParser* errorLogger);
+
   void command_sensor(const char** argv, int number_of_unnamed_args, ConfigParser* errorLogger);
 #ifdef INCLUDE_POLLSTER
   void command_w1(const char** argv, int number_of_unnamed_args, ConfigParser* errorLogger);

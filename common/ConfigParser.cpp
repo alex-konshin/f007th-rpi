@@ -101,8 +101,7 @@ const char* ConfigParser::resolveFilePath(const char* relativePath, int options)
         if ((options&CAN_BE_DIRECTORY) != 0) error("Directory \"%s\" does not exist or is not accessible", result_path);
         error("File/directory \"%s\" does not exist or is not accessible", result_path);
       }
-    }
-    if ((options&(CAN_BE_FILE_OR_DIRECTORY)) != 0) {
+    } else if ((options&(CAN_BE_FILE_OR_DIRECTORY)) != 0) {
       if ((options&(CAN_BE_FILE_OR_DIRECTORY)) == CAN_BE_FILE_OR_DIRECTORY) {
         if (!S_ISREG(file_stat.st_mode) && !S_ISDIR(file_stat.st_mode)) error("File system entry \"%s\" neither a file nor a directory", result_path);
       } else if ((options&CAN_BE_FILE) != 0) {

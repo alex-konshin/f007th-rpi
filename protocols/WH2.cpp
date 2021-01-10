@@ -47,16 +47,18 @@ protected:
   }
 
 public:
+  static ProtocolWH2* instance;
 
   ProtocolWH2() : Protocol(PROTOCOL_WH2, PROTOCOL_INDEX_WH2, "WH2",
       FEATURE_RF | FEATURE_ROLLING_CODE | FEATURE_TEMPERATURE | FEATURE_TEMPERATURE_CELSIUS | FEATURE_HUMIDITY ) {}
 
-  static ProtocolWH2* instance;
-
-  uint32_t getId(SensorData* data) {
-    uint32_t variant = ((data->u32.hi&0x80000000) != 0 ? 1 : 0) | ((data->u32.low>>24)&0x00f0); // 0x41 = FT007TH
-    uint32_t rolling_code = (data->u32.low>>20)&255;
-    return (protocol_bit<<24) | (variant<<16) | rolling_code;
+  uint64_t getId(SensorData* data) {
+    uint64_t variant = ((data->u32.hi&0x80000000) != 0 ? 1 : 0) | ((data->u32.low>>24)&0x00f0); // 0x41 = FT007TH, 0x40 = WH2
+    uint64_t rolling_code = (data->u32.low >> 20) & 255UL;
+    return ((uint64_t)protocol_index<<48) | (variant<<16) | rolling_code;
+  }
+  uint64_t getId(ProtocolDef *protocol_def, uint8_t channel, uint16_t rolling_code) {
+    return ((uint64_t)protocol_index<<48) | (((uint64_t)protocol_def->variant&0x0ffff)<<16) | (rolling_code&255);
   }
 
   int getMetrics(SensorData* data) { return METRIC_TEMPERATURE | METRIC_HUMIDITY; }
@@ -83,7 +85,7 @@ public:
   const char* getSensorTypeLongName(SensorData* data) { return (data->u32.hi&0x80000000) != 0 ? "Telldus FT007TH" : "Fine Offset Electronics WH2"; }
 
   // random number that is changed when battery is changed
-  uint8_t getRollingCode(SensorData* data) { return (data->u32.low >> 20) & 255; }
+  uint16_t getRollingCode(SensorData* data) { return (data->u32.low >> 20) & 255; }
 
   bool equals(SensorData* s, SensorData* p) {
     return (p->protocol == s->protocol) && (((p->u32.low^s->u32.low)&0x0ff00000) == 0); // compare rolling code

@@ -298,14 +298,14 @@ private:
   size_t name_len;
 
 public:
-  uint32_t id;
+  uint64_t id;
   unsigned index;
   const char* name;
   const char* quoted;
   const char* influxdb_quoted;
   struct SensorDataStored* data;
 
-  static SensorDef* find(uint32_t id) {
+  static SensorDef* find(uint64_t id) {
     for (SensorDef* p = sensorDefs; p != NULL; p = p->next) {
       if (p->id == id) return p;
     }
@@ -340,7 +340,7 @@ public:
 #define SENSOR_NAME_TOO_LONG 4
 #define SENSOR_NAME_INVALID  5
 
-  static int add(uint32_t id, const char* name, size_t name_len, SensorDef*& result) {
+  static int add(uint64_t id, const char* name, size_t name_len, SensorDef*& result) {
     result = NULL;
     if (name_len <= 0 || name == NULL) return SENSOR_NAME_MISSING;
     if (name_len > SENSOR_NAME_MAX_LEN) return SENSOR_NAME_TOO_LONG;
@@ -670,26 +670,6 @@ public:
 
   uint32_t getId() { return protocol == NULL ? 0 : protocol->getId(this); }
 
-  static uint32_t getId(uint8_t protocol, uint8_t variant, uint8_t channel, uint8_t rolling_code) {
-    uint32_t channel_bits = 0;
-    switch (protocol) {
-    case PROTOCOL_F007TH:
-      channel_bits = (channel-1)&255;
-      break;
-    case PROTOCOL_00592TXR:
-      switch (channel) {
-      case 1: channel_bits = 3; break;
-      case 2: channel_bits = 2; break;
-      case 3: channel_bits = 0; break;
-      }
-      break;
-    case PROTOCOL_HG02832:
-      channel_bits = (channel-1)&255;
-      break;
-    }
-    return (protocol<<24) | ((variant&255)<<16) | (channel_bits<<8) | (rolling_code&255);
-  }
-
   uint32_t getFeatures() { return protocol == NULL ? -1 : protocol->getFeatures(this); }
   int getChannel() { return protocol == NULL ? -1 : protocol->getChannel(this); }
   int getChannelNumber() { return protocol == NULL ? -1 : protocol->getChannelNumber(this); }
@@ -715,7 +695,7 @@ public:
   const char* getSensorTypeLongName() { return protocol == NULL ? "UNKNOWN" : protocol->getSensorTypeLongName(this); }
 
   // random number that is changed when battery is changed
-  uint8_t getRollingCode() { return protocol == NULL ? -1 : protocol->getRollingCode(this); }
+  uint16_t getRollingCode() { return protocol == NULL ? -1 : protocol->getRollingCode(this); }
 
   size_t generateJsonContent(int start, void*& buffer, size_t& buffer_size, int options);
   size_t generateJson(int start, void*& buffer, size_t& buffer_size, int options);

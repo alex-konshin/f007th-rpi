@@ -180,7 +180,8 @@ void SensorData::print(FILE* file, int options) {
       if (channel != NULL) fprintf(file, "  channel           = %s\n", channel);
     }
     if ((features&FEATURE_ROLLING_CODE) != 0) {
-      fprintf(file, "  rolling code      = %02x\n", getRollingCode());
+      uint16_t rc = getRollingCode();
+      fprintf(file, "  rolling code      = 0x%04x(%u)\n", rc, rc);
     }
   } else if ((features&FEATURE_ID32) != 0) {
     fprintf(file, "  id                = %08x\n", getId());

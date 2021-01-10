@@ -74,9 +74,20 @@ static const char* short_options = "c:g:p:s:Al:vVt:TCULdDG:a:no";
   static const struct CmdArgDef COMMAND_ ## name ## _ARGS[]
 
 #define add_command_def(name) add_command_def_(#name, command_ ## name ## _max_num_of_unnamed_args, sizeof(COMMAND_ ## name ## _ARGS)/sizeof(struct CmdArgDef), COMMAND_ ## name ## _ARGS, &Config::command_ ## name)
+#define add_command_alias_def(name,alias) add_command_def_(alias, command_ ## name ## _max_num_of_unnamed_args, sizeof(COMMAND_ ## name ## _ARGS)/sizeof(struct CmdArgDef), COMMAND_ ## name ## _ARGS, &Config::command_ ## name)
 
 command_def(config, 1) = {
 #define CMD_CONFIG_FILE 0
+  { "file", arg_required },
+};
+
+command_def(dump, 1) = {
+#define CMD_DUMP_FILE 0
+  { "file", arg_required },
+};
+
+command_def(log, 1) = {
+#define CMD_LOG_FILE 0
   { "file", arg_required },
 };
 
@@ -287,8 +298,11 @@ void Config::init_command_defs() {
   Protocol::initialize();
 
   add_command_def(config);
+  add_command_def(log);
+  add_command_alias_def(log,"log-file");
   add_command_def(sensor);
   add_command_def(action_rule);
+  add_command_def(dump);
 #ifdef INCLUDE_POLLSTER
   add_command_def(w1);
 #endif
@@ -450,7 +464,11 @@ bool Config::process_cmdline_option( int c, const char* option, const char* opta
     break;
 
   case 'l':
-    log_file_path = clone(optarg);
+    if (optarg == NULL || *optarg == '\0') {
+      fprintf(stderr, "ERROR: Log file path must be provide as argument of option --log-file.\n");
+      help();
+    }
+    log_file_path = realpath(optarg, NULL);
     break;
 
 #ifdef TEST_DECODING
@@ -880,7 +898,7 @@ void Config::command_sensor(const char** argv, int number_of_unnamed_args, Confi
         errorLogger->error("Invalid value %d for rolling code in the descriptor of sensor", rolling_code);
     }
 
-    sensor_id = SensorData::getId(protocol_def->protocol_bit, protocol_def->variant, channel_number, rolling_code);
+    sensor_id = protocol_def->getId(channel_number, rolling_code);
 
   } else if ((features&FEATURE_ID32) != 0) {
     if (protocol_def->number_of_channels != 0) errorLogger->error("Program error - number_of_channels must be zero for protocol \"%s\"", protocol_name);
@@ -940,6 +958,43 @@ void Config::command_sensor(const char** argv, int number_of_unnamed_args, Confi
     fprintf(stderr, "command \"sensor\" in line #%d of file \"%s\": id=%08x name=%s ixdb_name=%s\n",
       errorLogger->linenum, errorLogger->configFilePath, sensor_id, def->quoted, def->influxdb_quoted);
   }
+#endif
+}
+
+/*-------------------------------------------------------------
+ * Commands "log" and "log-file":
+ *   log file=<filepath>
+ */
+void Config::command_log(const char** argv, int number_of_unnamed_args, ConfigParser* parser) {
+
+  const char* filepath = argv[CMD_LOG_FILE];
+  const char* log_file_path = parser->resolveFilePath(filepath, CAN_BE_FILE);
+  //const char* dump_file_path = canonicalize_file_name(resolved_path);
+  //if (dump_file_path == NULL) parser->error("Cannot canonicalize path of file \"%s\"", resolved_path);
+  this->log_file_path = log_file_path;
+
+#ifndef NDEBUG
+  fprintf(stderr, "command \"log\" in line #%d of file \"%s\": file=%s\n",
+      parser->linenum, parser->configFilePath, log_file_path);
+#endif
+}
+
+/*-------------------------------------------------------------
+ * Command "dump":
+ *   dump file=<filepath>
+ */
+void Config::command_dump(const char** argv, int number_of_unnamed_args, ConfigParser* parser) {
+
+  const char* filepath = argv[CMD_DUMP_FILE];
+  const char* dump_file_path = parser->resolveFilePath(filepath, CAN_BE_FILE);
+  //const char* dump_file_path = canonicalize_file_name(resolved_path);
+  //if (dump_file_path == NULL) parser->error("Cannot canonicalize path of file \"%s\"", resolved_path);
+  this->dump_file_path = dump_file_path;
+  options |= DUMP_SEQS_TO_FILE;
+
+#ifndef NDEBUG
+  fprintf(stderr, "command \"dump\" in line #%d of file \"%s\": file=%s\n",
+      parser->linenum, parser->configFilePath, dump_file_path);
 #endif
 }
 

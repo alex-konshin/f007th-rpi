@@ -35,16 +35,21 @@ protected:
   }
 
 public:
+  static ProtocolHG02832* instance;
 
   ProtocolHG02832() : Protocol(PROTOCOL_HG02832, PROTOCOL_INDEX_HG02832, "HG02832",
       FEATURE_RF | FEATURE_CHANNEL | FEATURE_ROLLING_CODE | FEATURE_TEMPERATURE | FEATURE_TEMPERATURE_CELSIUS | FEATURE_HUMIDITY | FEATURE_BATTERY_STATUS ) {}
 
-  uint32_t getId(SensorData* data) {
-    uint32_t channel_bits = (data->u32.low>>12)&3;
-    uint32_t rolling_code = data->u32.low >> 24;
-    return (protocol_bit<<24) | (channel_bits<<8) | rolling_code;
+  uint64_t getId(SensorData* data) {
+    uint64_t channel_bits = (data->u32.low >> 12) & 7UL;
+    uint64_t rolling_code = (data->u32.low >> 24) & 255UL;
+    uint64_t variant = 0;
+    return ((uint64_t)protocol_index<<48) | (variant<<16) | (channel_bits<<8) | rolling_code;
   }
-  static ProtocolHG02832* instance;
+  uint64_t getId(ProtocolDef *protocol_def, uint8_t channel, uint16_t rolling_code) {
+    uint64_t channel_bits = (channel-1) & 7UL;
+    return ((uint64_t)protocol_index<<48) | (((uint64_t)protocol_def->variant&0x0ffff)<<16) | (channel_bits<<8) | (rolling_code&255);
+  }
 
   int getChannel(SensorData* data) { return ((data->u32.low>>12)&3)+1; }
   int getChannelNumber(SensorData* data) { return ((data->u32.low>>12)&3)+1; }
@@ -73,7 +78,7 @@ public:
   const char* getSensorTypeLongName(SensorData* data) { return "Auriol HG02832 (IAN 283582)"; }
 
   // random number that is changed when battery is changed
-  uint8_t getRollingCode(SensorData* data) { return (data->u32.low >> 24); }
+  uint16_t getRollingCode(SensorData* data) { return (data->u32.low >> 24); }
 
   bool equals(SensorData* s, SensorData* p) {
     return (p->protocol == s->protocol) && (((p->u32.low^s->u32.low)&0xff003000) == 0); // compare rolling code and channel

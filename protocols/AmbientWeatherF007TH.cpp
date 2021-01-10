@@ -44,16 +44,21 @@ protected:
   }
 
 public:
+  static ProtocolF007TH* instance;
+
   ProtocolF007TH() : Protocol(PROTOCOL_F007TH, PROTOCOL_INDEX_F007TH, "F007TH",
       FEATURE_RF | FEATURE_CHANNEL | FEATURE_ROLLING_CODE | FEATURE_TEMPERATURE | FEATURE_HUMIDITY | FEATURE_BATTERY_STATUS ) {}
 
-  uint32_t getId(SensorData* data) {
-    uint32_t variant = data->u32.hi==1 ? 1 : 0; // 0 = F007TH, 1 = F007TP
-    uint32_t channel_bits = (data->nF007TH>>20)&7;
-    uint32_t rolling_code = (data->nF007TH >> 24) & 255;
-    return (protocol_bit<<24) | (variant<<16) | (channel_bits<<8) | rolling_code;
+  uint64_t getId(SensorData* data) {
+    uint64_t variant = data->u32.hi==1 ? 1 : 0; // 0 = F007TH, 1 = F007TP
+    uint64_t channel_bits = (data->nF007TH>>20)&7UL;
+    uint64_t rolling_code = (data->nF007TH >> 24) & 255UL;
+    return ((uint64_t)protocol_index<<48) | (variant<<16) | (channel_bits<<8) | rolling_code;
   }
-  static ProtocolF007TH* instance;
+  uint64_t getId(ProtocolDef *protocol_def, uint8_t channel, uint16_t rolling_code) {
+    uint64_t channel_bits = (channel-1)&7UL;
+    return ((uint64_t)protocol_index<<48) | (((uint64_t)protocol_def->variant&0x0ffff)<<16) | (channel_bits<<8) | (rolling_code&255);
+  }
 
   int getChannel(SensorData* data) { return ((data->nF007TH>>20)&7)+1; }
   int getChannelNumber(SensorData* data) { return getChannel(data); }
@@ -79,7 +84,7 @@ public:
   const char* getSensorTypeLongName(SensorData* data) { return data->u32.hi==1 ? "Ambient Weather F007TP" : "Ambient Weather F007TH"; }
 
   // random number that is changed when battery is changed
-  uint8_t getRollingCode(SensorData* data) { return (data->nF007TH >> 24) & 255; }
+  uint16_t getRollingCode(SensorData* data) { return (data->nF007TH >> 24) & 255; }
 
   bool equals(SensorData* s, SensorData* p) {
     return (p->protocol == s->protocol) && ((p->nF007TH ^ s->nF007TH) & SENSOR_UID_MASK) == 0 && p->u32.hi == s->u32.hi; // u32.hi -- F007TP flag

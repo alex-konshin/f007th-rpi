@@ -34,13 +34,13 @@ protected:
   }
 
 public:
+  static ProtocolDS18B20* instance;
+
   ProtocolDS18B20() : Protocol(PROTOCOL_DS18B20, PROTOCOL_INDEX_DS18B20, "DS18B20",
       FEATURE_ID32 | FEATURE_TEMPERATURE | FEATURE_TEMPERATURE_CELSIUS ) {}
 
-  static ProtocolDS18B20* instance;
-
-  uint32_t getId(SensorData* data) {
-    return data->u32.hi;
+  uint64_t getId(SensorData* data) {
+    return ((uint64_t)protocol_index<<48) | data->u32.hi;
   }
 
   int getMetrics(SensorData* data) {

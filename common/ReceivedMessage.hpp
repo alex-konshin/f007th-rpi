@@ -94,9 +94,9 @@ public:
   }
 
   bool printInputSequence(FILE* file) {
-    if (data == __null || data->pSequence ==__null) return false;
+    if (data == NULL || data->pSequence == NULL) return false;
 
-    if (file == __null) file = stdout;
+    if (file == NULL) file = stdout;
     // print input sequence
 
     fprintf(file, "sequence size=%d:", data->iSequenceSize);
@@ -105,7 +105,7 @@ public:
       fprintf(file, " %d", data->pSequence[index]);
     }
     fputc('\n', file);
-
+    fflush(file);
     return true;
   }
 

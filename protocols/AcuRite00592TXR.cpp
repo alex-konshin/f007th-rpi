@@ -17,19 +17,15 @@ static ProtocolDef def_00592txr = {
   name : "00592txr",
   protocol_bit: PROTOCOL_00592TXR,
   protocol_index: PROTOCOL_INDEX_00592TXR,
-  variant: 0,
-  rolling_code_size: 8,
+  variant: 0x04,
+  rolling_code_size: 12,
   number_of_channels: 3,
   channels_numbering_type: 1 // 0 => numbers, 1 => letters
 };
 
+
 class Protocol00592TXR : public Protocol {
-public:
-  Protocol00592TXR() : Protocol(PROTOCOL_00592TXR, PROTOCOL_INDEX_00592TXR, "00592TXR",
-    FEATURE_RF | FEATURE_CHANNEL | FEATURE_ROLLING_CODE | FEATURE_TEMPERATURE | FEATURE_TEMPERATURE_CELSIUS | FEATURE_HUMIDITY | FEATURE_BATTERY_STATUS ) {}
-
-  static Protocol00592TXR* instance;
-
+protected:
   ProtocolDef* _getProtocolDef(const char* protocol_name) {
     if (protocol_name != NULL) {
       if (strcasecmp(def_00592txr.name, protocol_name) == 0) return &def_00592txr;
@@ -37,10 +33,27 @@ public:
     return NULL;
   }
 
-  uint32_t getId(SensorData* data) {
-    uint32_t channel_bits = (data->fields.channel>>6)&3;
-    uint32_t rolling_code = data->fields.rolling_code;
-    return (protocol_bit<<24) | (channel_bits<<8) | rolling_code;
+public:
+  static Protocol00592TXR* instance;
+
+  Protocol00592TXR() : Protocol(PROTOCOL_00592TXR, PROTOCOL_INDEX_00592TXR, "00592TXR",
+    FEATURE_RF | FEATURE_CHANNEL | FEATURE_ROLLING_CODE | FEATURE_TEMPERATURE | FEATURE_TEMPERATURE_CELSIUS | FEATURE_HUMIDITY | FEATURE_BATTERY_STATUS ) {}
+
+  uint64_t getId(SensorData* data) {
+    uint64_t channel_bits = (data->fields.channel >> 6) & 3UL;
+    uint64_t rolling_code = (data->u32.hi >> 8) & 0xfffUL;
+    uint64_t variant = data->fields.status & 0x3fUL;
+    return ((uint64_t)protocol_index<<48) | (variant<<16) | (channel_bits<<14) | rolling_code;
+  }
+
+  uint64_t getId(ProtocolDef *protocol_def, uint8_t channel, uint16_t rolling_code) {
+    uint64_t channel_bits = 0;
+    switch (channel) {
+    case 1: channel_bits = 3; break;
+    case 2: channel_bits = 2; break;
+    case 3: channel_bits = 0; break;
+    }
+    return ((uint64_t)protocol_index<<48) | ((protocol_def->variant&0x0ffffUL)<<16) | (channel_bits<<14) | (rolling_code&0x0fff);
   }
 
   int getChannel(SensorData* data) { return ((data->fields.channel>>6)&3)^3; }
@@ -65,7 +78,7 @@ public:
   int getMetrics(SensorData* data) { return METRIC_TEMPERATURE | METRIC_HUMIDITY | METRIC_BATTERY_STATUS; }
 
   bool hasBatteryStatus() { return true; }
-  bool getBatteryStatus(SensorData* data) { return data->fields.status==0x44; }
+  bool getBatteryStatus(SensorData* data) { return (data->fields.status&0x40) != 0; }
 
   int getTemperatureCx10(SensorData* data) { return (int)((((data->fields.t_hi)&127)<<7) | (data->fields.t_low&127)) - 1000; }
   // Temperature, dF = t*10(F). Ex: 72.5F = 725 dF
@@ -84,7 +97,7 @@ public:
   const char* getSensorTypeLongName(SensorData* data) { return "AcuRite 00592TXR"; }
 
   // random number that is changed when battery is changed
-  uint8_t getRollingCode(SensorData* data) { return data->fields.rolling_code; }
+  uint16_t getRollingCode(SensorData* data) { return (data->u32.hi >> 8) & 0xfff; }
 
   bool equals(SensorData* s, SensorData* p) {
     return (p->protocol == s->protocol) && (p->fields.rolling_code == s->fields.rolling_code) && (p->fields.channel == s->fields.channel);
@@ -212,21 +225,23 @@ public:
       return false;
     }
 
-    unsigned status = bits.getInt(16,8)&255;
-    if (status != 0x0044u && status != 0x0084) {
-      ///printf("decode00592TXR(): bad status byte 0x%02x\n",status);
+    unsigned checksum = 0;
+    uint8_t p = 0;
+    for (int i = 0; i < 48; i+=8) {
+      uint8_t b = bits.getInt(i, 8);
+      checksum += b;
+      if (i >= 16) p ^= b;
+    }
+
+    p = (p ^ (p>>4)) & 15;
+    if (((1 << p) & 0b0110100110010110) != 0) {
       message->decodingStatus |= 128;
       return false;
     }
 
-    unsigned checksum = 0;
-    for (int i = 0; i < 48; i+=8) {
-      checksum += bits.getInt(i, 8);
-    }
-
     if (((bits.getInt(48,8)^checksum)&255) != 0) {
       //printf("decode00592TXR(): bad checksum\n");
-      message->decodingStatus |= 128;
+      message->decodingStatus |= 129;
       return false;
     }
 
@@ -236,7 +251,6 @@ public:
     message->sensorData.protocol = this;
     return true;
   }
-
 
 };
 

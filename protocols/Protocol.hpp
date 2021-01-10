@@ -83,6 +83,7 @@ struct ProtocolDef {
 
   Protocol* getProtocol();
   uint32_t getFeatures();
+  uint64_t getId(uint8_t channel, uint16_t rolling_code);
 };
 
 //-------------------------------------------------------------
@@ -132,7 +133,8 @@ public:
   // WARNING: can be called with data==NULL
   virtual uint32_t getFeatures(SensorData* data) { return features; }
 
-  virtual uint32_t getId(SensorData* data) = 0;
+  virtual uint64_t getId(SensorData* data) VIRTUAL;
+  virtual uint64_t getId(ProtocolDef *protocol_def, uint8_t channel, uint16_t rolling_code) VIRTUAL;
   virtual int getChannel(SensorData* data) { return -1; }
   virtual int getChannelNumber(SensorData* data) { return -1; }
   virtual const char* getChannelName(SensorData* data) { return NULL; }
@@ -159,7 +161,7 @@ public:
 
   virtual const char* getSensorTypeName(SensorData* data) VIRTUAL;
   virtual const char* getSensorTypeLongName(SensorData* data) VIRTUAL;
-  virtual uint8_t getRollingCode(SensorData* data) { return -1; };
+  virtual uint16_t getRollingCode(SensorData* data) { return (uint16_t)(-1); };
 
   virtual bool equals(SensorData* s, SensorData* p) VIRTUAL;
   //virtual bool sameId(SensorData* s, int channel, uint8_t rolling_code = -1) VIRTUAL;

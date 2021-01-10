@@ -9,6 +9,7 @@
 #define UTILS_HPP_
 
 #include <stdint.h>
+#include <stdio.h>
 #include "Logger.hpp"
 
 #define T2D_BUFFER_SIZE 13
@@ -66,5 +67,19 @@
    * Path baseDirPath must be absolute unless relativePath is absolute.
    */
   const char* buildFilePath(const char* baseDirPath, const char* relativePath);
+
+  /**<!----------------------------------------------------------->
+   * Make directory with all missing ancestor directories.
+   * WARNING: No check of permissions for existing directories.
+   * Returns 0 if the directory already exists or operation was successful.
+   */
+  int mkdirs(const char *path, const mode_t mode);
+
+  /**<!----------------------------------------------------------->
+   * Open file for writing and create all missing ancestor directories.
+   * WARNING: No check of permissions for existing directories.
+   * Returns NULL if operation failed.
+   */
+  FILE* openFileForWriting(const char* filepath, const char* mode);
 
 #endif /* UTILS_HPP_ */
