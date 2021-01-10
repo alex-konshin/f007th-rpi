@@ -39,6 +39,7 @@ public:
 
 private:
   bool is_sensor_def_set = false;
+  char dt[TIME2STR_BUFFER_SIZE];
 
 #define T2D_BUFFER_SIZE 13
 #define ID_BUFFER_SIZE 512
@@ -46,11 +47,13 @@ private:
 public:
   ReceivedMessage() {
     data_time = time(NULL);
-    data = __null;
+    data = NULL;
+    *dt = '\0';
   }
   ReceivedMessage(ReceivedData* data) {
     data_time = time(NULL);
     this->data = data;
+    *dt = '\0';
   }
 
   ~ReceivedMessage() {
@@ -93,11 +96,19 @@ public:
     return data == NULL ? -1 : data->decodingStatus;
   }
 
-  bool printInputSequence(FILE* file) {
+  char* getTimestampt(int options) {
+    if (*dt == '\0')  convert_time(&data_time, dt, TIME2STR_BUFFER_SIZE, (options&OPTION_UTC) != 0);
+    return dt;
+  }
+
+  bool printInputSequence(FILE* file, int options) {
     if (data == NULL || data->pSequence == NULL) return false;
 
     if (file == NULL) file = stdout;
     // print input sequence
+
+    fputs(getTimestampt(options), file);
+    fputc(' ', file);
 
     fprintf(file, "sequence size=%d:", data->iSequenceSize);
     for (int index=0; index<data->iSequenceSize; index++ ) {
@@ -141,8 +152,7 @@ public:
     bool print_undecoded = debug || (options&VERBOSITY_PRINT_UNDECODED) != 0;
     bool is_undecoded = isUndecoded();
 
-    char dt[TIME2STR_BUFFER_SIZE];
-    convert_time(&data_time, dt, TIME2STR_BUFFER_SIZE, (options&OPTION_UTC) != 0);
+    getTimestampt(options);
 
     if (!is_undecoded) getSensorDef();
 
@@ -152,11 +162,7 @@ public:
     FILE* file2 = log;
     do { // repeat for log_file if it is not NULL
 
-      if (print_details || (print_undecoded && is_undecoded)) {
-        fputs(dt, file);
-        fputc(' ', file);
-        printInputSequence(file);
-      }
+      if (print_details || (print_undecoded && is_undecoded)) printInputSequence(file, options);
 
       if (!is_undecoded) {
         fputs(dt, file);

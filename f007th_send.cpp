@@ -58,6 +58,7 @@ int main(int argc, char *argv[]) {
     }
     fprintf(stderr, "Dump file is \"%s\".\n", cfg.dump_file_path);
   }
+  fflush(stderr);
 
   char* response_buffer = NULL;
   size_t buffer_size = SEND_DATA_BUFFER_SIZE*sizeof(char);
@@ -126,7 +127,7 @@ int main(int argc, char *argv[]) {
       bool verbose = (cfg.options&(VERBOSITY_INFO|VERBOSITY_DEBUG)) != 0;
 
       if (dump_file != NULL && (cfg.options&DUMP_SEQS_TO_FILE) != 0) { // write the received sequence (if any) to the dump file
-        message.printInputSequence(dump_file);
+        message.printInputSequence(dump_file, cfg.options);
         fflush(dump_file);
       }
 
