@@ -288,13 +288,15 @@ public:
       message->decodingStatus |= 0x0180;
       return false;
     }
-    // parity check (bit 19)
+    //Log->info("n = %08x", n);
+    // parity check (bit 19) = parity of 3 nibles of value
     uint32_t k = 0;
-    for (int i=0; i<8; i++) {
+    n >>= 8;
+    for (int i=0; i<3; i++) {
       k ^= (n&15);
       n = n>>4;
     }
-    if (((1<<k)&0b0110100110010110) == 0) {
+    if ((((0b0110100110010110>>k)^n)&1) != 0) {
       message->decodingStatus |= 0x0280;
       return false;
     }
