@@ -280,7 +280,7 @@ public:
     message->decodedBits = (uint16_t)bits.getSize();
 
     uint32_t n = bits.getInt(8, 32);
-    if ( n==0 ) {
+    if (n == 0) {
       message->decodingStatus |= 0x0080;
       return false;
     }
@@ -288,14 +288,13 @@ public:
       message->decodingStatus |= 0x0180;
       return false;
     }
-
     // parity check (bit 19)
     uint32_t k = 0;
     for (int i=0; i<8; i++) {
       k ^= (n&15);
       n = n>>4;
     }
-    if ( ((1<<k)&0b0110100110010110)!=0 ) {
+    if (((1<<k)&0b0110100110010110) == 0) {
       message->decodingStatus |= 0x0280;
       return false;
     }

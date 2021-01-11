@@ -399,9 +399,10 @@ int Receiver::readSequences() {
     usleep(500000);
     while ((bytesread = getline(&line, &bufsize, inputLogFileStream)) != -1) {
       size_t len = strlen(line);
-      if (len<46 || strncmp(line+23," sequence size=",15)!=0) continue;
-
-      const char* p = line+38;
+      if (len < 80) continue;
+      const char* p = strstr(line, "sequence size=");
+      if (p == NULL || (p-line) > 60) continue;
+      p += sizeof("sequence size=");
       while (*p!=' ' && *p!='\0' && *p!='\n') p++;
       if (*p!=' ') continue;
 
