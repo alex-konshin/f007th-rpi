@@ -74,6 +74,7 @@ public:
     data_time = time(NULL);
     if (data != NULL) data->sensorData.data_time = data_time;
     is_sensor_def_set = false;
+    *dt = '\0';
   }
 
   SensorData* getSensorData() {
