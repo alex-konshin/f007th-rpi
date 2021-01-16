@@ -145,6 +145,7 @@ private:
   int lastLevel;
 
   uint32_t protocols;
+  unsigned long min_sequence_length;
   unsigned long min_duration;
   unsigned long max_duration;
 
