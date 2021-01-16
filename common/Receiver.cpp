@@ -266,6 +266,14 @@ bool Receiver::enableReceive() {
 
     // setup noise filter
 
+    if ((cfg->options&DUMP_SEQS_TO_FILE) != 0) {
+      Log->log("Initializing receiver with parameters:\n"
+          "    max_duration = %lu\n"
+          "    min_duration = %lu\n"
+          "    min_sequence_length = %lu",
+          max_duration, min_duration, min_sequence_length
+      );
+    }
     long rc = ioctl(fd, GPIOTS_IOCTL_SET_MAX_DURATION, max_duration);
     if (rc != 0) {
       Log->error("Failed to set maximum duration to %ld.", max_duration);
