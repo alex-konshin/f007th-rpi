@@ -172,9 +172,9 @@ public:
   virtual void printUndecoded(ReceivedData* message, FILE* out, FILE* log, int cfg_options) {}
 
   static void setLimits(unsigned protocol_mask, unsigned long& min_sequence_length, unsigned long& max_duration, unsigned long& min_duration) {
-    max_duration = 0;
-    min_duration = 0;
-    min_sequence_length = 0;
+    //max_duration = 0;
+    //min_duration = 0;
+    //min_sequence_length = 0;
 
     if (protocol_mask != PROTOCOL_ALL) {
       for (int protocol_index = 0; protocol_index < NUMBER_OF_PROTOCOLS; protocol_index++) {
