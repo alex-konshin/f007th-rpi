@@ -84,6 +84,14 @@ command_def(config, 1) = {
 command_def(dump, 1) = {
 #define CMD_DUMP_FILE 0
   { "file", arg_required },
+#define CMD_DUMP_DECODED 1
+  { "decoded", 0 },
+#define CMD_DUMP_MAX_DURATION 2
+  { "max_duration", 0 },
+#define CMD_DUMP_MIN_DURATION 3
+  { "min_duration", 0 },
+#define CMD_DUMP_MIN_SEQUENCE_LENGTH 4
+  { "min_sequence_length", 0 },
 };
 
 command_def(log, 1) = {
@@ -981,7 +989,7 @@ void Config::command_log(const char** argv, int number_of_unnamed_args, ConfigPa
 
 /*-------------------------------------------------------------
  * Command "dump":
- *   dump file=<filepath>
+ *   dump file=<filepath> [decoded={true|false}] [min_sequence_length=<n>] [max_duration=<n>] [min_duration=<n>]
  */
 void Config::command_dump(const char** argv, int number_of_unnamed_args, ConfigParser* parser) {
 
@@ -992,9 +1000,23 @@ void Config::command_dump(const char** argv, int number_of_unnamed_args, ConfigP
   this->dump_file_path = dump_file_path;
   options |= DUMP_SEQS_TO_FILE;
 
+  bool decoded = true;
+  const char* decoded_str = argv[CMD_DUMP_DECODED];
+  if (decoded_str != NULL && *decoded_str != '\0') decoded = str2bool(decoded_str, parser);
+  if (!decoded) options |= DUMP_UNDECODED_SEQS_TO_FILE;
+
+  // Actually these parameters are set for Receiver rather than writing to dump file
+  // but they are helpful for taking dumps of unsupported RF devices.
+  const char* str = argv[CMD_DUMP_MIN_SEQUENCE_LENGTH];
+  if (str != NULL && *str != '\0') min_sequence_length = getUnsigned(str, parser);
+  str = argv[CMD_DUMP_MAX_DURATION];
+  if (str != NULL && *str != '\0') max_duration = getUnsigned(str, parser);
+  str = argv[CMD_DUMP_MIN_DURATION];
+  if (str != NULL && *str != '\0') min_duration = getUnsigned(str, parser);
+
 #ifndef NDEBUG
-  fprintf(stderr, "command \"dump\" in line #%d of file \"%s\": file=%s\n",
-      parser->linenum, parser->configFilePath, dump_file_path);
+  fprintf(stderr, "command \"dump\" in line #%d of file \"%s\": file=%s decoded=%d\n",
+      parser->linenum, parser->configFilePath, dump_file_path, decoded);
 #endif
 }
 

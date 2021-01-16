@@ -18,9 +18,10 @@
 #define VERBOSITY_PRINT_JSON      32
 #define VERBOSITY_PRINT_CURL      64
 #define DUMP_SEQS_TO_FILE        128
+#define DUMP_UNDECODED_SEQS_TO_FILE 256
 
-#define OPTION_CELSIUS           256
-#define OPTION_UTC               512
+#define OPTION_CELSIUS           (1<<10)
+#define OPTION_UTC               (1<<11)
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -145,6 +146,10 @@ public:
   int gpio = DEFAULT_PIN;
   ServerType server_type = ServerType::NONE;
   uint32_t protocols = 0;
+  unsigned long min_sequence_length = 0;
+  unsigned long max_duration = 0;
+  unsigned long min_duration = 0;
+
   time_t max_unchanged_gap = 0L;
   const char* auth_header = NULL;
 
@@ -152,7 +157,7 @@ public:
   bool changes_only = true;
   bool type_is_set = false;
 
-  int options;
+  uint32_t options;
 #ifdef INCLUDE_HTTPD
   int httpd_port = 0;
   const char* www_root = NULL;

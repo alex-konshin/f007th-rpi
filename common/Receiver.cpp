@@ -25,6 +25,9 @@ Receiver::Receiver(Config* cfg) {
   this->cfg = cfg;
   this->gpio = cfg->gpio;
   protocols = cfg->protocols;
+  min_sequence_length = cfg->min_sequence_length;
+  max_duration = cfg->max_duration;
+  min_duration = cfg->min_duration;
   isEnabled = false;
   isMessageQueueInitialized = false;
   isDecoderStarted = false;
@@ -237,11 +240,14 @@ bool Receiver::enableReceive() {
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
-    unsigned long min_sequence_length = 0;
-    max_duration = 0;
-    min_duration = 0;
     Protocol::setLimits(protocols, min_sequence_length, max_duration, min_duration);
-    if ( min_sequence_length==0 ) min_sequence_length = MIN_SEQUENCE_LENGTH;
+    if (min_sequence_length <= 16) min_sequence_length = MIN_SEQUENCE_LENGTH;
+    if (max_duration > 10000) max_duration = 10000;
+    if (min_duration < 30) min_duration = 30;
+    else if (min_duration > 8000) min_duration = 8000;
+    if (min_duration >= max_duration) {
+      max_duration = min_duration+2000;
+    }
 #pragma GCC diagnostic pop
 
 #ifdef TEST_DECODING
@@ -391,12 +397,15 @@ void Receiver::setInputLogFile(const char* inputLogFilePath) {
   this->inputLogFilePath = inputLogFilePath;
 }
 
+//#define WAIT_BEFORE_NET_READ 500000
+#define WAIT_BEFORE_NET_READ 100000
+
 int Receiver::readSequences() {
   char* line = NULL;
   size_t bufsize = 0;
   ssize_t bytesread;
   while (!stopDecoder && inputLogFileStream != NULL && iSequenceReady == iSequenceWrite ) {
-    usleep(500000);
+    usleep(WAIT_BEFORE_NET_READ);
     while ((bytesread = getline(&line, &bufsize, inputLogFileStream)) != -1) {
       size_t len = strlen(line);
       if (len < 80) continue;
@@ -424,7 +433,7 @@ int Receiver::readSequences() {
       // End of sequence
       if (iCurrentSequenceSize == 0) continue;
 
-      if (iCurrentSequenceSize<MIN_SEQUENCE_LENGTH) {
+      if (iCurrentSequenceSize<(int)min_sequence_length) {
         //DBG("readSequences() => dropped");
 /* debug
         for (int i = 0; i < n_items; i++) {
@@ -479,7 +488,7 @@ int Receiver::readSequences() {
       }
       Log->info("Finished reading input log file.");
       if (!waitAfterReading) return -1;
-      usleep(500000);
+      usleep(WAIT_BEFORE_NET_READ);
       break;
     }
 
@@ -552,7 +561,7 @@ int Receiver::readSequences() {
 
       // End of sequence
 
-      if (iCurrentSequenceSize<MIN_SEQUENCE_LENGTH) {
+      if (iCurrentSequenceSize<(int)min_sequence_length) {
 /* debug
         if (iCurrentSequenceSize > 0) {
           DBG("readSequences() => dropped %d iPoolRead=%d iPoolWrite=%d item=%d:%lu",
@@ -726,7 +735,7 @@ void Receiver::handleInterrupt(int level, uint32_t time) {
   // End of sequence
   end_of_sequence:
 
-  if (iCurrentSequenceSize<MIN_SEQUENCE_LENGTH) {
+  if (iCurrentSequenceSize<(int)min_sequence_length) {
     // drop the current sequence because it is too short
     statistics->dropped++;
 

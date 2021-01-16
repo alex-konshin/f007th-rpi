@@ -126,7 +126,7 @@ int main(int argc, char *argv[]) {
       bool is_message_printed = false;
       bool verbose = (cfg.options&(VERBOSITY_INFO|VERBOSITY_DEBUG)) != 0;
 
-      if (dump_file != NULL && (cfg.options&DUMP_SEQS_TO_FILE) != 0) { // write the received sequence (if any) to the dump file
+      if (dump_file != NULL && (cfg.options&(DUMP_SEQS_TO_FILE|DUMP_UNDECODED_SEQS_TO_FILE)) == DUMP_SEQS_TO_FILE) { // write the received sequence (if any) to the dump file
         message.printInputSequence(dump_file, cfg.options);
         fflush(dump_file);
       }
@@ -137,6 +137,11 @@ int main(int argc, char *argv[]) {
       }
       if (message.isUndecoded()) {
         if (verbose) fputs("Could not decode the received data.\n", stderr);
+        if (dump_file != NULL && (cfg.options&(DUMP_SEQS_TO_FILE|DUMP_UNDECODED_SEQS_TO_FILE)) == (DUMP_SEQS_TO_FILE|DUMP_UNDECODED_SEQS_TO_FILE)) {
+          // write undecoded received sequence to the dump file
+          message.printInputSequence(dump_file, cfg.options);
+          fflush(dump_file);
+        }
       } else {
         bool isValid = message.isValid();
         int changed = isValid ? message.update(sensorsData, cfg.max_unchanged_gap) : 0;
