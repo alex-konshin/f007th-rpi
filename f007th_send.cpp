@@ -56,10 +56,10 @@ int main(int argc, char *argv[]) {
       fprintf(stderr, "Failed to open dump file \"%s\" for writing.\n", cfg.dump_file_path);
       exit(1);
     }
-    fprintf(stderr, "Dump file is \"%s\"."
-        "\n   max_duration = %d"
-        "\n   min_duration = %d"
-        "\n   min_sequence_length = %d",
+    fprintf(stderr, "Dump file is \"%s\".\n"
+        "   max_duration = %lu\n"
+        "   min_duration = %lu\n"
+        "   min_sequence_length = %lu\n",
         cfg.dump_file_path, cfg.max_duration, cfg.min_duration, cfg.min_sequence_length);
   }
   fflush(stderr);
