@@ -10,6 +10,7 @@ CPP_SRCS += \
 ../protocols/DS18B20.cpp \
 ../protocols/LaCrosseTX7.cpp \
 ../protocols/Protocol.cpp \
+../protocols/TFATwinPlus.cpp \
 ../protocols/WH2.cpp 
 
 OBJS += \
@@ -19,6 +20,7 @@ OBJS += \
 ./protocols/DS18B20.o \
 ./protocols/LaCrosseTX7.o \
 ./protocols/Protocol.o \
+./protocols/TFATwinPlus.o \
 ./protocols/WH2.o 
 
 CPP_DEPS += \
@@ -28,6 +30,7 @@ CPP_DEPS += \
 ./protocols/DS18B20.d \
 ./protocols/LaCrosseTX7.d \
 ./protocols/Protocol.d \
+./protocols/TFATwinPlus.d \
 ./protocols/WH2.d 
 
 

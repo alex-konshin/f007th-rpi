@@ -169,6 +169,40 @@ bool Protocol::decodePWM(ReceivedData* message, int startIndex, int size, int mi
   return true;
 }
 
+static inline bool is_good(int actual_width, int expected_width, int tolerance) {
+  int delta = actual_width - expected_width;
+  if (delta < 0) delta = -delta;
+  return delta <= tolerance;
+}
+
+bool Protocol::decodePPM(ReceivedData* message, int startIndex, int size, int pulse_width, int pulse_tolerance, int lo0, int lo1, int lo_tolerance, Bits& bits) {
+  int16_t* pSequence = message->pSequence;
+  int end = startIndex+size;
+  for ( int index=startIndex; index<end; index+=2 ) {
+    int duration = pSequence[index];
+    if (!is_good(duration, pulse_width, pulse_tolerance)) {
+      DBG("decodePWM() pSequence[%d]=%d hi (expected %d..%d)",index,duration,pulse_width-pulse_tolerance,pulse_width+pulse_tolerance);
+      message->decodingStatus |= 4;
+      return false;
+    }
+
+    if ( index+1<end ) {
+      duration = pSequence[index+1];
+      bool bit = false;
+      if (is_good(duration, lo1, lo_tolerance)) {
+        bit = true;
+      } else if (!is_good(duration, lo0, lo_tolerance)) {
+        DBG("decodePWM() pSequence[%d]=%d lo (expected %d or %d with tolerance %d)",index,duration,lo0,lo1,lo_tolerance);
+        message->decodingStatus |= 4;
+        return false;
+      }
+      bits.addBit(bit);
+    }
+
+  }
+  return true;
+}
+
 uint8_t Protocol::crc8( Bits& bits, int from, int size, int polynomial, int init ) {
   int result = init;
   for ( int index = from; index<from+size; index += 8 ) {

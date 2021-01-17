@@ -20,7 +20,7 @@ The utility sends JSON to REST server with following fields:
 The value of field `temperature` is integer number of dF ("deciFahrenheit" = 1/10 of Fahrenheit). For example, if the value is 724 then the temperature is 72.4&deg;F. Note that not all fields are always present in each report.  
 
 Instructions for InfluxDB can be found on site [https://www.influxdata.com/products/influxdb/](https://www.influxdata.com/products/influxdb/).
-The command sends 3 types of metrics: "temperature", "humidity" and "sensor_battery_status" with tags "type" (one of "F007TH", "00592TXR", "TX7", "HG02832", "WH2", "FT007TH"), "channel" and "rolling_code".
+The command sends 3 types of metrics: "temperature", "humidity" and "sensor_battery_status" with tags "type" (one of "F007TH", "00592TXR", "TX7", "HG02832", "WH2", "FT007TH", "TFA303049", "DS18B20"), "channel" and "rolling_code".
 Note that rolling code is changed when you replace batteries.
 
 You can assign action to some events. Actions may be changed accordingly to specified schedule.
@@ -36,7 +36,9 @@ This project currently supports and tested with following sensors:
 - [AcuRite 00592TXR/06002RM](https://www.acurite.com/kbase/592TXR.html)  
 - [LaCrosse TX7U](https://www.lacrossetechnology.com/tx7u) (probably TX3/TX6 may also work)  
 - [Auriol HG02832 (IAN 283582)](https://manuall.co.uk/auriol-ian-283582-weather-station/)    
-- Fine Offset Electronics WH2 / Telldus FT007TH / Renkforce FT007TH and other clones    
+- Fine Offset Electronics WH2 / Telldus FT007TH / Renkforce FT007TH and other clones
+- TFA Twin Plus 30.3049 / Conrad KW9010 / Ea2 BL999
+- 1-wire sensor (not RF) DS18B20
 
 ### [Supported platforms](https://github.com/alex-konshin/f007th-rpi/wiki/Home#supported-platforms)
 Following platforms are supported and tested:
