@@ -13,7 +13,8 @@
 #define PROTOCOL_WH2       4
 #define PROTOCOL_HG02832   8
 #define PROTOCOL_F007TH    16
-#define PROTOCOL_DS18B20   32
+#define PROTOCOL_TFA303049 32
+#define PROTOCOL_DS18B20   64
 #define PROTOCOL_ALL       (unsigned)(-1)
 
 #define PROTOCOL_INDEX_00592TXR  0
@@ -21,8 +22,9 @@
 #define PROTOCOL_INDEX_WH2       2
 #define PROTOCOL_INDEX_HG02832   3
 #define PROTOCOL_INDEX_F007TH    4
-#define PROTOCOL_INDEX_DS18B20   5
-#define NUMBER_OF_PROTOCOLS      6
+#define PROTOCOL_INDEX_TFA303049 5
+#define PROTOCOL_INDEX_DS18B20   6
+#define NUMBER_OF_PROTOCOLS      7
 
 #define MAX_PROTOCOL_NAME_LEN   16
 
@@ -198,6 +200,7 @@ protected:
   static bool decodeManchester(ReceivedData* message, int startIndex, int endIndex, Bits& bitSet, int max_half_duration);
 
   bool decodePWM(ReceivedData* message, int startIndex, int size, int minLo, int maxLo, int minHi, int maxHi, int median, Bits& bits);
+  bool decodePPM(ReceivedData* message, int startIndex, int size, int pulse_width, int pulse_tolerance, int lo0, int lo1, int lo_tolerance, Bits& bits);
   uint8_t crc8( Bits& bits, int from, int size, int polynomial, int init );
 
   virtual void adjustLimits(unsigned long& min_sequence_length, unsigned long& max_duration, unsigned long& min_duration) {};

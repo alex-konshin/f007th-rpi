@@ -83,8 +83,8 @@ public:
   int getTemperatureCx10(SensorData* data) { return (int)((((data->fields.t_hi)&127)<<7) | (data->fields.t_low&127)) - 1000; }
   // Temperature, dF = t*10(F). Ex: 72.5F = 725 dF
   int getTemperatureFx10(SensorData* data) {
-    int c = (int)((((data->fields.t_hi)&127)<<7) | (data->fields.t_low&127)) - 1000;
-    return (c*9/5)+320;
+    int t = (int)((((data->fields.t_hi)&127)<<7) | (data->fields.t_low&127)) - 1000;
+    return (int)((t*90+25)/50+320);
   }
   bool isRawTemperatureCelsius() { return true; }
   int getRawTemperature(SensorData* data) { return getTemperatureCx10(data); }

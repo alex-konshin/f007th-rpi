@@ -77,7 +77,7 @@ public:
   }
   int getTemperatureCx10(SensorData* data) { return data->hasTemperature() ? getTX7temperature(data)-500 : -2732; }
   // Temperature, dF = t*10(F). Ex: 72.5F = 725 dF
-  int getTemperatureFx10(SensorData* data) { return data->hasTemperature() ? ((getTX7temperature(data)-500)*9/5)+320 : -4597; }
+  int getTemperatureFx10(SensorData* data) { return data->hasTemperature() ? (((getTX7temperature(data)-500)*90+25)/50)+320 : -4597; }
   bool isRawTemperatureCelsius() { return true; }
   int getRawTemperature(SensorData* data) { return getTemperatureCx10(data); }
 

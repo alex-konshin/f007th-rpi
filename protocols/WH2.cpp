@@ -72,7 +72,7 @@ public:
   int getTemperatureFx10(SensorData* data) {
     int t = (int)((data->u32.low>>8)&1023);
     if ( (t&0x0800)!=0 ) t = -(t&0x07ff);
-    return t*9/5+32;
+    return (t*90+25)/50+320;
   }
   bool isRawTemperatureCelsius() { return true; }
   int getRawTemperature(SensorData* data) { return getTemperatureCx10(data); }
@@ -98,10 +98,6 @@ public:
   int update(SensorData* sensorData, SensorData* p, time_t data_time, time_t max_unchanged_gap) {
     uint32_t new_w = sensorData->u32.low;
     uint32_t w = p->u32.low;
-    if (w == new_w) {
-      sensorData->def = p->def;
-      return 0; // nothing has changed
-    }
     sensorData->def = p->def;
     time_t gap = data_time - p->data_time;
     if (gap < 2L) return TIME_NOT_CHANGED;
@@ -109,6 +105,7 @@ public:
     if (max_unchanged_gap > 0L && gap > max_unchanged_gap) {
       result = TEMPERATURE_IS_CHANGED | HUMIDITY_IS_CHANGED;
     } else {
+      if (w == new_w) return 0; // nothing has changed
       if (((w^new_w)&0x0003ff00) != 0) result |= TEMPERATURE_IS_CHANGED;
       if (((w^new_w)&0x000000ff) != 0) result |= HUMIDITY_IS_CHANGED;
       //if (((w^new_w)&0x00080000) != 0) result |= BATTERY_STATUS_IS_CHANGED; TODO

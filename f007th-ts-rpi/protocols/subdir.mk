@@ -9,6 +9,7 @@ CPP_SRCS += \
 ../protocols/AuriolHG02832.cpp \
 ../protocols/LaCrosseTX7.cpp \
 ../protocols/Protocol.cpp \
+../protocols/TFATwinPlus.cpp \
 ../protocols/WH2.cpp 
 
 OBJS += \
@@ -17,6 +18,7 @@ OBJS += \
 ./protocols/AuriolHG02832.o \
 ./protocols/LaCrosseTX7.o \
 ./protocols/Protocol.o \
+./protocols/TFATwinPlus.o \
 ./protocols/WH2.o 
 
 CPP_DEPS += \
@@ -25,6 +27,7 @@ CPP_DEPS += \
 ./protocols/AuriolHG02832.d \
 ./protocols/LaCrosseTX7.d \
 ./protocols/Protocol.d \
+./protocols/TFATwinPlus.d \
 ./protocols/WH2.d 
 
 
@@ -32,7 +35,7 @@ CPP_DEPS += \
 protocols/%.o: ../protocols/%.cpp
 	@echo 'Building file: $<'
 	@echo 'Invoking: Cross G++ Compiler'
-	arm-linux-gnueabihf-g++ -std=c++0x -std=c++11 -DUSE_GPIO_TS -DNDEBUG -DRPI -O2 -Wall -c -fmessage-length=0 -pthread -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@)" -o "$@" "$<"
+	g++ -std=c++11 -DUSE_GPIO_TS -DNDEBUG -DRPI -O2 -Wall -c -fmessage-length=0 -pthread -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@)" -o "$@" "$<"
 	@echo 'Finished building: $<'
 	@echo ' '
 
