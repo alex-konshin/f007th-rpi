@@ -111,7 +111,11 @@ public:
     fputs(getTimestampt(options), file);
     fputc(' ', file);
 
-    fprintf(file, "sequence size=%d:", data->iSequenceSize);
+    if ( isValid() ) {
+      fprintf(file, "<%s> sequence size=%d:", data->sensorData.getSensorTypeName(), data->iSequenceSize);
+    } else {
+      fprintf(file, "sequence size=%d:", data->iSequenceSize);
+    }
     for (int index=0; index<data->iSequenceSize; index++ ) {
       if (index != 0) fputc(',', file);
       fprintf(file, " %d", data->pSequence[index]);

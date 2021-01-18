@@ -181,7 +181,7 @@ bool Protocol::decodePPM(ReceivedData* message, int startIndex, int size, int pu
   for ( int index=startIndex; index<end; index+=2 ) {
     int duration = pSequence[index];
     if (!is_good(duration, pulse_width, pulse_tolerance)) {
-      DBG("decodePWM() pSequence[%d]=%d hi (expected %d..%d)",index,duration,pulse_width-pulse_tolerance,pulse_width+pulse_tolerance);
+      //DBG("decodePPM() pSequence[%d]=%d hi (expected %d..%d)",index,duration,pulse_width-pulse_tolerance,pulse_width+pulse_tolerance);
       message->decodingStatus |= 4;
       return false;
     }
@@ -192,7 +192,7 @@ bool Protocol::decodePPM(ReceivedData* message, int startIndex, int size, int pu
       if (is_good(duration, lo1, lo_tolerance)) {
         bit = true;
       } else if (!is_good(duration, lo0, lo_tolerance)) {
-        DBG("decodePWM() pSequence[%d]=%d lo (expected %d or %d with tolerance %d)",index,duration,lo0,lo1,lo_tolerance);
+        //DBG("decodePPM() pSequence[%d]=%d lo (expected %d or %d with tolerance %d)",index,duration,lo0,lo1,lo_tolerance);
         message->decodingStatus |= 4;
         return false;
       }

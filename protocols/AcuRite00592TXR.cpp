@@ -143,10 +143,50 @@ public:
     message->decodingStatus = 0;
     message->decodedBits = 0;
     message->sensorData.protocol = NULL;
+    Bits bits(56);
 
     int iSequenceSize = message->iSequenceSize;
-    if (iSequenceSize < 121 || iSequenceSize > 200) {
+    if (iSequenceSize < 121) {
       message->decodingStatus |= 8;
+      return false;
+    }
+
+    uint16_t decodingStatus = 0;
+    int startIndex = 0;
+
+    while ( !try_decode(message, startIndex, bits, decodingStatus) ) {
+      if (startIndex < 0 || startIndex+121 > iSequenceSize) { // it was the last attempt
+        if (message->decodingStatus == 0 || (decodingStatus&128) != 0) {
+          message->decodingStatus = decodingStatus;
+          if ((decodingStatus&128) != 0) {
+            message->decodedBits = bits.getSize();
+          } else {
+            bits.clear();
+          }
+        }
+        return false;
+      }
+      // cleanup before next attempt
+      if ((decodingStatus&128) != 0) {
+        message->decodingStatus = decodingStatus;
+        message->decodedBits = bits.getSize();
+      } else if ((decodingStatus&0x20) != 0 || (message->decodingStatus&128) == 0) { // bits are lost or the previous status had no bits
+        message->decodingStatus = decodingStatus;
+        message->decodedBits = 0;
+        bits.clear();
+      }
+      decodingStatus = 0;
+    }
+    return true;
+  }
+
+private:
+  bool try_decode(ReceivedData* message, int& startIndex, Bits& bits, uint16_t& decodingStatus) {
+    decodingStatus = 0;
+
+    int iSequenceSize = message->iSequenceSize;
+    if (iSequenceSize < startIndex+121) {
+      decodingStatus = 8;
       return false;
     }
 
@@ -156,7 +196,7 @@ public:
 
     int dataStartIndex = -1;
     int failedIndex = 0;
-    for ( int index = 0; index<=(iSequenceSize-121); index+=2 ) {
+    for ( int index = startIndex; index<=(iSequenceSize-121); index+=2 ) {
       bool good = true;
       for ( int i = 0; i<8; i+=2) {
         failedIndex = index+i;
@@ -184,29 +224,34 @@ public:
           good = false;
           continue;
         }
-        dataStartIndex = index+8;
+        dataStartIndex = index+8; // data should start from this index
+        startIndex = index+2; // set start index for the next attempt if this one fails
         break;
       }
     }
     if (dataStartIndex < 0) {
       //printf("decode00592TXR(): bad sync sequence\n");
-      message->decodingStatus |= (16 | (failedIndex<<8));
+      decodingStatus = (16 | (failedIndex<<8));
+      startIndex = -1;
       return false;
     }
 
     //printf("decode00592TXR(): detected sync sequence\n");
 
-    Bits bits(56);
+    bits.clear();
 
+    int decoded_bits_count = 0;
     for ( int index = dataStartIndex; index<iSequenceSize-1; index+=2 ) {
       int16_t item1 = pSequence[index];
       if (item1 < 120 || item1 > 680) {
-        message->decodingStatus |= (4 | (index<<8));
+        if (decoded_bits_count >= 56) break; // We got enough bits for 00592TXR variant
+        decodingStatus = (0x20 | (index<<8));
         return false;
       }
       int16_t item2 = pSequence[index+1];
       if (item2 < 120 || item2 > 680) {
-        message->decodingStatus |= (5 | ((index+1)<<8));
+        if (decoded_bits_count >= 56) break; // We got enough bits for 00592TXR variant
+        decodingStatus = (0x21 | ((index+1)<<8));
         return false;
       }
       if (item1 < 290 && item2 > 310) {
@@ -214,14 +259,16 @@ public:
       } else if (item2 < 290 && item1 > 310) {
         bits.addBit(1);
       } else {
+        if (decoded_bits_count >= 56) break; // We got enough bits for 00592TXR variant
         //printf("decode00592TXR(): bad items %d: %d %d\n", index, item1, item2);
-        message->decodingStatus |= (6 | (index<<8));
+        decodingStatus = (0x22 | (index<<8));
         return false;
       }
+      if (++decoded_bits_count >= 64) break;
     }
-    if (bits.getSize() != 56) {
+    if (decoded_bits_count < 56) {
       //printf("decode00592TXR(): bits.getSize() != 56\n");
-      message->decodingStatus |= 32;
+      decodingStatus = 0x23;
       return false;
     }
 
@@ -235,18 +282,18 @@ public:
 
     p = (p ^ (p>>4)) & 15;
     if (((1 << p) & 0b0110100110010110) != 0) {
-      message->decodingStatus |= 128;
+      decodingStatus = 0x0080;
       return false;
     }
 
     if (((bits.getInt(48,8)^checksum)&255) != 0) {
       //printf("decode00592TXR(): bad checksum\n");
-      message->decodingStatus |= 129;
+      decodingStatus = 0x0081;
       return false;
     }
 
+    message->decodedBits = decoded_bits_count;
     uint64_t n00592TXR = bits.getInt64(0, 56);
-
     message->sensorData.u64 = n00592TXR;
     message->sensorData.protocol = this;
     return true;
