@@ -198,7 +198,7 @@ public:
 
     int iSequenceSize = message->iSequenceSize;
     if (iSequenceSize < 87 || iSequenceSize > 240) {
-      message->decodingStatus |= 8;
+      message->decodingStatus = 8;
       return false;
     }
 
@@ -210,7 +210,7 @@ public:
     int failIndex = 0;
     int dataStartIndex = -1;
     bool good_start = false;
-    for ( int index = 0; index<(iSequenceSize-86); index++ ) {
+    for ( int index = 0; index<=(iSequenceSize-87); index+=2 ) {
       failIndex = index;
       if (!check_bit(false, pSequence, failIndex)) continue; // bit[0] == 0
       failIndex++;
@@ -236,20 +236,21 @@ public:
     }
     if ( dataStartIndex==-1 ) {
       if (good_start)
-        message->decodingStatus |= (16 | 1);
+        message->decodingStatus = (16 | 1);
       else
-        message->decodingStatus |= (16 | (failIndex<<8));
+        message->decodingStatus = (16 | (failIndex<<8));
       return false;
     }
 
     // Decoding bits
 
     Bits bits(44);
-    for ( int index = dataStartIndex; index<86; index+=2 ) {
+
+    for ( int index = dataStartIndex; index<dataStartIndex+86; index+=2 ) {
 
       item = pSequence[index+1];
       if (item<=TX7U_LOW_MIN || item>=TX7U_LOW_MAX) {
-        message->decodingStatus |= (4 | ((index+1)<<8));
+        message->decodingStatus = (4 | ((index+1)<<8));
         return false;
       }
 
@@ -259,17 +260,17 @@ public:
       } else if (item>TX7U_1_MIN && item<TX7U_1_MAX) {
         bits.addBit(1);
       } else {
-        message->decodingStatus |= (4 | (index<<8));
+        message->decodingStatus = (4 | (index<<8));
         return false;
       }
     }
-    item = pSequence[86];
+    item = pSequence[dataStartIndex+86];
     if (item>TX7U_0_MIN && item<TX7U_0_MAX) {
       bits.addBit(0);
     } else if (item>TX7U_1_MIN && item<TX7U_1_MAX) {
       bits.addBit(1);
     } else {
-      message->decodingStatus |= (4 | (86<<8));
+      message->decodingStatus = (4 | ((dataStartIndex+86)<<8));
       return false;
     }
 
@@ -281,11 +282,11 @@ public:
 
     uint32_t n = bits.getInt(8, 32);
     if (n == 0) {
-      message->decodingStatus |= 0x0080;
+      message->decodingStatus = 0x0080;
       return false;
     }
     if ( (bits.getInt(20,8)&255)!=(bits.getInt(32,8)&255) ) {
-      message->decodingStatus |= 0x0180;
+      message->decodingStatus = 0x0180;
       return false;
     }
     //Log->info("n = %08x", n);
@@ -297,7 +298,7 @@ public:
       n = n>>4;
     }
     if ((((0b0110100110010110>>k)^n)&1) != 0) {
-      message->decodingStatus |= 0x0280;
+      message->decodingStatus = 0x0280;
       return false;
     }
 
@@ -306,7 +307,7 @@ public:
       checksum += bits.getInt(i, 4);
     }
     if (((bits.getInt(40,4)^checksum)&15) != 0) {
-      message->decodingStatus |= 0x0380;
+      message->decodingStatus = 0x0380;
       return false;
     }
 
