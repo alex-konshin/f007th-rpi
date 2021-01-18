@@ -50,7 +50,7 @@ bool Protocol::decodeManchester(ReceivedData* message, Bits& bitSet, int min_dur
 
   int startIndex = 0;
   int endIndex = 0;
-  for ( int index = 0; index<iSequenceSize-MIN_SEQUENCE_LENGTH; index++ ) {
+  for ( int index = 0; index<iSequenceSize-MIN_SEQUENCE_LENGTH; index+=2 ) {
     if (pSequence[index] < min_duration) {
       if ((index-startIndex) >= MIN_SEQUENCE_LENGTH) {
         endIndex = index;

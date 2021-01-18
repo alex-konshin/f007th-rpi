@@ -133,32 +133,33 @@ public:
     if (message->sensorData.protocol != NULL) {
       return (message->sensorData.protocol == this);
     }
+    message->decodingStatus = 0;
 
     Bits bits(message->iSequenceSize+1);
 
     if (!decodeManchester(message, bits)) {
-      message->decodingStatus |= 4;
+      message->decodingStatus = 4;
       return false;
     }
     int size = bits.getSize();
     message->decodedBits = (uint16_t)size;
     if (size < 56) {
-      message->decodingStatus |= 8;
+      message->decodingStatus = 8;
       return false;
     }
-
+#define PREAMBLE_MIN_LEN 14
     bool f007TP = false;
     int dataIndex; // index of the first bit of data after preamble and fixed ID (0x45)
-    int index = bits.findBits( 0x00007d45, 15 ); // 1111 1101 0100 0101 shortened preamble + fixed ID (0x45)
+    int index = bits.findBits( 0x0000fd45, PREAMBLE_MIN_LEN ); // 1111 1101 0100 0101 shortened preamble + fixed ID (0x45)
     if (index<0) {
-      index = bits.findBits( 0x00007d46, 15 ); // F007TP fixed ID = 0x46
+      index = bits.findBits( 0x0000fd46, PREAMBLE_MIN_LEN ); // F007TP fixed ID = 0x46
       if (index<0) {
-        message->decodingStatus |= 16; // could not find preamble
+        message->decodingStatus = 16; // could not find preamble
         return false;
       }
       f007TP = true;
     }
-    index--;
+    index -= 16-PREAMBLE_MIN_LEN;
 
     if (index+56<size) {
       dataIndex = index+16;
@@ -169,12 +170,12 @@ public:
       // hash code is missing but it is better than nothing
       dataIndex = index+16;
     } else {
-      message->decodingStatus |= 32; // not enough data
+      message->decodingStatus = 32; // not enough data
       return false;
     }
 
     if (dataIndex+40>size) {
-      message->decodingStatus |= 64; // hash code is missing - cannot check it
+      message->decodingStatus = 64; // hash code is missing - cannot check it
     } else {
       // Checking of hash for Ambient Weather F007TH.
       // See https://eclecticmusingsofachaoticmind.wordpress.com/2015/01/21/home-automation-temperature-sensors/
@@ -202,7 +203,7 @@ public:
         checking_data += 65;
       } while(checking_data+48 < size && ((t=bits.getInt(checking_data-17, 21) == 0x1ffd45) || t == 0x1ffd46));
       if (!good) {
-        message->decodingStatus |= 128; // failed hash code check
+        message->decodingStatus = 128; // failed hash code check
       }
     }
 
