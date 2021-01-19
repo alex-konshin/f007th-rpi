@@ -38,16 +38,16 @@ static ProtocolThresholds limits = {
   min_sequence_length: 85,
   min_bits: 56,
   low: {
-    525,  // short_min
+    425,  // short_min
     660,  // short_max
-    1025, // long_min
+    950, // long_min
     1150  // long_max
   },
   high: {
     320,  // short_min
-    550,  // short_max
+    600,  // short_max
     820,  // long_min
-    910   // long_max
+    1010  // long_max
   }
 };
 
