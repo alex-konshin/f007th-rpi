@@ -102,12 +102,7 @@ public:
   bool equals(SensorData* s, SensorData* p) {
     return (p->protocol == s->protocol) && (p->fields.rolling_code == s->fields.rolling_code) && (p->fields.channel == s->fields.channel);
   }
-/*
-  bool sameId(SensorData* s, int channel, uint8_t rolling_code = -1) {
-    if (rolling_code != -1 && s->fields.rolling_code != rolling_code) return false;
-    return s->fields.channel == channel;
-  }
-*/
+
   int update(SensorData* sensorData, SensorData* item, time_t data_time, time_t max_unchanged_gap) {
     sensorData->def = item->def;
     time_t gap = data_time - item->data_time;

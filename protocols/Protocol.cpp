@@ -44,42 +44,80 @@ void Protocol::copyFields(SensorData* to, SensorData* from) {
 
 int Protocol::getTemperature10(SensorData* data, bool celsius) { return celsius ? data->getTemperatureCx10() : data->getTemperatureFx10(); }
 
-bool Protocol::decodeManchester(ReceivedData* message, Bits& bitSet, int min_duration, int max_half_duration) {
+bool Protocol::decodeManchester(ReceivedData* message, Bits& bitSet, ProtocolThresholds& limits) {
   int iSequenceSize = message->iSequenceSize;
   int16_t* pSequence = message->pSequence;
 
+  int min_sequence_length = limits.min_sequence_length;
+
+  // Find subsequences that matches provided criteria.
+  // Try to decode bits from found subsequences with Manchester decoder.
+  // Call virtual method processDecodedBits to process bits and validate the data.
+
+  int subsequence_size;
   int startIndex = 0;
-  int endIndex = 0;
-  for ( int index = 0; index<iSequenceSize-MIN_SEQUENCE_LENGTH; index+=2 ) {
-    if (pSequence[index] < min_duration) {
-      if ((index-startIndex) >= MIN_SEQUENCE_LENGTH) {
-        endIndex = index;
-        if (decodeManchester(message, startIndex, endIndex, bitSet, max_half_duration)) {
-          if (bitSet.getSize() >= 56) return true;
+  int firstShortIndex = -1;
+
+  bool even = true;
+  for ( int index = 0; index<iSequenceSize-min_sequence_length; index++ ) {
+    DurationThresholds& thresolds = (index&1)==0 ? limits.high : limits.low;
+    int16_t item = pSequence[index];
+    bool short_item = item <= thresolds.short_max && item >= thresolds.short_min;
+    bool long_item = !short_item && item <= thresolds.long_max && item >= thresolds.long_min;
+
+    if ( !short_item && !long_item) {
+      subsequence_size = index-startIndex;
+      //DBG(">>> 1 >>> decodeManchester pSequence[%d]=%d short=%d..%d long=%d..%d size=%d min_size=%d", index, item, thresolds.short_min, thresolds.short_max, thresolds.long_min, thresolds.long_max, subsequence_size, min_sequence_length);
+      if (subsequence_size >= min_sequence_length) {
+        bool success = decodeManchester(message, startIndex, subsequence_size, bitSet, limits);
+        //DBG(">>> 1 >>> decodeManchester start=%d size=%d bits=%d decodingStatus=%04x", startIndex, subsequence_size, bitSet.getSize(), message->decodingStatus);
+        if (success && bitSet.getSize() >= limits.min_bits) {
+          success = processDecodedBits(message, bitSet);
+          //DBG(">>> 1 >>> processDecodedBits start=%d size=%d decodingStatus=%04x", startIndex, subsequence_size, message->decodingStatus);
+          if (success) return true;
         }
       }
       startIndex = (index+2) & ~1u;
+    } else if (long_item) {
+      if (!even) { // OOS
+        if (firstShortIndex < 0) { // should not happen
+          startIndex = (index+2) & ~1u;
+        } else {
+          startIndex = (firstShortIndex+2) & ~1u;
+        }
+        //DBG(">>> 1 >>> decodeManchester pSequence[%d]=%d OOS firstShortIndex=%d => startIndex=%d", index, item, firstShortIndex, startIndex);
+        even = true;
+        firstShortIndex = -1;
+      }
+    } else {
+      if (firstShortIndex < 0) firstShortIndex = index;
+      even = !even;
     }
   }
 
-  if ((iSequenceSize-startIndex) >= MIN_SEQUENCE_LENGTH) {
-    endIndex = iSequenceSize;
-    if (decodeManchester(message, startIndex, endIndex, bitSet, max_half_duration)) {
-      if (bitSet.getSize() >= 56) return true;
+  subsequence_size = iSequenceSize-startIndex;
+  if (subsequence_size >= min_sequence_length) {
+    bool success = decodeManchester(message, startIndex, subsequence_size, bitSet, limits);
+    //DBG(">>> 2 >>> decodeManchester start=%d size=%d bits=%d decodingStatus=%04x", startIndex, subsequence_size, bitSet.getSize(), message->decodingStatus);
+    if (success && bitSet.getSize() >= limits.min_bits) {
+      bool success = processDecodedBits(message, bitSet);
+      //DBG(">>> 2 >>> decodeManchester start=%d size=%d decodingStatus=%04x", startIndex, subsequence_size, message->decodingStatus);
+      if (success) return true;
     }
   }
 
+  if (message->decodingStatus == 0 ) message->decodingStatus = 4;
   return false;
 }
 
-
-bool Protocol::decodeManchester(ReceivedData* message, int startIndex, int endIndex, Bits& bitSet, int max_half_duration) {
+bool Protocol::decodeManchester(ReceivedData* message, int startIndex, int size, Bits& bitSet, ProtocolThresholds& limits) {
   int16_t* pSequence = message->pSequence;
 
   message->decodingStatus = 0;
 
   // find the start of Manchester frame
   int adjastment = -1;
+  int16_t max_half_duration = limits.low.short_max;
   for ( int index = 0; index<32; index++ ) {
     if (pSequence[index+startIndex] > max_half_duration) {
       if ( index==0 ) {
@@ -97,9 +135,11 @@ bool Protocol::decodeManchester(ReceivedData* message, int startIndex, int endIn
   }
   if ( adjastment==-1 ) {
     statistics->bad_manchester++;
-    message->decodingStatus |= 1;
+    message->decodingStatus = 1;
     return false;
   }
+
+  message->protocol_tried_manchester |= protocol_bit;
 
   bitSet.clear();
 
@@ -121,7 +161,7 @@ bool Protocol::decodeManchester(ReceivedData* message, int startIndex, int endIn
     break;
   }
 
-  int iSubSequenceSize = endIndex-startIndex;
+  int iSubSequenceSize = size;
   // decoding
   do {
     int interval = pSequence[startIndex+intervalIndex];
@@ -132,9 +172,10 @@ bool Protocol::decodeManchester(ReceivedData* message, int startIndex, int endIn
       if ( ++intervalIndex>=iSubSequenceSize ) return true;
       interval = pSequence[startIndex+intervalIndex];
       if ( interval>=max_half_duration ) {
+        if (bitSet.getSize() >= limits.min_bits) return true;
         statistics->manchester_OOS++;
-        //Log->info( "    Bad sequence at index %d: %d.", intervalIndex, interval );
-        message->decodingStatus |= 2;
+        //DBG( "    Bad sequence at index %d: %d.", intervalIndex, interval );
+        message->decodingStatus = 2;
         return true;
       }
     }
@@ -151,7 +192,7 @@ bool Protocol::decodePWM(ReceivedData* message, int startIndex, int size, int mi
     int duration = pSequence[index];
     if ( duration>maxHi || duration<minHi ) {
       //DBG("decodePWM() pSequence[%d]=%d hi (expected %d..%d)",index,duration,minHi,maxHi);
-      message->decodingStatus |= 4;
+      message->decodingStatus = 4;
       return false;
     }
 
@@ -161,7 +202,7 @@ bool Protocol::decodePWM(ReceivedData* message, int startIndex, int size, int mi
       duration = pSequence[index+1];
       if ( duration>maxLo || duration<minLo ) {
         //DBG("decodePWM() pSequence[%d]=%d lo (expected %d..%d)",index,duration,minLo,maxLo);
-        message->decodingStatus |= 4;
+        message->decodingStatus = 4;
         return false;
       }
     }
@@ -182,7 +223,7 @@ bool Protocol::decodePPM(ReceivedData* message, int startIndex, int size, int pu
     int duration = pSequence[index];
     if (!is_good(duration, pulse_width, pulse_tolerance)) {
       //DBG("decodePPM() pSequence[%d]=%d hi (expected %d..%d)",index,duration,pulse_width-pulse_tolerance,pulse_width+pulse_tolerance);
-      message->decodingStatus |= 4;
+      message->decodingStatus = 4;
       return false;
     }
 
@@ -193,7 +234,7 @@ bool Protocol::decodePPM(ReceivedData* message, int startIndex, int size, int pu
         bit = true;
       } else if (!is_good(duration, lo0, lo_tolerance)) {
         //DBG("decodePPM() pSequence[%d]=%d lo (expected %d or %d with tolerance %d)",index,duration,lo0,lo1,lo_tolerance);
-        message->decodingStatus |= 4;
+        message->decodingStatus = 4;
         return false;
       }
       bits.addBit(bit);

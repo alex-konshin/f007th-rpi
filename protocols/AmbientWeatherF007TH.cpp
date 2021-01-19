@@ -10,7 +10,7 @@
 #include "../common/Receiver.hpp"
 
 // Ambient Weather F007TH
-#define MIN_DURATION_F007TH 380
+#define MIN_DURATION_F007TH 340
 #define MAX_DURATION_F007TH 1150
 #define MAX_HALF_DURATION 600
 
@@ -32,6 +32,25 @@ static ProtocolDef def_f007tp = {
   number_of_channels: 8,
   channels_numbering_type: 0 // 0 => numbers, 1 => letters
 };
+
+
+static ProtocolThresholds limits = {
+  min_sequence_length: 85,
+  min_bits: 56,
+  low: {
+    525,  // short_min
+    660,  // short_max
+    1025, // long_min
+    1150  // long_max
+  },
+  high: {
+    320,  // short_min
+    550,  // short_max
+    820,  // long_min
+    910   // long_max
+  }
+};
+
 
 class ProtocolF007TH : public Protocol {
 protected:
@@ -89,12 +108,7 @@ public:
   bool equals(SensorData* s, SensorData* p) {
     return (p->protocol == s->protocol) && ((p->nF007TH ^ s->nF007TH) & SENSOR_UID_MASK) == 0 && p->u32.hi == s->u32.hi; // u32.hi -- F007TP flag
   }
-/*
-  bool sameId(SensorData* s, int channel, uint8_t rolling_code = -1) {
-    if (rolling_code != -1 && rolling_code != getRollingCode(s) ) return false;
-    return channel == getChannel(s);
-  }
-*/
+
   int update(SensorData* sensorData, SensorData* p, time_t data_time, time_t max_unchanged_gap) {
     uint32_t nF007TH = sensorData->nF007TH;
     uint32_t item = p->nF007TH;
@@ -127,8 +141,6 @@ public:
     if ( max_duration==0 || max_duration<MAX_DURATION_F007TH ) max_duration = MAX_DURATION_F007TH;
   };
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstrict-overflow"
   bool decode(ReceivedData* message) {
     if (message->sensorData.protocol != NULL) {
       return (message->sensorData.protocol == this);
@@ -136,11 +148,14 @@ public:
     message->decodingStatus = 0;
 
     Bits bits(message->iSequenceSize+1);
-
-    if (!decodeManchester(message, bits)) {
-      message->decodingStatus = 4;
+    if (!decodeManchester(message, bits, limits)) {
+      if (message->decodingStatus == 0) message->decodingStatus = 4;
       return false;
     }
+    return true;
+  }
+
+  bool processDecodedBits(ReceivedData* message, Bits& bits) {
     int size = bits.getSize();
     message->decodedBits = (uint16_t)size;
     if (size < 56) {
@@ -154,7 +169,7 @@ public:
     if (index<0) {
       index = bits.findBits( 0x0000fd46, PREAMBLE_MIN_LEN ); // F007TP fixed ID = 0x46
       if (index<0) {
-        message->decodingStatus = 16; // could not find preamble
+        message->decodingStatus = 0x10; // could not find preamble
         return false;
       }
       f007TP = true;
@@ -170,12 +185,12 @@ public:
       // hash code is missing but it is better than nothing
       dataIndex = index+16;
     } else {
-      message->decodingStatus = 32; // not enough data
+      message->decodingStatus = 0x20; // not enough data
       return false;
     }
 
     if (dataIndex+40>size) {
-      message->decodingStatus = 64; // hash code is missing - cannot check it
+      message->decodingStatus = 0x40; // hash code is missing - cannot check it
     } else {
       // Checking of hash for Ambient Weather F007TH.
       // See https://eclecticmusingsofachaoticmind.wordpress.com/2015/01/21/home-automation-temperature-sensors/
@@ -203,7 +218,8 @@ public:
         checking_data += 65;
       } while(checking_data+48 < size && ((t=bits.getInt(checking_data-17, 21) == 0x1ffd45) || t == 0x1ffd46));
       if (!good) {
-        message->decodingStatus = 128; // failed hash code check
+        message->decodingStatus = 0x80; // failed hash code check
+        return false;
       }
     }
 
@@ -213,21 +229,13 @@ public:
     message->sensorData.u32.hi = f007TP ? 1 : 0;
     return true;
   }
-#pragma GCC diagnostic pop
-
-  bool decodeManchester(ReceivedData* message, Bits& bitSet) {
-    //DBG("ProtocolF007TH::decodeManchester()");
-    if (!Protocol::decodeManchester(message, bitSet, MIN_DURATION_F007TH, MAX_HALF_DURATION) ) return false;
-    message->protocol_tried_manchester |= 1<<PROTOCOL_INDEX_F007TH;
-    return true;
-  }
 
   void printUndecoded(ReceivedData* message, FILE *out, FILE *log, int cfg_options) {
     if ((message->detailedDecodingStatus[PROTOCOL_INDEX_F007TH] & 7)!=0 ) return;
 
     uint16_t savedDecodingStatus = message->decodingStatus;
     Bits bits(message->iSequenceSize+1);
-    bool is_manchester_successful = decodeManchester(message, bits);
+    bool is_manchester_successful = decodeManchester(message, bits, limits);
     message->decodingStatus = savedDecodingStatus;
     if (is_manchester_successful) {
 

@@ -88,6 +88,19 @@ struct ProtocolDef {
   uint64_t getId(uint8_t channel, uint16_t rolling_code);
 };
 
+
+struct DurationThresholds {
+  int16_t short_min;
+  int16_t short_max;
+  int16_t long_min;
+  int16_t long_max;
+};
+struct ProtocolThresholds {
+  int min_sequence_length;
+  int min_bits;
+  DurationThresholds low, high;
+};
+
 //-------------------------------------------------------------
 class Protocol {
 protected:
@@ -166,7 +179,6 @@ public:
   virtual uint16_t getRollingCode(SensorData* data) { return (uint16_t)(-1); };
 
   virtual bool equals(SensorData* s, SensorData* p) VIRTUAL;
-  //virtual bool sameId(SensorData* s, int channel, uint8_t rolling_code = -1) VIRTUAL;
   virtual void copyFields(SensorData* to, SensorData* from);
   virtual int update(SensorData* sensorData, SensorData* p, time_t data_time, time_t max_unchanged_gap) VIRTUAL;
 
@@ -194,10 +206,11 @@ public:
 
   virtual bool decode(ReceivedData* message) { return false; }
 
-  virtual bool decodeManchester(ReceivedData* message, Bits& bitSet) { return false; }
+  //virtual bool decodeManchester(ReceivedData* message, Bits& bitSet) { return false; }
 protected:
-  static bool decodeManchester(ReceivedData* message, Bits& bitSet, int min_duration, int max_half_duration);
-  static bool decodeManchester(ReceivedData* message, int startIndex, int endIndex, Bits& bitSet, int max_half_duration);
+  bool decodeManchester(ReceivedData* message, Bits& bitSet, ProtocolThresholds& limits);
+  bool decodeManchester(ReceivedData* message, int startIndex, int size, Bits& bitSet, ProtocolThresholds& limits);
+  virtual bool processDecodedBits(ReceivedData* message, Bits& bits) { return false; }
 
   bool decodePWM(ReceivedData* message, int startIndex, int size, int minLo, int maxLo, int minHi, int maxHi, int median, Bits& bits);
   bool decodePPM(ReceivedData* message, int startIndex, int size, int pulse_width, int pulse_tolerance, int lo0, int lo1, int lo_tolerance, Bits& bits);

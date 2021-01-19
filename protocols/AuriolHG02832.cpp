@@ -84,12 +84,7 @@ public:
   bool equals(SensorData* s, SensorData* p) {
     return (p->protocol == s->protocol) && (((p->u32.low^s->u32.low)&0xff003000) == 0); // compare rolling code and channel
   }
-/*
-  bool sameId(SensorData* s, int channel, uint8_t rolling_code = -1) {
-    if (rolling_code != -1 && (s->u32.low>>24) != rolling_code) return false;
-    return ((s->u32.low>>12)&3)+1 == (uint8_t)channel;
-  }
-*/
+
   int update(SensorData* sensorData, SensorData* item, time_t data_time, time_t max_unchanged_gap) {
     uint32_t new_w = sensorData->u32.low;
     uint32_t w = item->u32.low;

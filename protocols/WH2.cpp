@@ -90,11 +90,7 @@ public:
   bool equals(SensorData* s, SensorData* p) {
     return (p->protocol == s->protocol) && (((p->u32.low^s->u32.low)&0x0ff00000) == 0); // compare rolling code
   }
-/*
-  bool sameId(SensorData* s, int channel, uint8_t rolling_code = -1) {
-    return rolling_code == -1 || ((s->u32.low >> 20)&255) == rolling_code;
-  }
-*/
+
   int update(SensorData* sensorData, SensorData* p, time_t data_time, time_t max_unchanged_gap) {
     uint32_t new_w = sensorData->u32.low;
     uint32_t w = p->u32.low;

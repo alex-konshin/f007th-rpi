@@ -32,16 +32,18 @@ int main(int argc, char *argv[]) {
     const char* log_file_path;
     if (cfg.log_file_path == NULL || cfg.log_file_path[0]=='\0') {
 
-  #ifdef TEST_DECODING
+#ifdef TEST_DECODING
+#define LOG_FILE_OPEN_MODE "w"
       log_file_path = "f007th-test-decoding.log";
-  #else
+#else
+#define LOG_FILE_OPEN_MODE "a"
       log_file_path = "f007th-send.log";
-  #endif
+#endif
       cfg.log_file_path = log_file_path = realpath(log_file_path, NULL);
     } else {
       log_file_path = cfg.log_file_path;
     }
-    log = openFileForWriting(cfg.log_file_path, "a");
+    log = openFileForWriting(cfg.log_file_path, LOG_FILE_OPEN_MODE);
     if (log == NULL) {
       fprintf(stderr, "Failed to open log file \"%s\".\n", cfg.log_file_path);
       exit(1);

@@ -94,11 +94,7 @@ public:
   bool equals(SensorData* s, SensorData* p) {
     return (p->protocol == s->protocol) && ((p->u64>>25)&0x7f) == ((s->u64>>25)&0x7f);
   }
-/*
-  bool sameId(SensorData* s, int channel, uint8_t rolling_code = -1) {
-    return rolling_code == -1 || ((s->u32.low >> 25)&0x7f) == rolling_code;
-  }
-*/
+
   void copyFields(SensorData* to, SensorData* from) {
     // TX7U sends temperature and humidity in separate sequences.
     // As result we need to merge them in stored data
