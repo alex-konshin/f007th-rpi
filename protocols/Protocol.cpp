@@ -10,11 +10,19 @@
 #include "../common/Receiver.hpp"
 
 //#define DEBUG_MANCHESTER
+//#define DEBUG_PPM
+
 #if defined(NDEBUG)||!defined(DEBUG_MANCHESTER)
 #define DBG_MANCHESTER(format, arg...)     ((void)0)
 #else
 #define DBG_MANCHESTER(format, arg...)  Log->info(format, ## arg)
-#endif // NDEBUG
+#endif
+
+#if defined(NDEBUG)||!defined(DEBUG_PPM)
+#define DBG_PPM(format, arg...)     ((void)0)
+#else
+#define DBG_PPM(format, arg...)  Log->info(format, ## arg)
+#endif
 
 
 const char* Protocol::channel_names_numeric[] = {"0", "1", "2", "3", "4", "5", "6", "7", "8"};
@@ -235,7 +243,7 @@ bool Protocol::decodePPM(ReceivedData* message, int startIndex, int size, int pu
   for ( int index=startIndex; index<end; index+=2 ) {
     int duration = pSequence[index];
     if (!is_good(duration, pulse_width, pulse_tolerance)) {
-      //DBG("decodePPM() pSequence[%d]=%d hi (expected %d..%d)",index,duration,pulse_width-pulse_tolerance,pulse_width+pulse_tolerance);
+      DBG_PPM("decodePPM() pSequence[%d]=%d hi (expected %d..%d)",index,duration,pulse_width-pulse_tolerance,pulse_width+pulse_tolerance);
       message->decodingStatus = 4;
       return false;
     }
@@ -246,7 +254,7 @@ bool Protocol::decodePPM(ReceivedData* message, int startIndex, int size, int pu
       if (is_good(duration, lo1, lo_tolerance)) {
         bit = true;
       } else if (!is_good(duration, lo0, lo_tolerance)) {
-        //DBG("decodePPM() pSequence[%d]=%d lo (expected %d or %d with tolerance %d)",index,duration,lo0,lo1,lo_tolerance);
+        DBG_PPM("decodePPM() pSequence[%d]=%d lo (expected %d or %d with tolerance %d)",index,duration,lo0,lo1,lo_tolerance);
         message->decodingStatus = 4;
         return false;
       }

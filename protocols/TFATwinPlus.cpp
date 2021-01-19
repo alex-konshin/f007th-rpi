@@ -14,8 +14,8 @@
 #define DURATION_TFA303049_LO_0    2000
 #define DURATION_TFA303049_LO_1    4000
 #define TOLERANCE_TFA303049_LO     200
-#define DURATION_TFA303049_HI      440
-#define TOLERANCE_TFA303049_HI     40
+#define DURATION_TFA303049_HI      450
+#define TOLERANCE_TFA303049_HI     60
 #define MIN_SEQUENCE_TFA303049 73
 
 #define MIN_LO_DURATION_TFA303049 (DURATION_TFA303049_LO_0 - TOLERANCE_TFA303049_LO)
@@ -147,7 +147,7 @@ public:
 
     int iSequenceSize = message->iSequenceSize;
     if (iSequenceSize < MIN_SEQUENCE_TFA303049) {
-      message->decodingStatus |= 8;
+      message->decodingStatus = 8;
       return false;
     }
 
@@ -173,18 +173,18 @@ public:
     uint8_t checksum = (data>>32) & 15;
     if (checksum != calculated_checksum) {
 //      DBG("decodeWH2() bad checksum: checksum=0x%02x calculated_checksum=0x%02x",checksum,calculated_checksum);
-      message->decodingStatus |= 0x0080; // bad checksum
+      message->decodingStatus = 0x0080; // bad checksum
       return false;
     }
 
     n = (uint32_t)data;
     if ((n & 0x80000000) == 0) {
-      message->decodingStatus |= 0x0180; // 32 bit must be 1
+      message->decodingStatus = 0x0180; // 32 bit must be 1
       return false;
     }
     n = (n >> 21) & 7;
     if (n != 0 && n != 7) {
-      message->decodingStatus |= 0x0280; // sign bits must be 000 or 111
+      message->decodingStatus = 0x0280; // sign bits must be 000 or 111
       return false;
     }
 
