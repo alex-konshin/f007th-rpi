@@ -19,6 +19,11 @@
   <div id="chart1" style="width:100%;height:800px;"></div>
   <br>
   <br>
+  <select id="scale"> <!-- Set the default scale by specifying attribute "selected" below -->
+    <option value="fahrenheit" selected>Fahrenheit</option>
+    <option value="celsius">Celsius</option>
+  </select>
+
   <button id="update">update</button>
   <br>
   <br>
@@ -37,6 +42,9 @@
     globals.chart = null;
     globals.sensors = [];
     globals.layout = layout;
+    globals.celsius = document.getElementById('scale').value == "celsius";
+    globals.t_title = globals.celsius ? "\u2103" : "\u2109";
+
 
     function redrawChart(chart_data,sensors) {
       var chart = Plotly.react('chart1', chart_data, layout, {responsive: true});
@@ -74,7 +82,8 @@
             updateChartData(index, response_data);
           }
         };
-        xmlhttp.open("GET", '/api/temperature/'+sensor_id+'?scale=F', true);
+        var scale = globals.celsius ? 'C' : 'F';
+        xmlhttp.open("GET", '/api/temperature/'+sensor_id+'?scale='+scale, true);
         xmlhttp.send();
       }
 
@@ -99,9 +108,10 @@
       controller: {
         loadData: function() {
           var d = $.Deferred();
+          var celsius = globals.celsius ? '1' : '0';
 
           $.ajax({
-            url: "/api/sensors?format=brief",
+            url: "/api/sensors?format=brief&celsius="+celsius,
             dataType: "json"
           }).done(function(response) {
             d.resolve(response);
@@ -121,7 +131,7 @@
 
       fields: [
         { title: "Name", name: "name", type: "text" },
-        { title: "\u2109", name: "temperature", type: "number", width: 50, align: "center" },
+        { title: globals.t_title, name: "temperature", type: "number", width: 50, align: "center" },
         { title: "Humidity", name: "humidity", type: "number", width: 50, align: "center" },
         { title: "Battery", name: "battery_ok", type: "text", width: 50, align: "center", itemTemplate: function(value) { return value===undefined ? "-" : value ? "OK" : "Low"; } }
       ]
@@ -135,6 +145,23 @@
         globals.jsGrid.render();
       }
     );
+
+    document.getElementById('scale').addEventListener(
+      'click',
+      function() {
+        var value = document.getElementById('scale').value;
+        if (value == "celsius") {
+          globals.celsius = true;
+          globals.t_title = "\u2103";
+        } else {
+          globals.celsius = false;
+          globals.t_title = "\u2109";
+        }
+        globals.jsGrid.fields[1].title = globals.t_title;
+        globals.jsGrid.render();
+      }
+    );
+
   </script>
 </body>
 
