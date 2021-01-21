@@ -396,7 +396,6 @@ void Config::process_args(int argc, char *argv[]) {
         } else {
           fputc(',', stderr);
         }
-        fputc(',', stderr);
         fputs(protocol->protocol_class, stderr);
       }
     }

@@ -13,6 +13,15 @@
 #define MIN_DURATION_00592TXR 140
 #define MAX_DURATION_00592TXR 660
 
+//#define DEBUG_00592TXR
+
+#if defined(NDEBUG)||!defined(DEBUG_00592TXR)
+#define DBG_00592TXR(format, arg...)     ((void)0)
+#else
+#define DBG_00592TXR(format, arg...)  Log->info(format, ## arg)
+#endif
+
+
 static ProtocolDef def_00592txr = {
   name : "00592txr",
   protocol_bit: PROTOCOL_00592TXR,
@@ -142,7 +151,7 @@ public:
 
     int iSequenceSize = message->iSequenceSize;
     if (iSequenceSize < 121) {
-      message->decodingStatus |= 8;
+      message->decodingStatus = 8;
       return false;
     }
 
@@ -189,6 +198,7 @@ private:
 
     // check sync sequence. Expecting 8 items with values around 600
 
+    DBG_00592TXR("try_decode() startIndex=%d",startIndex);
     int dataStartIndex = -1;
     int failedIndex = 0;
     for ( int index = startIndex; index<=(iSequenceSize-121); index+=2 ) {
@@ -209,6 +219,7 @@ private:
         int16_t pair = item1+item2;
         if (pair < 1000 || pair > 1450) {
           good = false;
+          failedIndex++;
           break;
         }
       }
@@ -225,12 +236,13 @@ private:
       }
     }
     if (dataStartIndex < 0) {
-      //printf("decode00592TXR(): bad sync sequence\n");
+      DBG_00592TXR("try_decode() pSequence[%d]=%d bad sync sequence",failedIndex,pSequence[failedIndex]);
       decodingStatus = (16 | (failedIndex<<8));
       startIndex = -1;
       return false;
     }
 
+    DBG_00592TXR("try_decode() dataStartIndex=%d",dataStartIndex);
     //printf("decode00592TXR(): detected sync sequence\n");
 
     bits.clear();

@@ -133,7 +133,7 @@ public:
 
     int iSequenceSize = message->iSequenceSize;
     if (iSequenceSize < MIN_SEQUENCE_WH2) {
-      message->decodingStatus |= 8;
+      message->decodingStatus = 8;
       return false;
     }
 
@@ -163,7 +163,7 @@ public:
       if ( dataStartIndex!=-1 ) break;
     }
     if ( dataStartIndex==-1 ) {
-      message->decodingStatus |= 16;
+      message->decodingStatus = 16;
       return false;
     }
 
@@ -180,13 +180,13 @@ public:
     uint8_t calculated_checksum = crc8(bits, 0, 32, 0x31, 0);
     if (checksum != calculated_checksum) {
       //DBG("decodeWH2() bad checksum: checksum=0x%02x calculated_checksum=0x%02x",checksum,calculated_checksum);
-      message->decodingStatus |= 0x0080; // bad checksum
+      message->decodingStatus = 0x0080; // bad checksum
       return false;
     }
 
     int type = bits.getInt(0, 4);
     if (type != 4) {
-      message->decodingStatus |= 0x0180; // unknown type
+      message->decodingStatus = 0x0180; // unknown type
       return false;
     }
 
