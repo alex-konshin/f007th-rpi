@@ -40,7 +40,7 @@
 //-------------------------------------------------------------
 // Compiled message format
 
-enum class MessageInsertType{ Constant, ReferenceId, SensorName, TemperatureF, TemperatureC, TemperaturedF, TemperaturedC };
+enum class MessageInsertType{ Constant, ReferenceId, SensorName, TemperatureF, TemperatureC, TemperaturedF, TemperaturedC, Humidity, BatteryStatusInt, BatteryStatusStr, Percent };
 
 typedef struct MessageInsert {
   MessageInsertType type;

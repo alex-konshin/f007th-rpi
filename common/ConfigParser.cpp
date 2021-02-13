@@ -564,6 +564,18 @@ MessageInsert* compileMessage(const char* messageFormat, ConfigParser* errorLogg
     case 'I':
       messageInsertType = MessageInsertType::ReferenceId;
       break;
+    case 'H':
+      messageInsertType = MessageInsertType::Humidity;
+      break;
+    case 'B':
+      messageInsertType = MessageInsertType::BatteryStatusInt;
+      break;
+    case 'b':
+      messageInsertType = MessageInsertType::BatteryStatusStr;
+      break;
+    case '%':
+      messageInsertType = MessageInsertType::Percent;
+      break;
     default:
       errorLogger->error("Invalid message/command format: invalid substitution \"%%%c\"", ch);
     }

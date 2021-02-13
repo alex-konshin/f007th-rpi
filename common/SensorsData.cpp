@@ -147,6 +147,29 @@ void MessageInsert::append(char*& output, uint32_t& remain, struct SensorData* d
     str = i2a(intValue, t2d_buffer, len);
     append(output, remain, str, len);
     break;
+
+  case MessageInsertType::Humidity:
+    if (remain < 5 || data == NULL) break;
+    intValue = data->getHumidity();
+    str = i2a(intValue, t2d_buffer, len);
+    append(output, remain, str, len);
+    break;
+
+  case MessageInsertType::BatteryStatusInt:
+    if (remain < 3 || data == NULL) break;
+    intValue = data->getBatteryStatus();
+    append(output, remain, intValue == 0 ? "0" : "1");
+    break;
+
+  case MessageInsertType::BatteryStatusStr:
+    if (remain < 4 || data == NULL) break;
+    intValue = data->getBatteryStatus();
+    append(output, remain, intValue == 0 ? "Low" : "OK");
+    break;
+
+  case MessageInsertType::Percent:
+    if (remain >=2) append(output, remain, "%");
+    break;
   }
 }
 
@@ -196,7 +219,7 @@ void SensorData::print(FILE* file, int options) {
     fprintf(file, "  humidity          = %d%%\n", getHumidity());
   }
   if ((features&FEATURE_BATTERY_STATUS) != 0) {
-    fprintf(file, "  battery           = %s\n", getBatteryStatus() ? "OK" :"Bad");
+    fprintf(file, "  battery           = %s\n", getBatteryStatus() ? "OK" : "Low");
   }
 }
 
