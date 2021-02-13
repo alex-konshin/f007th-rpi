@@ -18,7 +18,7 @@ MqttPublisher* MqttPublisher::instance = NULL;
 bool MqttPublisher::create(Config& cfg) {
   if (cfg.mqtt_enable && instance == NULL) {
     Log->log("Starting MQTT publisher to broker %s:%d...", cfg.mqtt_broker_host, cfg.mqtt_broker_port);
-    MqttPublisher* mqtt_publisher = new MqttPublisher(cfg.mqtt_client_id, cfg.mqtt_broker_host, cfg.mqtt_broker_port);
+    MqttPublisher* mqtt_publisher = new MqttPublisher(cfg.mqtt_client_id, cfg.mqtt_broker_host, cfg.mqtt_broker_port, cfg.mqtt_username, cfg.mqtt_password);
     if (!mqtt_publisher->start() ) {
       Log->error("Could not connect to MQTT broker.");
       return false;
@@ -30,7 +30,9 @@ void MqttRule::execute(const char* message, class Config& cfg) {
   MqttPublisher* publisher = MqttPublisher::instance;
   if (publisher != NULL) {
     bool debug = (cfg.options&VERBOSITY_DEBUG) != 0;
-    if (debug) Log->info("%s \"%s\" => topic=\"%s\" message=\"%s\".\n", getTypeName(), id, mqttTopic, message);
+    if (debug) Log->info("%s \"%s\" => topic=\"%s\" message=\"%s\".", getTypeName(), id, mqttTopic, message);
+    bool info = (cfg.options&VERBOSITY_INFO) != 0;
+    if (info) Log->info("MQTT-Publish: %s \"%s\"", mqttTopic, message);
     publisher->publish_message(mqttTopic, message);
   }
 }

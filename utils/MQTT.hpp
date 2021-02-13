@@ -26,15 +26,25 @@ private:
   int keepalive;
   int options;
   volatile bool connected = false;
+  //PH added
+  const char *username;
+  const char *password;
 
 public:
-  MqttPublisher(const char* id, const char* host, int port, int options = 0, int keepalive = 60) : mosquittopp(id) {
+  MqttPublisher(const char* id, const char* host, int port, const char* username, const char* password, int options = 0, int keepalive = 60) : mosquittopp(id) {
     mosqpp::lib_init();      // Initialization of mosquitto library
     this->keepalive = keepalive;
     this->options = options;
     this->id = id;
     this->port = port;
     this->host = host;
+    if (username == NULL || *username == '\0') {
+      this->username = NULL;
+      this->password = NULL;
+    } else {
+      this->username = username;
+      this->password = password;
+    }
     instance = this;
   }
 
@@ -63,6 +73,7 @@ public:
 
   bool start() {
     Log->log("Connecting to MQTT broker %s:%d...", host, port);
+    if (username != NULL) username_pw_set(username, password);
     int rc = connect(host, port, keepalive);
     switch (rc) {
     case MOSQ_ERR_SUCCESS:
