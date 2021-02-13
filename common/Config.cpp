@@ -402,9 +402,7 @@ void Config::process_args(int argc, char *argv[]) {
     fputc('\n', stderr);
   }
 
-#ifdef INCLUDE_MQTT
   resolveReferencesToRules();
-#endif
 
   if (optind < argc) {
     if (optind != argc-1) Config::help();
@@ -421,7 +419,7 @@ void Config::process_args(int argc, char *argv[]) {
       server_type = ServerType::NONE;
 #ifdef INCLUDE_MQTT
       // if server type and URL are not specified then
-      // if any MQTT rule is specified then server type is set to NONE (no output on cosole)
+      // if any MQTT rule is specified then server type is set to NONE (no output on console)
       // otherwise data will be printed on console.
       if (rules.empty()) server_type = ServerType::STDOUT;
 #endif
@@ -1107,7 +1105,7 @@ void Config::command_mqtt_broker(const char** argv, int number_of_unnamed_args, 
   mqtt_client_id = clone(client_id);
 
   str = argv[CMD_MQTT_USER];
-  if (str != NULL) {
+  if (str != NULL && *str != '\0') {
     mqtt_username = clone(str);
     str = argv[CMD_MQTT_PASSWORD];
     if (str != NULL) mqtt_password = clone(str);
