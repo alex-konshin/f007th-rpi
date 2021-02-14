@@ -77,8 +77,7 @@ public:
     int rc = connect(host, port, keepalive);
     switch (rc) {
     case MOSQ_ERR_SUCCESS:
-      Log->log("Successfully connected to MQTT broker %s:%d.", host, port);
-      connected = true;
+      connected = true; // actually it should be already set by on_connect()
       break;
     case MOSQ_ERR_INVAL:
       Log->error("ERROR MOSQ_ERR_INVAL on connecting to MQTT broker: %s", mosqpp::strerror(rc));
@@ -94,6 +93,7 @@ public:
       return false;
     }
 
+    Log->log("Starting MQTT processing thread.");
     loop_start();  // Start the thread that processes connection/publish/subscribe requests
     //Log->log("Connecting to MQTT broker %s:%d...", host, port);
     //connect_async(host, port, keepalive);  // non blocking connection to MQTT broker
@@ -140,8 +140,8 @@ private:
   void on_connect(int rc) {
     if (rc != MOSQ_ERR_SUCCESS ) {
       Log->error("ERROR %d on connecting to MQTT broker: %s", rc, mosqpp::strerror(rc));
-    } else if ( (options&(VERBOSITY_INFO|VERBOSITY_DEBUG))!=0 ) {
-      Log->log("Successfully connected to MQTT broker %s:%d.", host, port);
+    } else {
+      if ( (options&(VERBOSITY_INFO|VERBOSITY_DEBUG))!=0 ) Log->log("Successfully connected to MQTT broker %s:%d.", host, port);
       connected = true;
     }
   }
