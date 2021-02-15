@@ -18,7 +18,7 @@ But I prefer to send data to [InfluxDB](https://www.influxdata.com/products/infl
 
 You can view in any web browser the latest data received from sensors and graph of temperatures for the last 24 hours.\
 This functionality does not require installing any servers because it uses built-in HTTP server.
-![Example of web page](images/rpi-www-screenshot.png)
+![Example of web page](https://github.com/alex-konshin/f007th-rpi/wiki/images/rpi-www-screenshot.png)
 
 You can assign action to some events. Actions may be changed accordingly to the specified schedule and can be enabled/disabled by other actions.
 
