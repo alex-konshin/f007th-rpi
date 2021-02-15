@@ -40,9 +40,9 @@ This project currently supports and tested with following sensors:
 ### [Supported platforms](https://github.com/alex-konshin/f007th-rpi/wiki/Home#supported-platforms)
 Following platforms are supported and tested:
 - Raspberry Pi 3, 4
-- [Banana Pi M3](https://bananapi.gitbooks.io/bpi-m3/content/en/)
 - [ODROID C2](http://www.hardkernel.com/main/products/prdt_info.php?g_code=G145457216438&tab_idx=1)
 - [MinnowBoard MAX/Turbot](https://www.minnowboard.org/) (tested with [MinnowBoard Turbot QUAD Core Board](https://store.netgate.com/Turbot4.aspx))
+- [Banana Pi M3](https://bananapi.gitbooks.io/bpi-m3/content/en/) (limited support)
 
 ### [Getting started](https://github.com/alex-konshin/f007th-rpi/wiki/Getting-Started)
 First start with instruction [Getting started](https://github.com/alex-konshin/f007th-rpi/wiki/Getting-Started) on Wiki.
