@@ -12,18 +12,15 @@ The main goal of this project is to intercept and decode radio signals from temp
 It is also possible to retrieve the current values via HTTP and even get some HTML pages. 
 [Support of MQTT](https://github.com/alex-konshin/f007th-rpi/wiki/Support-of-MQTT) is still experimental. If you want to help to test this new feature then please contact the developer.
 
-The utility can send data to InfluxDB server or virtually any REST server that supports PUT requests.
-How to setup these servers? It is out of the scope of this instruction because there are many possible solutions.
-For REST server I personally used [LoopBack](https://loopback.io/) with [PostgreSQL](https://www.postgresql.org/) that are run on QNAP NAS server. But now I prefer to send data to InfluxDB server.  
-The utility sends JSON to REST server with following fields:  
-`"time", "valid", "type", "channel", "rolling_code", "temperature", "humidity","battery_ok"`.  
-The value of field `temperature` is integer number of dF ("deciFahrenheit" = 1/10 of Fahrenheit). For example, if the value is 724 then the temperature is 72.4&deg;F. Note that not all fields are always present in each report.  
+The utility can send data to InfluxDB server or virtually any REST server that supports PUT requests.\
+For example, REST server can be [LoopBack](https://loopback.io/) with [PostgreSQL](https://www.postgresql.org/) for storing data.
+But I prefer to send data to [InfluxDB](https://www.influxdata.com/products/influxdb/) server and visualize it with [Grafana](http://grafana.org/).  
 
-Instructions for InfluxDB can be found on site [https://www.influxdata.com/products/influxdb/](https://www.influxdata.com/products/influxdb/).
-The command sends 3 types of metrics: "temperature", "humidity" and "sensor_battery_status" with tags "type" (one of "F007TH", "00592TXR", "TX7", "HG02832", "WH2", "FT007TH", "TFA303049", "DS18B20"), "channel" and "rolling_code".
-Note that rolling code is changed when you replace batteries.
+You can view in any web browser the latest data received from sensors and graph of temperatures for the last 24 hours.\
+This functionality does not require installing any servers because it uses built-in HTTP server.
+![Example of web page](images/rpi-www-screenshot.png)
 
-You can assign action to some events. Actions may be changed accordingly to specified schedule.
+You can assign action to some events. Actions may be changed accordingly to the specified schedule and can be enabled/disabled by other actions.
 
 ### Supported receivers
 The data is received with cheap RF 433.92MHz receivers like [RXB6](https://cdn.instructables.com/ORIG/FM6/PYJR/JUMXMMGB/FM6PYJRJUMXMMGB.pdf), [SeeedStudio RF-R-ASK](https://www.seeedstudio.com/433MHz-ASK%26amp%3BOOK-Super-heterodyne-Receiver-module-p-2205.html), RX-RM-5V, etc.
@@ -46,6 +43,10 @@ Following platforms are supported and tested:
 - [Banana Pi M3](https://bananapi.gitbooks.io/bpi-m3/content/en/)
 - [ODROID C2](http://www.hardkernel.com/main/products/prdt_info.php?g_code=G145457216438&tab_idx=1)
 - [MinnowBoard MAX/Turbot](https://www.minnowboard.org/) (tested with [MinnowBoard Turbot QUAD Core Board](https://store.netgate.com/Turbot4.aspx))
+
+### [Getting started](https://github.com/alex-konshin/f007th-rpi/wiki/Getting-Started)
+First start with instruction [Getting started](https://github.com/alex-konshin/f007th-rpi/wiki/Getting-Started) on Wiki.
+When you get your setup working you can change configuration to enable other features.  
 
 ### [How to build](https://github.com/alex-konshin/f007th-rpi/wiki/How-to-build)
 * [Building on Raspberry Pi](https://github.com/alex-konshin/f007th-rpi/wiki/Building-on-Raspberry-Pi)
