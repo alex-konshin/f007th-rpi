@@ -39,4 +39,5 @@
 /test/test_decode
 /test_wsl/test_decode
 /test_data
+/build.cfg
 f007th-send
