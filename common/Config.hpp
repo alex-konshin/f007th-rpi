@@ -157,7 +157,8 @@ public:
   bool changes_only = true;
   bool type_is_set = false;
 
-  uint32_t options;
+  bool verbosity_set_explicitly = false;
+  uint32_t options = 0;
 #ifdef INCLUDE_HTTPD
   int httpd_port = 0;
   const char* www_root = NULL;
@@ -184,7 +185,6 @@ public:
 
 public:
   Config();
-  Config(int options);
   ~Config();
 
   static const char* getVersion();

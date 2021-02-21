@@ -40,6 +40,7 @@ static const struct option long_options[] = {
     { "all-changes", no_argument, NULL, 'A' },
     { "log-file", required_argument, NULL, 'l' },
     { "verbose", no_argument, NULL, 'v' },
+    { "quiet", no_argument, NULL, 'q' },
     { "more_verbose", no_argument, NULL, 'V' },
     { "statistics", no_argument, NULL, 'T' },
     { "debug", no_argument, NULL, 'd' },
@@ -59,14 +60,14 @@ static const struct option long_options[] = {
 
 #ifdef TEST_DECODING
 #ifdef INCLUDE_HTTPD
-static const char* short_options = "c:g:p:s:Al:vVt:TCULdDI:WH:G:a:no";
+static const char* short_options = "c:g:p:s:Al:qvVt:TCULdDI:WH:G:a:no";
 #else
-static const char* short_options = "c:g:p:s:Al:vVt:TCULdDI:WG:a:no";
+static const char* short_options = "c:g:p:s:Al:qvVt:TCULdDI:WG:a:no";
 #endif
 #elif defined(INCLUDE_HTTPD)
-static const char* short_options = "c:g:p:s:Al:vVt:TCULdDH:G:a:no";
+static const char* short_options = "c:g:p:s:Al:qvVt:TCULdDH:G:a:no";
 #else
-static const char* short_options = "c:g:p:s:Al:vVt:TCULdDG:a:no";
+static const char* short_options = "c:g:p:s:Al:qvVt:TCULdDG:a:no";
 #endif
 
 #define command_def(name, max_num_of_unnamed_args) \
@@ -285,17 +286,15 @@ const char* const VALID_OPTIONS =
     "    Max gap between reported reading. Next reading will be sent to server or printed even it is the same as previous readings.\n"
     "--verbose, -v\n"
     "    Verbose output.\n"
+    "--quiet, -q\n"
+    "    Do not print data on console.\n"
     "--more_verbose, -V\n"
     "    More verbose output.\n";
 
 //-------------------------------------------------------------
 Config::Config() {
-  options = DEFAULT_OPTIONS;
-  init_command_defs();
-  protocols_set_explicitly = false;
-}
-Config::Config(int options) {
-  this->options = options;
+  options = 0;
+  verbosity_set_explicitly = false;
   init_command_defs();
   protocols_set_explicitly = false;
 }
@@ -377,6 +376,8 @@ void Config::process_args(int argc, char *argv[]) {
     }
   }
 
+  if (!verbosity_set_explicitly) options |= DEFAULT_OPTIONS;
+
   if (!protocols_set_explicitly) {
     // if no protocols are specified explicitly the enable all RF protocols
     protocols |= Protocol::rf_protocols;
@@ -421,7 +422,7 @@ void Config::process_args(int argc, char *argv[]) {
       // if server type and URL are not specified then
       // if any MQTT rule is specified then server type is set to NONE (no output on console)
       // otherwise data will be printed on console.
-      if (rules.empty()) server_type = ServerType::STDOUT;
+      if (!verbosity_set_explicitly && rules.empty()) server_type = ServerType::STDOUT;
 #endif
     }
   } else {
@@ -466,6 +467,12 @@ bool Config::process_cmdline_option( int c, const char* option, const char* opta
 
   case 'v':
     options |= VERBOSITY_INFO;
+    verbosity_set_explicitly = true;
+    break;
+
+  case 'q':
+    options &= ~VERBOSITY_INFO;
+    verbosity_set_explicitly = true;
     break;
 
   case 'l':
@@ -546,6 +553,7 @@ bool Config::process_cmdline_option( int c, const char* option, const char* opta
 
   case 'd':
     options |= VERBOSITY_DEBUG;
+    verbosity_set_explicitly = true;
     break;
 
   case 'C':
@@ -571,6 +579,7 @@ bool Config::process_cmdline_option( int c, const char* option, const char* opta
 
   case 'V':
     options |= VERBOSITY_INFO | VERBOSITY_PRINT_JSON | VERBOSITY_PRINT_CURL | VERBOSITY_PRINT_UNDECODED | VERBOSITY_PRINT_DETAILS;
+    verbosity_set_explicitly = true;
     break;
 
   case 'p':
@@ -580,6 +589,7 @@ bool Config::process_cmdline_option( int c, const char* option, const char* opta
   case 'D': // print undecoded messages
     options |= VERBOSITY_PRINT_UNDECODED;
     changes_only = false;
+    verbosity_set_explicitly = true;
     break;
 
   case 'G':

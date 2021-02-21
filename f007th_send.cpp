@@ -24,7 +24,7 @@ int main(int argc, char *argv[]) {
 
   if ( argc==1 ) Config::help();
 
-  Config cfg(DEFAULT_OPTIONS);
+  Config cfg;
   cfg.process_args(argc, argv);
 
   FILE* log;
@@ -115,6 +115,8 @@ int main(int argc, char *argv[]) {
 #define RULE_MESSAGE_MAX_SIZE 4096
   char rule_message_buffer[RULE_MESSAGE_MAX_SIZE];
 
+  bool verbose = (cfg.options&(VERBOSITY_INFO|VERBOSITY_DEBUG)) != 0;
+
   if ((cfg.options&(VERBOSITY_INFO|VERBOSITY_DEBUG)) != 0) fputs("Receiving data...\n", stderr);
   while(!receiver.isStopped()) {
     bool got_data = receiver.waitForMessage(message);
@@ -126,7 +128,6 @@ int main(int argc, char *argv[]) {
       }
 
       bool is_message_printed = false;
-      bool verbose = (cfg.options&(VERBOSITY_INFO|VERBOSITY_DEBUG)) != 0;
 
       if (dump_file != NULL && (cfg.options&(DUMP_SEQS_TO_FILE|DUMP_UNDECODED_SEQS_TO_FILE)) == DUMP_SEQS_TO_FILE) { // write the received sequence (if any) to the dump file
         message.printInputSequence(dump_file, cfg.options);
