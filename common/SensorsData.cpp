@@ -362,10 +362,9 @@ size_t SensorData::generateInfluxData(int start, void*& buffer, size_t& buffer_s
 }
 
 size_t SensorDataStored::generateJsonEx(int start, void*& buffer, size_t& buffer_size, int options) {
-
   size_t size = generateJsonContent(start, buffer, buffer_size, options);
   char* ptr = (char*)buffer+start;
-  size_t remain = buffer_size-start-size;
+  size_t remain = buffer_size-start;
 
 #ifdef INCLUDE_HTTPD
   uint32_t features = getFeatures();
@@ -373,18 +372,19 @@ size_t SensorDataStored::generateJsonEx(int start, void*& buffer, size_t& buffer
     unsigned count = temperatureHistory.getCount();
     if (count != 0) {
       size += snprintf(ptr+size, remain-size, ",\"t_hist\":%d", count);
-      if (!check_buffer(remain, size, "SensorDataStored::generateJsonLineBrief")) return 0;
+      if (!check_buffer(remain, size, "SensorDataStored::generateJsonEx")) return 0;
     }
   }
   if ((features&FEATURE_HUMIDITY) != 0) {
     unsigned count = humidityHistory.getCount();
     if (count != 0) {
       size += snprintf(ptr+size, remain-size, ",\"h_hist\":%d", count);
+      if (!check_buffer(remain, size, "SensorDataStored::generateJsonEx")) return 0;
     }
   }
 #endif
   if (remain < size+2) {
-    Log->error("Buffer overflow (%s)", "SensorData::generateJson");
+    Log->error("Buffer overflow (%s)", "SensorData::generateJsonEx");
     return 0;
   }
   *(ptr+size) = '}';
