@@ -8,7 +8,9 @@ CPP_SRCS += \
 ../protocols/AmbientWeatherF007TH.cpp \
 ../protocols/AuriolHG02832.cpp \
 ../protocols/LaCrosseTX7.cpp \
+../protocols/Nexus.cpp \
 ../protocols/Protocol.cpp \
+../protocols/TFATwinPlus.cpp \
 ../protocols/WH2.cpp 
 
 OBJS += \
@@ -16,7 +18,9 @@ OBJS += \
 ./protocols/AmbientWeatherF007TH.o \
 ./protocols/AuriolHG02832.o \
 ./protocols/LaCrosseTX7.o \
+./protocols/Nexus.o \
 ./protocols/Protocol.o \
+./protocols/TFATwinPlus.o \
 ./protocols/WH2.o 
 
 CPP_DEPS += \
@@ -24,15 +28,17 @@ CPP_DEPS += \
 ./protocols/AmbientWeatherF007TH.d \
 ./protocols/AuriolHG02832.d \
 ./protocols/LaCrosseTX7.d \
+./protocols/Nexus.d \
 ./protocols/Protocol.d \
+./protocols/TFATwinPlus.d \
 ./protocols/WH2.d 
 
 
 # Each subdirectory must supply rules for building sources it contributes
-protocols/%.o: ../protocols/%.cpp
+protocols/%.o: ../protocols/%.cpp protocols/subdir.mk
 	@echo 'Building file: $<'
 	@echo 'Invoking: Cross G++ Compiler'
-	arm-linux-gnueabihf-g++ -std=c++0x -std=c++11 -DBPiM3 -DNDEBUG -DUSE_GPIO_TS -O2 -Wall -c -fmessage-length=0 -pthread -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@)" -o "$@" "$<"
+	arm-linux-gnueabihf-g++ -std=c++11 -DBPiM3 -DNDEBUG -DUSE_GPIO_TS -O2 -Wall -c -fmessage-length=0 -pthread -MMD -MP -MF"$(@:%.o=%.d)" -MT"$@" -o "$@" "$<"
 	@echo 'Finished building: $<'
 	@echo ' '
 

@@ -9,6 +9,7 @@ CPP_SRCS += \
 ../protocols/AuriolHG02832.cpp \
 ../protocols/DS18B20.cpp \
 ../protocols/LaCrosseTX7.cpp \
+../protocols/Nexus.cpp \
 ../protocols/Protocol.cpp \
 ../protocols/TFATwinPlus.cpp \
 ../protocols/WH2.cpp 
@@ -19,6 +20,7 @@ OBJS += \
 ./protocols/AuriolHG02832.o \
 ./protocols/DS18B20.o \
 ./protocols/LaCrosseTX7.o \
+./protocols/Nexus.o \
 ./protocols/Protocol.o \
 ./protocols/TFATwinPlus.o \
 ./protocols/WH2.o 
@@ -29,16 +31,17 @@ CPP_DEPS += \
 ./protocols/AuriolHG02832.d \
 ./protocols/DS18B20.d \
 ./protocols/LaCrosseTX7.d \
+./protocols/Nexus.d \
 ./protocols/Protocol.d \
 ./protocols/TFATwinPlus.d \
 ./protocols/WH2.d 
 
 
 # Each subdirectory must supply rules for building sources it contributes
-protocols/%.o: ../protocols/%.cpp
+protocols/%.o: ../protocols/%.cpp protocols/subdir.mk
 	@echo 'Building file: $<'
 	@echo 'Invoking: Cross G++ Compiler'
-	g++ -std=c++11 -DRPi -DNDEBUG -DINCLUDE_HTTPD -DINCLUDE_POLLSTER -O2 -Wall -c -fmessage-length=0 -pthread -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@)" -o "$@" "$<"
+	g++ -std=c++11 -DRPI -DNDEBUG -DINCLUDE_HTTPD -DINCLUDE_POLLSTER -O2 -Wall -c -fmessage-length=0 -pthread -MMD -MP -MF"$(@:%.o=%.d)" -MT"$@" -o "$@" "$<"
 	@echo 'Finished building: $<'
 	@echo ' '
 

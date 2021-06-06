@@ -135,7 +135,7 @@ public:
   }
 
   void adjustLimits(unsigned long& min_sequence_length, unsigned long& max_duration, unsigned long& min_duration) {
-    if ( min_duration==0 || min_duration>150 ) min_duration = MIN_HI_DURATION_TFA303049;
+    if ( min_duration==0 || min_duration>MIN_HI_DURATION_TFA303049 ) min_duration = MIN_HI_DURATION_TFA303049;
     if ( max_duration==0 || max_duration<MAX_LO_DURATION_TFA303049 ) max_duration = MAX_LO_DURATION_TFA303049;
     if ( min_sequence_length==0 || min_sequence_length>MIN_SEQUENCE_TFA303049 ) min_sequence_length = MIN_SEQUENCE_TFA303049;
   };
@@ -172,7 +172,7 @@ public:
     calculated_checksum &= 15;
     uint8_t checksum = (data>>32) & 15;
     if (checksum != calculated_checksum) {
-//      DBG("decodeWH2() bad checksum: checksum=0x%02x calculated_checksum=0x%02x",checksum,calculated_checksum);
+//      DBG("TFA303049 bad checksum: checksum=0x%02x calculated_checksum=0x%02x",checksum,calculated_checksum);
       message->decodingStatus = 0x0080; // bad checksum
       return false;
     }

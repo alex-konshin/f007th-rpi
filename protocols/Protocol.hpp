@@ -14,7 +14,8 @@
 #define PROTOCOL_HG02832   8
 #define PROTOCOL_F007TH    16
 #define PROTOCOL_TFA303049 32
-#define PROTOCOL_DS18B20   64
+#define PROTOCOL_NEXUS     64
+#define PROTOCOL_DS18B20   128
 #define PROTOCOL_ALL       (unsigned)(-1)
 
 #define PROTOCOL_INDEX_00592TXR  0
@@ -23,8 +24,9 @@
 #define PROTOCOL_INDEX_HG02832   3
 #define PROTOCOL_INDEX_F007TH    4
 #define PROTOCOL_INDEX_TFA303049 5
-#define PROTOCOL_INDEX_DS18B20   6
-#define NUMBER_OF_PROTOCOLS      7
+#define PROTOCOL_INDEX_NEXUS     6
+#define PROTOCOL_INDEX_DS18B20   7
+#define NUMBER_OF_PROTOCOLS      8
 
 #define MAX_PROTOCOL_NAME_LEN   16
 
@@ -214,6 +216,7 @@ protected:
 
   bool decodePWM(ReceivedData* message, int startIndex, int size, int minLo, int maxLo, int minHi, int maxHi, int median, Bits& bits);
   bool decodePPM(ReceivedData* message, int startIndex, int size, int pulse_width, int pulse_tolerance, int lo0, int lo1, int lo_tolerance, Bits& bits);
+  int findGap(ReceivedData* message, int startIndex, int size, int width, int tolerance);
   uint8_t crc8( Bits& bits, int from, int size, int polynomial, int init );
 
   virtual void adjustLimits(unsigned long& min_sequence_length, unsigned long& max_duration, unsigned long& min_duration) {};

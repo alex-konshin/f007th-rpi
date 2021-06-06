@@ -20,10 +20,10 @@ CPP_DEPS += \
 
 
 # Each subdirectory must supply rules for building sources it contributes
-utils/%.o: ../utils/%.cpp
+utils/%.o: ../utils/%.cpp utils/subdir.mk
 	@echo 'Building file: $<'
 	@echo 'Invoking: Cross G++ Compiler'
-	g++ -std=c++11 -DINCLUDE_HTTPD -DNDEBUG -DINCLUDE_POLLSTER -DUSE_GPIO_TS -O2 -Wall -c -fmessage-length=0 -pthread -U_FORTIFY_SOURCE -fno-stack-protector -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@)" -o "$@" "$<"
+	g++ -std=c++11 -DINCLUDE_HTTPD -DNDEBUG -DINCLUDE_POLLSTER -DUSE_GPIO_TS -O2 -Wall -c -fmessage-length=0 -pthread -U_FORTIFY_SOURCE -fno-stack-protector -MMD -MP -MF"$(@:%.o=%.d)" -MT"$@" -o "$@" "$<"
 	@echo 'Finished building: $<'
 	@echo ' '
 

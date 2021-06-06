@@ -266,6 +266,7 @@ private:
       } else if (item2 < 290 && item1 > 310) {
         bits.addBit(1);
       } else {
+        DBG_00592TXR("try_decode() decoding pSequence[%d]=%d pSequence[%d]=%d",index,pSequence[index],index+1,pSequence[index+1]);
         if (decoded_bits_count >= 56) break; // We got enough bits for 00592TXR variant
         //printf("decode00592TXR(): bad items %d: %d %d\n", index, item1, item2);
         decodingStatus = (0x22 | (index<<8));
