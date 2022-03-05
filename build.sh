@@ -38,6 +38,9 @@ case $machine in
   armv7l)
     is_ARM=1
     ;;
+  aarch64)
+    is_ARM=1
+    ;;
   *)
     echo "ERROR: Unrecognized platform (\`uname -m\` = ${machine})."
     exit 1
@@ -121,7 +124,7 @@ process_subdir_mk() {
 # TODO
 #  g++ -std=c++0x -DRPI -DTEST_DECODING        -DINCLUDE_HTTPD -DINCLUDE_POLLSTER -DINCLUDE_MQTT -O0 -g3 -Wall -c -fmessage-length=0 -pthread                                        -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@)" -o "$@" "$<"
 
-  compile='\tg++ -std=c++11 '${options}' -O2 -Wall -c -fmessage-length=0 -pthread'${platform_options}' -MMD -MP -MF\"$(@:%.o=%.d)\" -MT\"$(@)\" -o \"$@\" \"$<\"'
+  compile='\tg++ -std=c++11 '${options}' -O2 -Wall -c -fmessage-length=0 -pthread'${platform_options}' -fpermissive -MMD -MP -MF\"$(@:%.o=%.d)\" -MT\"$(@)\" -o \"$@\" \"$<\"'
 
   line_filter='!/^\#.*/'
   if [ "$1" = "utils/subdir.mk" ]; then

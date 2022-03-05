@@ -7,13 +7,13 @@ CPP_SRCS += \
 ../utils/Logger.cpp \
 ../utils/Utils.cpp 
 
-OBJS += \
-./utils/Logger.o \
-./utils/Utils.o 
-
 CPP_DEPS += \
 ./utils/Logger.d \
 ./utils/Utils.d 
+
+OBJS += \
+./utils/Logger.o \
+./utils/Utils.o 
 
 
 # Each subdirectory must supply rules for building sources it contributes
@@ -24,4 +24,11 @@ utils/%.o: ../utils/%.cpp utils/subdir.mk
 	@echo 'Finished building: $<'
 	@echo ' '
 
+
+clean: clean-utils
+
+clean-utils:
+	-$(RM) ./utils/Logger.d ./utils/Logger.o ./utils/Utils.d ./utils/Utils.o
+
+.PHONY: clean-utils
 

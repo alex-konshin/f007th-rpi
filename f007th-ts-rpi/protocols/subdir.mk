@@ -13,16 +13,6 @@ CPP_SRCS += \
 ../protocols/TFATwinPlus.cpp \
 ../protocols/WH2.cpp 
 
-OBJS += \
-./protocols/AcuRite00592TXR.o \
-./protocols/AmbientWeatherF007TH.o \
-./protocols/AuriolHG02832.o \
-./protocols/LaCrosseTX7.o \
-./protocols/Nexus.o \
-./protocols/Protocol.o \
-./protocols/TFATwinPlus.o \
-./protocols/WH2.o 
-
 CPP_DEPS += \
 ./protocols/AcuRite00592TXR.d \
 ./protocols/AmbientWeatherF007TH.d \
@@ -33,6 +23,16 @@ CPP_DEPS += \
 ./protocols/TFATwinPlus.d \
 ./protocols/WH2.d 
 
+OBJS += \
+./protocols/AcuRite00592TXR.o \
+./protocols/AmbientWeatherF007TH.o \
+./protocols/AuriolHG02832.o \
+./protocols/LaCrosseTX7.o \
+./protocols/Nexus.o \
+./protocols/Protocol.o \
+./protocols/TFATwinPlus.o \
+./protocols/WH2.o 
+
 
 # Each subdirectory must supply rules for building sources it contributes
 protocols/%.o: ../protocols/%.cpp protocols/subdir.mk
@@ -42,4 +42,11 @@ protocols/%.o: ../protocols/%.cpp protocols/subdir.mk
 	@echo 'Finished building: $<'
 	@echo ' '
 
+
+clean: clean-protocols
+
+clean-protocols:
+	-$(RM) ./protocols/AcuRite00592TXR.d ./protocols/AcuRite00592TXR.o ./protocols/AmbientWeatherF007TH.d ./protocols/AmbientWeatherF007TH.o ./protocols/AuriolHG02832.d ./protocols/AuriolHG02832.o ./protocols/LaCrosseTX7.d ./protocols/LaCrosseTX7.o ./protocols/Nexus.d ./protocols/Nexus.o ./protocols/Protocol.d ./protocols/Protocol.o ./protocols/TFATwinPlus.d ./protocols/TFATwinPlus.o ./protocols/WH2.d ./protocols/WH2.o
+
+.PHONY: clean-protocols
 

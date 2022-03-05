@@ -9,17 +9,17 @@ CPP_SRCS += \
 ../common/Receiver.cpp \
 ../common/SensorsData.cpp 
 
-OBJS += \
-./common/Config.o \
-./common/ConfigParser.o \
-./common/Receiver.o \
-./common/SensorsData.o 
-
 CPP_DEPS += \
 ./common/Config.d \
 ./common/ConfigParser.d \
 ./common/Receiver.d \
 ./common/SensorsData.d 
+
+OBJS += \
+./common/Config.o \
+./common/ConfigParser.o \
+./common/Receiver.o \
+./common/SensorsData.o 
 
 
 # Each subdirectory must supply rules for building sources it contributes
@@ -30,4 +30,11 @@ common/%.o: ../common/%.cpp common/subdir.mk
 	@echo 'Finished building: $<'
 	@echo ' '
 
+
+clean: clean-common
+
+clean-common:
+	-$(RM) ./common/Config.d ./common/Config.o ./common/ConfigParser.d ./common/ConfigParser.o ./common/Receiver.d ./common/Receiver.o ./common/SensorsData.d ./common/SensorsData.o
+
+.PHONY: clean-common
 
