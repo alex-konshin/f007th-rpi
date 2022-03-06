@@ -41,7 +41,7 @@ OBJS += \
 protocols/%.o: ../protocols/%.cpp protocols/subdir.mk
 	@echo 'Building file: $<'
 	@echo 'Invoking: Cross G++ Compiler'
-	g++ -std=c++11 -DRPI -DNDEBUG -DINCLUDE_HTTPD -DINCLUDE_POLLSTER -O2 -Wall -c -fmessage-length=0 -pthread -MMD -MP -MF"$(@:%.o=%.d)" -MT"$@" -o "$@" "$<"
+	g++ -std=c++11 -DRPI -DNDEBUG -DINCLUDE_HTTPD -DINCLUDE_POLLSTER -O2 -Wall -c -fpermissive  -fmessage-length=0 -pthread -MMD -MP -MF"$(@:%.o=%.d)" -MT"$@" -o "$@" "$<"
 	@echo 'Finished building: $<'
 	@echo ' '
 
