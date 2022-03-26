@@ -466,7 +466,7 @@ int Receiver::readSequences() {
         int nextSequenceIndex = (iSequenceWrite + 1)&(MAX_CHAINS-1);
 
         if (iSequenceReady == nextSequenceIndex) {
-          //DBG("readSequences() => sequence_pool_overflow %d", sequence_pool_overflow);
+          //DBG("readSequences() => sequence_pool_overflow %d", statistics->sequence_pool_overflow);
           // overflow
           statistics->sequence_pool_overflow++;
           return 1;
@@ -482,7 +482,7 @@ int Receiver::readSequences() {
 
         iCurrentSequenceStart = iPoolWrite;
         statistics->sequences++;
-        //DBG("readSequences() => put sequence in queue sequences=%d", sequences);
+        //DBG("readSequences() => put sequence in queue sequences=%d", statistics->sequences);
       }
 
       iCurrentSequenceSize = 0;
@@ -806,7 +806,7 @@ void Receiver::decoder() {
 
     if (iSequenceReady == iSequenceWrite) {
       int rc = readSequences();
-      //DBG("readSequences() => rc=%d", rc);
+      //DBG("decoder() => rc=%d", rc);
       if (rc <= 0) {
         if (rc < 0) {
           stop();
@@ -829,12 +829,15 @@ void Receiver::decoder() {
     ReceivedData* message = createNewMessage();
     if (message == NULL) continue;
 
+    //DBG("decoder() decoding");
     bool decoded = false;
     for (int protocol_index = 0; protocol_index<NUMBER_OF_PROTOCOLS; protocol_index++) {
       Protocol* protocol = Protocol::protocols[protocol_index];
       if (protocol != NULL && (protocol->protocol_bit&protocols) != 0 && (protocol->getFeatures(NULL)&FEATURE_RF) != 0) {
         message->decodingStatus = 0;
+        //DBG("decoder() try protocol %d: %s", protocol->protocol_index, protocol->protocol_class);
         decoded = protocol->decode(message);
+        //DBG("decoder() done protocol");
         message->detailedDecodingStatus[protocol_index] = message->decodingStatus;
         message->detailedDecodedBits[protocol_index] = message->decodedBits;
         if (decoded) break;
@@ -842,6 +845,7 @@ void Receiver::decoder() {
     }
     // TODO do not queue the message if it is not decoded and no need to print undecoded messages.
 
+    //DBG("decoder() put new message into output queue");
     // put new message into output queue
     pthread_mutex_lock(&messageQueueLock);
     *lastMessagePtr = message;

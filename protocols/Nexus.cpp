@@ -152,6 +152,7 @@ public:
   };
 
   bool decode(ReceivedData* message) {
+    //DBG_NEXUS("NEXUS: decode()");
     message->decodingStatus = 0;
     message->decodedBits = 0;
     message->sensorData.protocol = NULL;
@@ -169,6 +170,7 @@ public:
     int startIndex = 0;
     do {
       int gapIndex = findGap(message, startIndex, iSequenceSize, SYNC_NEXUS, TOLERANCE_SYNC_NEXUS);
+      if (gapIndex < 0) break;
       if (gapIndex >= startIndex+MIN_SEQUENCE_NEXUS) {
         bits.clear();
         DBG_NEXUS("NEXUS: startIndex = %d, gapIndex = %d", startIndex, gapIndex);
