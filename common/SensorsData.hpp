@@ -668,7 +668,7 @@ public:
     if (def == NULL) def = data->def;
   }
 
-  uint32_t getId() { return protocol == NULL ? 0 : protocol->getId(this); }
+  uint64_t getId() { return protocol == NULL ? 0 : protocol->getId(this); }
 
   uint32_t getFeatures() { return protocol == NULL ? -1 : protocol->getFeatures(this); }
   int getChannel() { return protocol == NULL ? -1 : protocol->getChannel(this); }
@@ -784,8 +784,27 @@ private:
 
     SensorDef* def = new_item->def;
     if (def == NULL) {
-      def = SensorDef::find(data->getId());
-      if (def != NULL) new_item->def = def;
+      uint64_t id = data->getId();
+      def = SensorDef::find(id);
+      if (def != NULL) {
+        DBG("SensorDef::find(id): Found id=%08lx %08lx name=%s", (long unsigned)(id>>32), (long unsigned)(id &0xffffffffU), def->name );
+        new_item->def = def;
+#ifndef NDEBUG
+      } else {
+        DBG("SensorDef::find(id): Not found id=%08lx %08lx", (long unsigned)(id>>32), (long unsigned)(id &0xffffffffU) );
+        if (data->protocol == NULL) {
+          DBG("SensorDef::find(id): data->protocol == NULL" );
+        } else {
+          DBG("SensorDef::find(id): data->protocol.index=%d", data->protocol->protocol_index );
+          uint64_t channel_bits = (data->u32.low >> 12) & 7ULL;
+          uint64_t rolling_code = (data->u32.low >> 24) & 255ULL;
+          uint64_t variant = 0;
+          uint64_t nid = ((uint64_t)(data->protocol->protocol_index)<<48) | (variant<<16) | (channel_bits<<8) | rolling_code;
+          DBG("SensorDef::find(id): nid = %08lx %08lx", (long unsigned)(nid>>32), (long unsigned)(nid &0xffffffffU) );
+
+        }
+#endif
+      }
     }
 
     items_mutex.lock();

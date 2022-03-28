@@ -965,13 +965,13 @@ void Config::command_sensor(const char** argv, int number_of_unnamed_args, Confi
   if ((features&(FEATURE_CHANNEL|FEATURE_ROLLING_CODE)) != 0) {
     if ((features&(FEATURE_CHANNEL|FEATURE_ROLLING_CODE)) == FEATURE_ROLLING_CODE)
       fprintf(stderr, "command \"sensor\" in line #%d of file \"%s\": rolling_code=%d id=%08lx %08lx name=%s ixdb_name=%s\n",
-        errorLogger->linenum, errorLogger->configFilePath, rolling_code, (long unsigned)(sensor_id>>32), (long unsigned)sensor_id, def->quoted, def->influxdb_quoted);
+        errorLogger->linenum, errorLogger->configFilePath, rolling_code, (long unsigned)(sensor_id>>32), (long unsigned)(sensor_id &0xffffffffU), def->quoted, def->influxdb_quoted);
     else
       fprintf(stderr, "command \"sensor\" in line #%d of file \"%s\": channel=%d rolling_code=%d id=%08lx %08lx name=%s ixdb_name=%s\n",
-        errorLogger->linenum, errorLogger->configFilePath, channel_number, rolling_code, (long unsigned)(sensor_id>>32), (long unsigned)sensor_id, def->quoted, def->influxdb_quoted);
+        errorLogger->linenum, errorLogger->configFilePath, channel_number, rolling_code, (long unsigned)(sensor_id>>32), (long unsigned)(sensor_id &0xffffffffU), def->quoted, def->influxdb_quoted);
   } else {
     fprintf(stderr, "command \"sensor\" in line #%d of file \"%s\": id=%08lx %08lx name=%s ixdb_name=%s\n",
-      errorLogger->linenum, errorLogger->configFilePath, (long unsigned)(sensor_id>>32), (long unsigned)sensor_id, def->quoted, def->influxdb_quoted);
+      errorLogger->linenum, errorLogger->configFilePath, (long unsigned)(sensor_id>>32), (long unsigned)(sensor_id &0xffffffffU), def->quoted, def->influxdb_quoted);
   }
 #endif
 }

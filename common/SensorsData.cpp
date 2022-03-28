@@ -207,7 +207,7 @@ void SensorData::print(FILE* file, int options) {
       fprintf(file, "  rolling code      = 0x%04x(%u)\n", rc, rc);
     }
   } else if ((features&FEATURE_ID32) != 0) {
-    fprintf(file, "  id                = %08x\n", getId());
+    fprintf(file, "  id                = %08lx\n", (long unsigned int)getId());
   }
 
   if ((features&FEATURE_TEMPERATURE) != 0) {
@@ -252,7 +252,7 @@ size_t SensorData::generateJsonContent(int start, void*& buffer, size_t& buffer_
       if (!check_buffer(remain, len, "SensorData::generateJson")) return 0;
     }
   } else if ((features&FEATURE_ID32) != 0) {
-    len += snprintf(ptr+len, remain-len, ",\"id\":\"%08x\"", getId());
+    len += snprintf(ptr+len, remain-len, ",\"id\":\"%08lx\"", (long unsigned)(getId()&0xffffffff));
     if (!check_buffer(remain, len, "SensorData::generateJson")) return 0;
   }
   if (def != NULL && def->quoted != NULL) {
@@ -317,7 +317,7 @@ size_t SensorData::generateInfluxData(int start, void*& buffer, size_t& buffer_s
       if (!check_buffer(remain, len, "SensorData::generateInfluxData")) return 0;
     }
   } else if ((features&FEATURE_ID32) != 0) {
-    len += snprintf(id+len, remain-len, ",id=%08x", getId());
+    len += snprintf(id+len, remain-len, ",id=%08lx", (long unsigned)(getId()&0xffffffff));
     if (!check_buffer(remain, len, "SensorData::generateInfluxData")) return 0;
   }
   if (def != NULL && def->influxdb_quoted != NULL) {

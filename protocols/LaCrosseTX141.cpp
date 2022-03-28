@@ -119,6 +119,7 @@ public:
     return ((uint64_t)protocol_index<<48) | rolling_code | (channel<<8);
   }
   uint64_t getId(ProtocolDef *protocol_def, uint8_t channel, uint16_t rolling_code) {
+    if (channel > 0) channel--;
     return ((uint64_t)protocol_index<<48) | (channel<<8) | (rolling_code&255UL);
   }
 

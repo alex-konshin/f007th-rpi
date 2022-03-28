@@ -41,14 +41,14 @@ public:
       FEATURE_RF | FEATURE_CHANNEL | FEATURE_ROLLING_CODE | FEATURE_TEMPERATURE | FEATURE_TEMPERATURE_CELSIUS | FEATURE_HUMIDITY | FEATURE_BATTERY_STATUS ) {}
 
   uint64_t getId(SensorData* data) {
-    uint64_t channel_bits = (data->u32.low >> 12) & 7UL;
-    uint64_t rolling_code = (data->u32.low >> 24) & 255UL;
+    uint64_t channel_bits = (data->u32.low >> 12) & 7ULL;
+    uint64_t rolling_code = (data->u32.low >> 24) & 255ULL;
     uint64_t variant = 0;
     return ((uint64_t)protocol_index<<48) | (variant<<16) | (channel_bits<<8) | rolling_code;
   }
   uint64_t getId(ProtocolDef *protocol_def, uint8_t channel, uint16_t rolling_code) {
-    uint64_t channel_bits = (channel-1) & 7UL;
-    return ((uint64_t)protocol_index<<48) | (((uint64_t)protocol_def->variant&0x0ffff)<<16) | (channel_bits<<8) | (rolling_code&255UL);
+    uint64_t channel_bits = (channel-1) & 7ULL;
+    return ((uint64_t)protocol_index<<48) | (((uint64_t)protocol_def->variant&0x0ffff)<<16) | (channel_bits<<8) | (rolling_code&255ULL);
   }
 
   int getChannel(SensorData* data) { return ((data->u32.low>>12)&3)+1; }
