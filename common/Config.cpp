@@ -871,7 +871,7 @@ void Config::command_sensor(const char** argv, int number_of_unnamed_args, Confi
   const char* channel_str = argv[CMD_SENSOR_CHANNEL];
   const char* id_str = argv[CMD_SENSOR_ID];
 
-  uint32_t sensor_id = 0;
+  uint64_t sensor_id = 0;
   uint8_t channel_number = 0;
   uint32_t rolling_code = 0;
 
@@ -944,7 +944,7 @@ void Config::command_sensor(const char** argv, int number_of_unnamed_args, Confi
   case SENSOR_DEF_WAS_ADDED:
     break;
   case SENSOR_DEF_DUP:
-    errorLogger->error("Duplicate descriptor of sensor");
+    errorLogger->error("Duplicate descriptor of sensor (id=%08x)", sensor_id);
     break;
   case SENSOR_DEF_DUP_NAME:
     errorLogger->error("Duplicate name \"%s\" of sensor", name);
@@ -964,14 +964,14 @@ void Config::command_sensor(const char** argv, int number_of_unnamed_args, Confi
 #ifndef NDEBUG
   if ((features&(FEATURE_CHANNEL|FEATURE_ROLLING_CODE)) != 0) {
     if ((features&(FEATURE_CHANNEL|FEATURE_ROLLING_CODE)) == FEATURE_ROLLING_CODE)
-      fprintf(stderr, "command \"sensor\" in line #%d of file \"%s\": rolling_code=%d id=%08x name=%s ixdb_name=%s\n",
-        errorLogger->linenum, errorLogger->configFilePath, rolling_code, sensor_id, def->quoted, def->influxdb_quoted);
+      fprintf(stderr, "command \"sensor\" in line #%d of file \"%s\": rolling_code=%d id=%08lx %08lx name=%s ixdb_name=%s\n",
+        errorLogger->linenum, errorLogger->configFilePath, rolling_code, (long unsigned)(sensor_id>>32), (long unsigned)sensor_id, def->quoted, def->influxdb_quoted);
     else
-      fprintf(stderr, "command \"sensor\" in line #%d of file \"%s\": channel=%d rolling_code=%d id=%08x name=%s ixdb_name=%s\n",
-        errorLogger->linenum, errorLogger->configFilePath, channel_number, rolling_code, sensor_id, def->quoted, def->influxdb_quoted);
+      fprintf(stderr, "command \"sensor\" in line #%d of file \"%s\": channel=%d rolling_code=%d id=%08lx %08lx name=%s ixdb_name=%s\n",
+        errorLogger->linenum, errorLogger->configFilePath, channel_number, rolling_code, (long unsigned)(sensor_id>>32), (long unsigned)sensor_id, def->quoted, def->influxdb_quoted);
   } else {
-    fprintf(stderr, "command \"sensor\" in line #%d of file \"%s\": id=%08x name=%s ixdb_name=%s\n",
-      errorLogger->linenum, errorLogger->configFilePath, sensor_id, def->quoted, def->influxdb_quoted);
+    fprintf(stderr, "command \"sensor\" in line #%d of file \"%s\": id=%08lx %08lx name=%s ixdb_name=%s\n",
+      errorLogger->linenum, errorLogger->configFilePath, (long unsigned)(sensor_id>>32), (long unsigned)sensor_id, def->quoted, def->influxdb_quoted);
   }
 #endif
 }

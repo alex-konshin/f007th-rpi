@@ -76,7 +76,7 @@ public:
   }
   uint64_t getId(ProtocolDef *protocol_def, uint8_t channel, uint16_t rolling_code) {
     uint64_t channel_bits = (channel-1)&7UL;
-    return ((uint64_t)protocol_index<<48) | (((uint64_t)protocol_def->variant&0x0ffff)<<16) | (channel_bits<<8) | (rolling_code&255);
+    return ((uint64_t)protocol_index<<48) | (((uint64_t)protocol_def->variant&0x0ffff)<<16) | (channel_bits<<8) | (rolling_code&255UL);
   }
 
   int getChannel(SensorData* data) { return ((data->nF007TH>>20)&7)+1; }

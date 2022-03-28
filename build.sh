@@ -38,6 +38,9 @@ case $machine in
   armv7l)
     is_ARM=1
     ;;
+  aarch64)
+    is_ARM=1
+    ;;
   *)
     echo "ERROR: Unrecognized platform (\`uname -m\` = ${machine})."
     exit 1

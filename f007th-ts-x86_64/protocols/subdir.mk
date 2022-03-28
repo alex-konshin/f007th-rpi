@@ -8,38 +8,48 @@ CPP_SRCS += \
 ../protocols/AmbientWeatherF007TH.cpp \
 ../protocols/AuriolHG02832.cpp \
 ../protocols/DS18B20.cpp \
+../protocols/LaCrosseTX141.cpp \
 ../protocols/LaCrosseTX7.cpp \
 ../protocols/Protocol.cpp \
 ../protocols/TFATwinPlus.cpp \
 ../protocols/WH2.cpp 
-
-OBJS += \
-./protocols/AcuRite00592TXR.o \
-./protocols/AmbientWeatherF007TH.o \
-./protocols/AuriolHG02832.o \
-./protocols/DS18B20.o \
-./protocols/LaCrosseTX7.o \
-./protocols/Protocol.o \
-./protocols/TFATwinPlus.o \
-./protocols/WH2.o 
 
 CPP_DEPS += \
 ./protocols/AcuRite00592TXR.d \
 ./protocols/AmbientWeatherF007TH.d \
 ./protocols/AuriolHG02832.d \
 ./protocols/DS18B20.d \
+./protocols/LaCrosseTX141.d \
 ./protocols/LaCrosseTX7.d \
 ./protocols/Protocol.d \
 ./protocols/TFATwinPlus.d \
 ./protocols/WH2.d 
 
+OBJS += \
+./protocols/AcuRite00592TXR.o \
+./protocols/AmbientWeatherF007TH.o \
+./protocols/AuriolHG02832.o \
+./protocols/DS18B20.o \
+./protocols/LaCrosseTX141.o \
+./protocols/LaCrosseTX7.o \
+./protocols/Protocol.o \
+./protocols/TFATwinPlus.o \
+./protocols/WH2.o 
+
 
 # Each subdirectory must supply rules for building sources it contributes
-protocols/%.o: ../protocols/%.cpp
+protocols/%.o: ../protocols/%.cpp protocols/subdir.mk
 	@echo 'Building file: $<'
 	@echo 'Invoking: Cross G++ Compiler'
-	g++ -std=c++11 -DINCLUDE_HTTPD -DNDEBUG -DINCLUDE_POLLSTER -DUSE_GPIO_TS -O2 -Wall -c -fmessage-length=0 -pthread -U_FORTIFY_SOURCE -fno-stack-protector -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@)" -o "$@" "$<"
+	g++ -std=c++11 -DINCLUDE_HTTPD -DNDEBUG -DINCLUDE_POLLSTER -DUSE_GPIO_TS -O2 -Wall -c -fmessage-length=0 -pthread -U_FORTIFY_SOURCE -fno-stack-protector -MMD -MP -MF"$(@:%.o=%.d)" -MT"$@" -o "$@" "$<"
 	@echo 'Finished building: $<'
 	@echo ' '
 
+
+clean: clean-protocols
+
+clean-protocols:
+	-$(RM) ./protocols/AcuRite00592TXR.d ./protocols/AcuRite00592TXR.o ./protocols/AmbientWeatherF007TH.d ./protocols/AmbientWeatherF007TH.o ./protocols/AuriolHG02832.d ./protocols/AuriolHG02832.o ./protocols/DS18B20.d ./protocols/DS18B20.o ./protocols/LaCrosseTX141.d ./protocols/LaCrosseTX141.o ./protocols/LaCrosseTX7.d ./protocols/LaCrosseTX7.o ./protocols/Protocol.d ./protocols/Protocol.o ./protocols/TFATwinPlus.d ./protocols/TFATwinPlus.o ./protocols/WH2.d ./protocols/WH2.o
+
+.PHONY: clean-protocols
 

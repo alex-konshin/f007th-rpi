@@ -265,6 +265,16 @@ bool Protocol::decodePPM(ReceivedData* message, int startIndex, int size, int pu
   return true;
 }
 
+int Protocol::findGap(ReceivedData* message, int startIndex, int size, int width, int tolerance) {
+  int16_t* pSequence = message->pSequence;
+  int end = startIndex+size;
+  for ( int index=startIndex+1; index<end; index+=2 ) {
+    int duration = pSequence[index];
+    if (is_good(duration, width, tolerance)) return index;
+  }
+  return -1;
+}
+
 uint8_t Protocol::crc8( Bits& bits, int from, int size, int polynomial, int init ) {
   int result = init;
   for ( int index = from; index<from+size; index += 8 ) {
