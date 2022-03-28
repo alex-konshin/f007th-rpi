@@ -15,7 +15,8 @@
 #define PROTOCOL_F007TH    16
 #define PROTOCOL_TFA303049 32
 #define PROTOCOL_NEXUS     64
-#define PROTOCOL_DS18B20   128
+#define PROTOCOL_TX141     128
+#define PROTOCOL_DS18B20   256
 #define PROTOCOL_ALL       (unsigned)(-1)
 
 #define PROTOCOL_INDEX_00592TXR  0
@@ -25,8 +26,9 @@
 #define PROTOCOL_INDEX_F007TH    4
 #define PROTOCOL_INDEX_TFA303049 5
 #define PROTOCOL_INDEX_NEXUS     6
-#define PROTOCOL_INDEX_DS18B20   7
-#define NUMBER_OF_PROTOCOLS      8
+#define PROTOCOL_INDEX_TX141     7
+#define PROTOCOL_INDEX_DS18B20   8
+#define NUMBER_OF_PROTOCOLS      9
 
 #define MAX_PROTOCOL_NAME_LEN   16
 
@@ -142,7 +144,7 @@ public:
   const char* protocol_class;
   uint32_t features;
 
-  Protocol(uint8_t protocol_bit, uint8_t protocol_index, const char* protocol_class, uint32_t features) : protocol_bit(protocol_bit), protocol_index(protocol_index), protocol_class(protocol_class), features(features) {
+  Protocol(uint32_t protocol_bit, uint8_t protocol_index, const char* protocol_class, uint32_t features) : protocol_bit(protocol_bit), protocol_index(protocol_index), protocol_class(protocol_class), features(features) {
     protocols[protocol_index] = this;
   }
   virtual ~Protocol() {}
