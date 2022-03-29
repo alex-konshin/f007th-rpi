@@ -8,7 +8,7 @@
 #ifndef CONFIG_HPP_
 #define CONFIG_HPP_
 
-#define RF_RECEIVER_VERSION "5.2"
+#define RF_RECEIVER_VERSION "5.3"
 
 #define VERBOSITY_DEBUG            1
 #define VERBOSITY_INFO             2
