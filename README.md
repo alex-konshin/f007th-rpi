@@ -31,7 +31,8 @@ It is tested with RXB6 and SeeedStudio RF-R-ASK.
 This project currently supports and tested with following sensors:    
 - [Ambient Weather F007TH](http://www.ambientweather.com/amf007th.html)   
 - [AcuRite 00592TXR/06002RM](https://www.acurite.com/kbase/592TXR.html)  
-- [LaCrosse TX7U](https://www.lacrossetechnology.com/tx7u) (probably TX3/TX6 may also work)  
+- [LaCrosse TX7U](https://www.lacrossetechnology.com/tx7u) (probably TX3/TX6 may also work)
+- [LaCrosse TX141TH-BV3](https://www.lacrossetechnology.com/products/tx141th-bv3) (TX141TH-BCH is also tested)  
 - [Auriol HG02832 (IAN 283582)](https://manuall.co.uk/auriol-ian-283582-weather-station/)    
 - Fine Offset Electronics WH2 / Telldus FT007TH / Renkforce FT007TH and other clones
 - TFA Twin Plus 30.3049 / Conrad KW9010 / Ea2 BL999
