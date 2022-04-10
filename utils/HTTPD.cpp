@@ -161,7 +161,7 @@ static int process_params(HTTPD* httpd, struct MHD_Connection* connection, const
   req_param_processing_data.param_values = param_values;
   req_param_processing_data.success = true;
 
-  MHD_get_connection_values(connection, MHD_GET_ARGUMENT_KIND, &param_iterator, (void*)&req_param_processing_data);
+  MHD_get_connection_values(connection, MHD_GET_ARGUMENT_KIND, (MHD_KeyValueIterator)&param_iterator, (void*)&req_param_processing_data);
 
   if (!req_param_processing_data.success) return error_bad_request(connection);
 
@@ -620,7 +620,7 @@ HTTPD* HTTPD::start(SensorsData* sensorsData, Config* cfg) {
         port,
         NULL,
         NULL,
-        &process_request,
+        (MHD_AccessHandlerCallback)&process_request,
         (void*)httpd,
         MHD_OPTION_END
       );
