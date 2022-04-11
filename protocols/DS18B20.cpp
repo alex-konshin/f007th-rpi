@@ -25,10 +25,7 @@ class ProtocolDS18B20 : public Protocol {
 protected:
   ProtocolDef* _getProtocolDef(const char* protocol_name) {
     if (protocol_name != NULL) {
-      if (strcasecmp(def_ds18b20.name, protocol_name) == 0
-       || strcasecmp("tx6", protocol_name) == 0
-       || strcasecmp("tx7", protocol_name) == 0
-       ) return &def_ds18b20;
+      if (strcasecmp(def_ds18b20.name, protocol_name) == 0) return &def_ds18b20;
     }
     return NULL;
   }

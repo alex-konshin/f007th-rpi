@@ -925,7 +925,7 @@ void Config::command_sensor(const char** argv, int number_of_unnamed_args, Confi
       id_str = rc_str;
     }
     const char* p = id_str;
-    sensor_id = getUnsignedHex(p, errorLogger);
+    sensor_id = ((uint64_t)protocol_def->protocol_index<<48) | getUnsignedHex(p, errorLogger);
     if (p != NULL && skipBlanks(p) != NULL) errorLogger->error("The value of argument \"id\" must be hex integer number");
 
   } else {
