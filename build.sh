@@ -249,6 +249,7 @@ echo "Executale \"${BUILD_DIR}/${executable}\" has been built successfully."
 
 # -----------------------------------------------------------------------------
 echo ""
+if [ ! -d ${BUILD_HOME}/bin ]; then mkdir -p ${BUILD_HOME}/bin; fi
 cp "${BUILD_DIR}/${executable}" "${BUILD_HOME}/bin/"
 if [ $? -ne 0 ]; then
   echo "ERROR: Failed to copy file \"${BUILD_DIR}/${executable}\" to directory \"${BUILD_HOME}/bin/\"."
