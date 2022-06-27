@@ -39,13 +39,19 @@ int main(int argc, char *argv[]) {
 #define LOG_FILE_OPEN_MODE "a"
       log_file_path = "f007th-send.log";
 #endif
-      cfg.log_file_path = log_file_path = realpath(log_file_path, NULL);
+      const char* path;
+      path = realpath(log_file_path, NULL);
+      if (path == NULL || path[0]=='\0') {
+        fprintf(stderr, "Failed to open log file \"%s\". Function realpath() returned error: %s\n", log_file_path, strerror(errno));
+        exit(1);
+      }
+      cfg.log_file_path = path;
     } else {
       log_file_path = cfg.log_file_path;
     }
     log = openFileForWriting(cfg.log_file_path, LOG_FILE_OPEN_MODE);
     if (log == NULL) {
-      fprintf(stderr, "Failed to open log file \"%s\".\n", cfg.log_file_path);
+      fprintf(stderr, "Failed to open log file \"%s\": %s\n", cfg.log_file_path, strerror(errno));
       exit(1);
     }
     fprintf(stderr, "Log file is \"%s\".\n", cfg.log_file_path);
